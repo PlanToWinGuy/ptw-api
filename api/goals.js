@@ -23,6 +23,17 @@ const SYSTEM = `You create a personalized goal plan from someone's pillar, goal 
 Timeline logic: habits need 21-66 days (fresh start=66, tried+stopped=30, in progress=21 to cement). Projects 60-90 days. Skills 90 days min. Mindset 30-60 days daily practice.
 If a Valueprint reading is provided (archetype, growth edge, pillar alignment), ground the "why" in it specifically — reference their actual edge or alignment gap, not generic encouragement.`;
 
+// Appended to SYSTEM only for Fitness -- asks for real starter workout plans in the same
+// call rather than a second AI request, so this doesn't add extra cost.
+const FITNESS_ADDENDUM = `
+Also include a "workoutPlans" array — 2 concrete starter workout plans matching their equipment/experience/split from the questionnaire:
+"workoutPlans": [
+  {"name": "<e.g. Push Day A>", "durationMin": <number>, "exercises": [
+    {"name": "<exercise>", "sets": <number>, "targetReps": <number>, "targetWeight": <number, kg, 0 if bodyweight>}
+  ]}
+]
+2-3 plans, 4-6 exercises each, sets/reps/weight appropriate to their stated experience level and equipment.`;
+
 const GOAL_TYPES = new Set(['habit', 'project', 'skill', 'mindset']);
 
 function serialize(g) {
@@ -116,9 +127,9 @@ async function generateGoal(req, res, user) {
         headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
         body: JSON.stringify({
           model: 'claude-sonnet-4-6',
-          max_tokens: 1800,
+          max_tokens: 2400,
           temperature: 0.4,
-          system: SYSTEM,
+          system: pillar_name.toLowerCase() === 'fitness' ? SYSTEM + FITNESS_ADDENDUM : SYSTEM,
           messages: [{ role: 'user', content: [
             `Pillar: ${pillar_name}`,
             `Goal type: ${goal_type}`,
@@ -162,6 +173,18 @@ async function generateGoal(req, res, user) {
       await sql`
         INSERT INTO tasks (user_id, goal_id, pillar_id, name, kind, phase_label, due_date, estimated_duration_minutes)
         VALUES (${user.id}, ${goal_id}, ${pillar_id}, ${action}, 'project', ${firstPhase?.label || null}, ${today}, 30)
+      `;
+    }
+  }
+
+  // Fitness gets real workout plan templates stored as metric_logs, so the Workout Hub's
+  // "My Plans" tab has something real to show without a second AI call.
+  if (pillar_name.toLowerCase() === 'fitness' && Array.isArray(plan.workoutPlans)) {
+    for (const wp of plan.workoutPlans) {
+      await sql`
+        INSERT INTO metric_logs (user_id, pillar_id, log_type, value, unit, data)
+        VALUES (${user.id}, ${pillar_id}, 'workout_plan', ${wp.durationMin || null}, 'min',
+                ${JSON.stringify({ name: wp.name, exercises: wp.exercises || [], source: 'goal' })}::jsonb)
       `;
     }
   }

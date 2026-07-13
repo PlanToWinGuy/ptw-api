@@ -87,8 +87,36 @@ export default async function handler(req, res) {
 
   if (req.method === 'POST') {
     const body = req.body || {};
-    const { pillar_id, log_type, value, unit, data, logged_at } = body;
+    const { pillar_id, log_type, value, unit, logged_at } = body;
+    let data = body.data || null;
     if (!log_type) return res.status(422).json({ message: 'log_type is required' });
+
+    // PR detection: compare this workout's actual weights against the best-ever weight
+    // per exercise from prior logged workouts, tag any that beat it.
+    if (log_type === 'workout' && data?.exercises) {
+      const prior = await sql`SELECT data FROM metric_logs WHERE user_id = ${user.id} AND log_type = 'workout' ORDER BY logged_at DESC LIMIT 100`;
+      const bestByExercise = {};
+      for (const row of prior) {
+        for (const ex of (row.data?.exercises || [])) {
+          for (const s of (ex.sets || [])) {
+            const w = Number(s.actualWeight) || 0;
+            if (w > (bestByExercise[ex.name] || 0)) bestByExercise[ex.name] = w;
+          }
+        }
+      }
+      const prs = [];
+      for (const ex of data.exercises) {
+        for (const s of (ex.sets || [])) {
+          const w = Number(s.actualWeight) || 0;
+          const reps = Number(s.actualReps) || 0;
+          if (w > 0 && w > (bestByExercise[ex.name] || 0)) {
+            prs.push({ exercise: ex.name, weight: w, reps });
+            bestByExercise[ex.name] = w;
+          }
+        }
+      }
+      data = { ...data, prs };
+    }
 
     const rows = await sql`
       INSERT INTO metric_logs (user_id, pillar_id, log_type, value, unit, data, logged_at)
