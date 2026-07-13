@@ -78,6 +78,29 @@ export default async function handler(req, res) {
     return res.status(200).json({ logs, totals });
   }
 
+  if (req.method === 'PATCH') {
+    const { id, data } = req.body || {};
+    if (!id) return res.status(422).json({ message: 'id is required' });
+    const rows = await sql`SELECT * FROM metric_logs WHERE id = ${id} AND user_id = ${user.id}`;
+    const existing = rows[0];
+    if (!existing) return res.status(404).json({ message: 'Not found' });
+
+    // Completing a multi-step project is a bigger milestone than a single log entry --
+    // a fixed bonus (not scaled to the project's own size/value) awarded once, on the
+    // Pending -> Completed transition only.
+    let xp_gained = 0;
+    if (existing.log_type === 'work_project' && !existing.data?.completedAt && data?.completedAt) {
+      xp_gained = 500;
+      await sql`UPDATE users SET xp = xp + ${xp_gained} WHERE id = ${user.id}`;
+    }
+
+    const updated = await sql`
+      UPDATE metric_logs SET data = ${JSON.stringify(data)}::jsonb
+      WHERE id = ${id} AND user_id = ${user.id} RETURNING *
+    `;
+    return res.status(200).json({ data: updated[0], xp_gained });
+  }
+
   if (req.method === 'DELETE') {
     const id = req.query.id;
     if (!id) return res.status(422).json({ message: 'id is required' });
