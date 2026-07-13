@@ -2,6 +2,7 @@ import { sql, PILLARS } from '../lib/db.js';
 import { cors } from '../lib/cors.js';
 import { getUserFromRequest } from '../lib/auth.js';
 import { getPillarState } from '../lib/pillarState.js';
+import { materializeRoutinesForDate } from '../lib/routines.js';
 
 const PRIORITY_FLAG = { High: '🚩', Medium: '🏳️', Low: '🏳️' };
 
@@ -36,6 +37,8 @@ export default async function handler(req, res) {
   const { date } = req.body || {};
   const targetDate = date || new Date().toISOString().split('T')[0];
 
+  await materializeRoutinesForDate(user, targetDate);
+
   const rows = await sql`
     SELECT * FROM tasks
     WHERE user_id = ${user.id} AND due_date = ${targetDate} AND status != 'Skipped'
@@ -46,8 +49,9 @@ export default async function handler(req, res) {
     const durationMin = t.estimated_duration_minutes || 20;
     return {
       taskId: t.id,
+      routineId: t.routine_id || null,
       name: t.name,
-      description: (t.kind === 'project' ? 'Main Goal' : t.goal_id ? 'Main Goal' : 'Quick Task') + ' | ' + durationMin + ' min',
+      description: (t.routine_id ? 'Routine' : t.kind === 'project' ? 'Main Goal' : t.goal_id ? 'Main Goal' : 'Quick Task') + ' | ' + durationMin + ' min',
       startTime: t.start_time,
       endTime: t.end_time,
       durationMinutes: durationMin,
@@ -66,6 +70,23 @@ export default async function handler(req, res) {
   const completion_percent = total_tasks ? Math.round((completed / total_tasks) * 100) : 0;
   const totalMinutes = rows.reduce((s, t) => s + (t.estimated_duration_minutes || 0), 0);
 
+  // Real daily XP + streak, for the Wind-Down recap (no new endpoint needed --
+  // 4.5.5's "Daily Summary" numbers just ride along on this same response).
+  const [{ xp_from_tasks }] = await sql`SELECT COALESCE(SUM(xp_gained), 0) AS xp_from_tasks FROM tasks WHERE user_id = ${user.id} AND due_date = ${targetDate} AND status = 'Completed'`;
+  const [{ xp_from_logs }] = await sql`SELECT COALESCE(SUM(xp_gained), 0) AS xp_from_logs FROM metric_logs WHERE user_id = ${user.id} AND logged_at::date = ${targetDate}`;
+  const xp_earned = Number(xp_from_tasks) + Number(xp_from_logs);
+
+  const activeDayRows = await sql`
+    SELECT DISTINCT d FROM (
+      SELECT due_date AS d FROM tasks WHERE user_id = ${user.id} AND status = 'Completed' AND due_date IS NOT NULL
+      UNION
+      SELECT logged_at::date AS d FROM metric_logs WHERE user_id = ${user.id}
+    ) x
+  `;
+  const activeDays = new Set(activeDayRows.map(r => new Date(r.d).toISOString().split('T')[0]));
+  let streak_days = 0, cursorDay = new Date();
+  while (activeDays.has(cursorDay.toISOString().split('T')[0])) { streak_days++; cursorDay.setDate(cursorDay.getDate() - 1); }
+
   // pillar_states: "glowing" nudges the user toward the AI-recommended pillar once
   // they're actually eligible to activate it; "active" for anything already unlocked.
   const { unlockedPillars, canActivateNextPillar } = await getPillarState(user);
@@ -80,7 +101,7 @@ export default async function handler(req, res) {
 
   res.status(200).json({
     message: 'Projects and schedules retrieved successfully.',
-    summary_stats: { total_tasks, completion_percent, total_scheduled_time: formatDuration(totalMinutes) },
+    summary_stats: { total_tasks, completed_count: completed, completion_percent, total_scheduled_time: formatDuration(totalMinutes), xp_earned, streak_days },
     data,
     pillar_states,
   });

@@ -13,6 +13,9 @@
     { "source": "/api/tasks/skip", "destination": "/api/tasks/update-completion?action=skip" },
     { "source": "/api/tasks/add-time", "destination": "/api/tasks/update-completion?action=add-time" },
     { "source": "/api/tasks/reschedule", "destination": "/api/tasks/update-completion?action=reschedule" },
-    { "source": "/api/schedule/shuffle-day", "destination": "/api/tasks/update-completion?action=shuffle-day" }
+    { "source": "/api/schedule/shuffle-day", "destination": "/api/tasks/update-completion?action=shuffle-day" },
+    { "source": "/api/schedule/confirm-shuffle", "destination": "/api/tasks/update-completion?action=confirm-shuffle" },
+    { "source": "/api/schedule/generate-for-tomorrow", "destination": "/api/tasks/update-completion?action=generate-for-tomorrow" },
+    { "source": "/api/routines/:id", "destination": "/api/routines?id=:id" }
   ]
 }

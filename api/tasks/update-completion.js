@@ -2,6 +2,7 @@ import { sql } from '../../lib/db.js';
 import { cors } from '../../lib/cors.js';
 import { getUserFromRequest } from '../../lib/auth.js';
 import { completeTask } from '../../lib/tasks.js';
+import { materializeRoutinesForDate } from '../../lib/routines.js';
 
 // Consolidated task-instance actions -- one serverless function, dispatched by
 // ?action=, same pattern as api/metrics.js?action=scan-meal. Default (no action) is
@@ -62,17 +63,57 @@ export default async function handler(req, res) {
   }
 
   if (action === 'shuffle-day') {
-    const { date, commit } = req.body || {};
+    const { date, context } = req.body || {};
     const targetDate = date || new Date().toISOString().split('T')[0];
-    const rows = await sql`
+    const isToday = targetDate === new Date().toISOString().split('T')[0];
+    let rows = await sql`
       SELECT * FROM tasks WHERE user_id = ${user.id} AND due_date = ${targetDate} AND status = 'Pending'
       ORDER BY CASE priority WHEN 'High' THEN 0 WHEN 'Medium' THEN 1 ELSE 2 END, start_time NULLS LAST, created_at ASC
     `;
-    const isToday = targetDate === new Date().toISOString().split('T')[0];
+
+    const tasksShortened = [];
+    const tasksDeferred = [];
+    let streakNote = 'Your highest-priority tasks were kept in place.';
+    let startDelayMinutes = 0;
+
+    // Real, deterministic per-context rules (no AI call -- these are simple enough to
+    // be honest rules rather than something worth spending on a live model for).
+    if (context === 'Low energy / Mental off-day') {
+      const lowPri = rows.filter(t => t.priority === 'Low');
+      lowPri.forEach(t => tasksDeferred.push(t.name));
+      rows = rows.filter(t => t.priority !== 'Low').map(t => {
+        if (t.estimated_duration_minutes) {
+          const shortened = Math.max(5, Math.round(t.estimated_duration_minutes * 0.67));
+          if (shortened < t.estimated_duration_minutes) {
+            tasksShortened.push(`'${t.name}' is now ${shortened} mins`);
+            return { ...t, estimated_duration_minutes: shortened };
+          }
+        }
+        return t;
+      });
+      streakNote = 'Your core habits are still on track today.';
+    } else if (context === 'Hungover or sick') {
+      const coreHabit = rows.find(t => t.kind === 'habit');
+      rows.filter(t => t !== coreHabit).forEach(t => tasksDeferred.push(t.name));
+      rows = coreHabit ? [coreHabit] : [];
+      streakNote = coreHabit ? `Your '${coreHabit.name}' streak is safe because you selected "Sick" as your reason.` : 'Nothing mandatory today -- rest up.';
+    } else if (context === 'Social surprise / Change of plans') {
+      rows.filter(t => t.priority !== 'High').forEach(t => tasksDeferred.push(t.name));
+      rows = rows.filter(t => t.priority === 'High');
+      streakNote = 'High-priority tasks were protected around your change of plans.';
+    } else if (context === 'Travel / Errands took longer') {
+      startDelayMinutes = 60; // assume an hour of today's window is already gone
+      streakNote = 'Your schedule was compressed to fit the remaining time today.';
+    } else if (context === "Feeling productive! Let's optimize") {
+      const backlog = await sql`SELECT * FROM tasks WHERE user_id = ${user.id} AND status = 'Pending' AND due_date IS NULL ORDER BY created_at ASC LIMIT 5`;
+      rows = [...rows, ...backlog];
+      streakNote = 'Pulled a few backlog tasks in since you have the energy for it.';
+    }
+
     let cursor = isToday ? new Date() : new Date(targetDate + 'T08:00:00');
     if (!isToday) cursor.setHours(8, 0, 0, 0);
+    if (startDelayMinutes) cursor = new Date(cursor.getTime() + startDelayMinutes * 60000);
 
-    const tasksDeferred = [];
     const proposed = [];
     for (const t of rows) {
       const durationMin = t.estimated_duration_minutes || 30;
@@ -83,23 +124,43 @@ export default async function handler(req, res) {
         continue;
       }
       const endStr = cursor.toTimeString().slice(0, 8);
-      proposed.push({ ...t, start_time: startStr, end_time: endStr });
-    }
-
-    if (commit) {
-      for (const t of proposed) {
-        await sql`UPDATE tasks SET start_time = ${t.start_time}, end_time = ${t.end_time} WHERE id = ${t.id} AND user_id = ${user.id}`;
-      }
+      proposed.push({ ...t, start_time: startStr, end_time: endStr, estimated_duration_minutes: durationMin });
     }
 
     return res.status(200).json({
       proposal_summary: {
         tasks_deferred: tasksDeferred,
-        streak_protection_note: proposed.length ? 'Your highest-priority tasks were kept in place.' : 'Nothing to shuffle today.',
+        tasks_shortened: tasksShortened,
+        streak_protection_note: streakNote,
       },
-      proposed_schedule: proposed.map(t => ({ taskId: t.id, name: t.name, startTime: t.start_time, endTime: t.end_time })),
-      committed: !!commit,
+      proposed_schedule: proposed.map(t => ({ taskId: t.id, name: t.name, startTime: t.start_time, endTime: t.end_time, estimatedDurationMinutes: t.estimated_duration_minutes })),
+      _deferredIds: rows.filter(t => tasksDeferred.includes(t.name)).map(t => t.id), // internal, used by confirm-shuffle
     });
+  }
+
+  if (action === 'confirm-shuffle') {
+    const { date, new_schedule, deferred_ids } = req.body || {};
+    if (!Array.isArray(new_schedule)) return res.status(422).json({ message: 'new_schedule is required' });
+    for (const t of new_schedule) {
+      await sql`
+        UPDATE tasks SET start_time = ${t.startTime}, end_time = ${t.endTime},
+          estimated_duration_minutes = COALESCE(${t.estimatedDurationMinutes || null}, estimated_duration_minutes)
+        WHERE id = ${t.taskId} AND user_id = ${user.id}
+      `;
+    }
+    if (Array.isArray(deferred_ids) && deferred_ids.length) {
+      await sql`UPDATE tasks SET due_date = NULL, start_time = NULL, end_time = NULL WHERE id = ANY(${deferred_ids}) AND user_id = ${user.id}`;
+    }
+    return res.status(200).json({ message: 'Your schedule for the day has been successfully updated.' });
+  }
+
+  if (action === 'generate-for-tomorrow') {
+    // MVP slice of the "Nightly Plan": eagerly materialize tomorrow's routines now
+    // instead of waiting for lazy materialization on next load, so the Wind-Down
+    // preview and tomorrow's Home page are already populated.
+    const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+    await materializeRoutinesForDate(user, tomorrow);
+    return res.status(200).json({ message: 'Schedule for tomorrow has been successfully generated.' });
   }
 
   // Default: complete or partially-complete a task (the original behavior).

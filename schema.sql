@@ -69,12 +69,33 @@ CREATE TABLE IF NOT EXISTS goals (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- A recurring sequence of steps (Wake-Up/Wind-Down and any custom routine). Distinct
+-- from goals/tasks -- these get lazily materialized into a day's tasks row (see
+-- tasks.routine_id below) rather than being scheduled by the goal-generation system.
+CREATE TABLE IF NOT EXISTS routines (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  icon TEXT,
+  category TEXT,                            -- General | Fitness | Diet | Finances | Relations | Personal | Work | Travel
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  schedule_days TEXT[],                     -- e.g. ['Monday','Wednesday'] -- empty/null = every day
+  schedule_time TIME,
+  notes TEXT,
+  steps JSONB NOT NULL DEFAULT '[]',        -- [{name, durationMinutes}]
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Unifies simple/project/habit-logged tasks. goal_id is null for standalone quick-adds.
 CREATE TABLE IF NOT EXISTS tasks (
   id SERIAL PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   goal_id INTEGER REFERENCES goals(id) ON DELETE SET NULL,
   pillar_id INTEGER REFERENCES pillars(id),
+  routine_id INTEGER REFERENCES routines(id) ON DELETE SET NULL, -- set when this task is a
+                                                                   -- routine's materialized
+                                                                   -- instance for its due_date
   name TEXT NOT NULL,
   kind TEXT NOT NULL DEFAULT 'simple',     -- 'simple' | 'project' | 'habit'
   recurrence TEXT,                          -- null | 'daily' | 'weekly'
@@ -92,7 +113,8 @@ CREATE TABLE IF NOT EXISTS tasks (
 
 ALTER TABLE tasks
   ADD COLUMN IF NOT EXISTS start_time TIME,
-  ADD COLUMN IF NOT EXISTS end_time TIME;
+  ADD COLUMN IF NOT EXISTS end_time TIME,
+  ADD COLUMN IF NOT EXISTS routine_id INTEGER REFERENCES routines(id) ON DELETE SET NULL;
 
 CREATE TABLE IF NOT EXISTS side_quests (
   id SERIAL PRIMARY KEY,
