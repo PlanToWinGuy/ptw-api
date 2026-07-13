@@ -1,8 +1,9 @@
 import { sql, PILLARS } from '../lib/db.js';
 import { cors } from '../lib/cors.js';
 import { getUserFromRequest } from '../lib/auth.js';
-import { getPillarState } from '../lib/pillarState.js';
+import { getPillarState, buildPillarStates } from '../lib/pillarState.js';
 import { materializeRoutinesForDate } from '../lib/routines.js';
+import { computeStreakDays } from '../lib/tasks.js';
 
 const PRIORITY_FLAG = { High: '🚩', Medium: '🏳️', Low: '🏳️' };
 
@@ -76,28 +77,13 @@ export default async function handler(req, res) {
   const [{ xp_from_logs }] = await sql`SELECT COALESCE(SUM(xp_gained), 0) AS xp_from_logs FROM metric_logs WHERE user_id = ${user.id} AND logged_at::date = ${targetDate}`;
   const xp_earned = Number(xp_from_tasks) + Number(xp_from_logs);
 
-  const activeDayRows = await sql`
-    SELECT DISTINCT d FROM (
-      SELECT due_date AS d FROM tasks WHERE user_id = ${user.id} AND status = 'Completed' AND due_date IS NOT NULL
-      UNION
-      SELECT logged_at::date AS d FROM metric_logs WHERE user_id = ${user.id}
-    ) x
-  `;
-  const activeDays = new Set(activeDayRows.map(r => new Date(r.d).toISOString().split('T')[0]));
-  let streak_days = 0, cursorDay = new Date();
-  while (activeDays.has(cursorDay.toISOString().split('T')[0])) { streak_days++; cursorDay.setDate(cursorDay.getDate() - 1); }
+  const streak_days = await computeStreakDays(sql, user);
 
   // pillar_states: "glowing" nudges the user toward the AI-recommended pillar once
   // they're actually eligible to activate it; "active" for anything already unlocked.
-  const { unlockedPillars, canActivateNextPillar } = await getPillarState(user);
-  const recommended = (user.recommended_pillar || '').toLowerCase();
-  const pillar_states = Object.entries(PILLARS).map(([id, name]) => {
-    const key = name.toLowerCase();
-    const status = unlockedPillars.includes(key) ? 'active'
-      : (key === recommended && canActivateNextPillar) ? 'glowing'
-      : 'inactive';
-    return { pillarName: name, status };
-  });
+  // Shared with api/user.js so Home/Daily Overview and the Profile page always agree.
+  const pillarState = await getPillarState(user);
+  const pillar_states = buildPillarStates(pillarState, user.recommended_pillar);
 
   res.status(200).json({
     message: 'Projects and schedules retrieved successfully.',

@@ -1,8 +1,8 @@
 import { sql, PILLARS } from '../lib/db.js';
 import { cors } from '../lib/cors.js';
 import { getUserFromRequest } from '../lib/auth.js';
-import { calculateLifeScore } from '../lib/lifescore.js';
-import { getPillarState } from '../lib/pillarState.js';
+import { calculateLifeScore, PILLAR_CAPS } from '../lib/lifescore.js';
+import { getPillarState, buildPillarStates } from '../lib/pillarState.js';
 
 const PHASE_NAMES = { 1: 'Phase 1: Come Up', 2: 'Phase 2: Traction', 3: 'Phase 3: Confidence', 4: 'Phase 4: Flow State' };
 
@@ -13,7 +13,8 @@ export default async function handler(req, res) {
   const user = await getUserFromRequest(req);
   if (!user) return res.status(401).json({ message: 'Unauthenticated' });
 
-  const { unlockedPillars, unlockedCount, standardPct, fastPct, canActivateNextPillar } = await getPillarState(user);
+  const pillarState = await getPillarState(user);
+  const { unlockedPillars, unlockedCount, standardPct, fastPct, canActivateNextPillar, activatedAtByPillar } = pillarState;
 
   // Phase is derived from how many pillars are active, not manually incremented.
   // Phase 4 (Flow State) additionally needs ~70%+ completion across all 6 pillars
@@ -36,6 +37,11 @@ export default async function handler(req, res) {
   taskXpRows.forEach(r => { const k = (PILLARS[r.pillar_id] || '').toLowerCase(); if (k) pillarXpByKey[k] = (pillarXpByKey[k] || 0) + Number(r.xp); });
   logXpRows.forEach(r => { const k = (PILLARS[r.pillar_id] || '').toLowerCase(); if (k) pillarXpByKey[k] = (pillarXpByKey[k] || 0) + Number(r.cnt) * 25; });
   const { lifeScore, breakdown } = calculateLifeScore(user.life_score, pillarXpByKey);
+  const pillar_states = buildPillarStates(pillarState, user.recommended_pillar);
+
+  const daysInPhase = user.phase_start_date
+    ? Math.floor((Date.now() - new Date(user.phase_start_date).getTime()) / 86400000)
+    : 0;
 
   res.status(200).json({
     data: {
@@ -43,14 +49,19 @@ export default async function handler(req, res) {
       profilePicUrl: null,
       phase: PHASE_NAMES[phase] || PHASE_NAMES[1],
       phaseStartDate: user.phase_start_date,
+      days_in_phase: daysInPhase,
       phase_progress: {
         standard_path: { description: 'Achieve 80% completion over 3 weeks', target_percent: 80, current_average_percent: standardPct },
         fast_track_path: { description: 'Achieve 95% completion in 1 week', target_percent: 95, current_week_percent: fastPct },
       },
       unlocked_pillars: unlockedPillars,
+      pillar_activated_at: activatedAtByPillar,
+      pillar_states,
       can_activate_next_pillar: canActivateNextPillar,
       lifeScore,
+      lifescore_baseline: Number(user.life_score),
       lifescore_breakdown: breakdown,
+      pillar_caps: PILLAR_CAPS,
       xp: user.xp,
       recommended_pillar: user.recommended_pillar,
       subscription_tier: null,
