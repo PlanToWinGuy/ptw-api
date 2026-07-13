@@ -163,7 +163,11 @@ export default async function handler(req, res) {
       await sql`UPDATE users SET xp = xp + ${xp_gained} WHERE id = ${user.id}`;
     }
 
-    return res.status(200).json({ data: rows[0], xp_gained });
+    // Store the real awarded amount on the row so history cards can show the truth
+    // instead of assuming a flat rate that's no longer always accurate.
+    const [savedRow] = await sql`UPDATE metric_logs SET xp_gained = ${xp_gained} WHERE id = ${rows[0].id} RETURNING *`;
+
+    return res.status(200).json({ data: savedRow, xp_gained });
   }
 
   res.status(405).json({ message: 'Method not allowed' });

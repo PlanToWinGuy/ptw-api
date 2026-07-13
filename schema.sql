@@ -125,13 +125,17 @@ CREATE TABLE IF NOT EXISTS metric_logs (
   task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL, -- links a Logging Task's log entry
                                                              -- back to the scheduled task it
                                                              -- fulfilled; null for ad-hoc logs
+  xp_gained INTEGER NOT NULL DEFAULT 0, -- the real amount actually awarded for this log --
+                                        -- varies when task_id is set (duration-based formula)
+                                        -- vs the flat ad-hoc rate, so history cards show the truth
   logged_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_metric_logs_user_pillar ON metric_logs (user_id, pillar_id, logged_at);
 
 ALTER TABLE metric_logs
-  ADD COLUMN IF NOT EXISTS task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL;
+  ADD COLUMN IF NOT EXISTS task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS xp_gained INTEGER NOT NULL DEFAULT 0;
 
 -- Server-authoritative "this pillar is unlocked" record -- replaces the client-only
 -- localStorage array. Presence of a row = the pillar is active for that user.
