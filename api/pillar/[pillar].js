@@ -1,4 +1,4 @@
-import { sql, pillarIdFromName } from '../../lib/db.js';
+import { sql, pillarIdFromName, PILLARS } from '../../lib/db.js';
 import { cors } from '../../lib/cors.js';
 import { getUserFromRequest } from '../../lib/auth.js';
 
@@ -70,6 +70,24 @@ export default async function handler(req, res) {
 
   if (req.method === 'GET') {
     return res.status(200).json({ pillar: pillarName, questions: QUESTIONS[pillarName] });
+  }
+
+  if (req.method === 'POST' && req.query.action === 'activate') {
+    const user = await getUserFromRequest(req);
+    if (!user) return res.status(401).json({ message: 'Unauthenticated' });
+
+    const pillar_id = pillarIdFromName(pillarName);
+    await sql`
+      INSERT INTO user_pillars (user_id, pillar_id) VALUES (${user.id}, ${pillar_id})
+      ON CONFLICT (user_id, pillar_id) DO NOTHING
+    `;
+    // Resets the consistency-proving window: the clock for "80%/3wk or 95%/1wk on
+    // your currently-active pillars" starts fresh from this activation.
+    await sql`UPDATE users SET phase_start_date = now() WHERE id = ${user.id}`;
+
+    const rows = await sql`SELECT pillar_id FROM user_pillars WHERE user_id = ${user.id} ORDER BY activated_at ASC`;
+    const unlocked_pillars = rows.map(r => (PILLARS[r.pillar_id] || '').toLowerCase());
+    return res.status(200).json({ pillar: pillarName, unlocked_pillars });
   }
 
   if (req.method === 'POST') {

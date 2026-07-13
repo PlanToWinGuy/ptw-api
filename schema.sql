@@ -33,8 +33,16 @@ CREATE TABLE IF NOT EXISTS users (
   valueprint_data JSONB,
   wake_time TIME,
   wind_down_time TIME,
+  sleep_quality TEXT,                      -- 'Good' | 'Average' | 'Poor' -- onboarding input for LifeScore baseline
+  stress_level TEXT,                       -- 'Low' | 'Medium' | 'High' -- onboarding input for LifeScore baseline
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Idempotent add for the existing live table (CREATE TABLE IF NOT EXISTS above only
+-- matters for a fresh install; this is what actually mutates the deployed DB).
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS sleep_quality TEXT,
+  ADD COLUMN IF NOT EXISTS stress_level TEXT;
 
 CREATE TABLE IF NOT EXISTS tokens (
   token TEXT PRIMARY KEY,
@@ -73,12 +81,18 @@ CREATE TABLE IF NOT EXISTS tasks (
   phase_label TEXT,                         -- which goal phase this action belongs to, if any
   estimated_duration_minutes INTEGER,
   priority TEXT NOT NULL DEFAULT 'Medium',
-  status TEXT NOT NULL DEFAULT 'Pending',
+  status TEXT NOT NULL DEFAULT 'Pending',  -- 'Pending' | 'Completed' | 'Skipped'
   due_date DATE,
+  start_time TIME,                          -- nullable -- unscheduled tasks group under "Unscheduled"
+  end_time TIME,
   xp_gained INTEGER NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE tasks
+  ADD COLUMN IF NOT EXISTS start_time TIME,
+  ADD COLUMN IF NOT EXISTS end_time TIME;
 
 CREATE TABLE IF NOT EXISTS side_quests (
   id SERIAL PRIMARY KEY,
@@ -108,10 +122,25 @@ CREATE TABLE IF NOT EXISTS metric_logs (
   value NUMERIC,
   unit TEXT,
   data JSONB,
+  task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL, -- links a Logging Task's log entry
+                                                             -- back to the scheduled task it
+                                                             -- fulfilled; null for ad-hoc logs
   logged_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_metric_logs_user_pillar ON metric_logs (user_id, pillar_id, logged_at);
+
+ALTER TABLE metric_logs
+  ADD COLUMN IF NOT EXISTS task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL;
+
+-- Server-authoritative "this pillar is unlocked" record -- replaces the client-only
+-- localStorage array. Presence of a row = the pillar is active for that user.
+CREATE TABLE IF NOT EXISTS user_pillars (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  pillar_id INTEGER NOT NULL REFERENCES pillars(id),
+  activated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, pillar_id)
+);
 
 -- Shared with map.plantowin.app (the Valueprint mapper) -- replaces its in-memory profile
 -- store so a saved reading survives across serverless instances/deploys. user_id links it
@@ -133,3 +162,10 @@ CREATE TABLE IF NOT EXISTS pillar_answers (
   answers JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- One-time backfill for accounts that activated a pillar before user_pillars existed --
+-- pillar_answers rows are created at questionnaire-submit time, a reasonable proxy.
+INSERT INTO user_pillars (user_id, pillar_id, activated_at)
+SELECT user_id, pillar_id, MIN(created_at) FROM pillar_answers
+GROUP BY user_id, pillar_id
+ON CONFLICT (user_id, pillar_id) DO NOTHING;

@@ -1,6 +1,7 @@
 import { sql } from '../lib/db.js';
 import { cors } from '../lib/cors.js';
 import { getUserFromRequest } from '../lib/auth.js';
+import { completeTask } from '../lib/tasks.js';
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const SCAN_SYSTEM = `You identify food in a photo and estimate its nutrition. Return ONLY JSON, no markdown fences:
@@ -110,7 +111,7 @@ export default async function handler(req, res) {
 
   if (req.method === 'POST') {
     const body = req.body || {};
-    const { pillar_id, log_type, value, unit, logged_at } = body;
+    const { pillar_id, log_type, value, unit, logged_at, task_id } = body;
     let data = body.data || null;
     if (!log_type) return res.status(422).json({ message: 'log_type is required' });
 
@@ -142,17 +143,22 @@ export default async function handler(req, res) {
     }
 
     const rows = await sql`
-      INSERT INTO metric_logs (user_id, pillar_id, log_type, value, unit, data, logged_at)
+      INSERT INTO metric_logs (user_id, pillar_id, log_type, value, unit, data, task_id, logged_at)
       VALUES (${user.id}, ${pillar_id || null}, ${log_type}, ${value ?? null}, ${unit || null},
-              ${data ? JSON.stringify(data) : null}::jsonb, ${logged_at || new Date().toISOString()})
+              ${data ? JSON.stringify(data) : null}::jsonb, ${task_id || null}, ${logged_at || new Date().toISOString()})
       RETURNING *
     `;
 
-    // Flat XP per real log entry (never scaled by the metric's own value -- e.g. tying XP to
-    // calorie count would reward eating more, which is exactly the pattern Doc3 rules out).
-    // Saved templates aren't a logged action, so they don't earn XP.
+    // When this log fulfills a scheduled Logging Task, completing that task IS the XP
+    // source (its own duration-based formula) -- skip the flat rate below to avoid
+    // double-XP for one real action.
     let xp_gained = 0;
-    if (!log_type.endsWith('_template')) {
+    if (task_id) {
+      const result = await completeTask(sql, user, task_id, 100);
+      xp_gained = result?.xp_gained || 0;
+    } else if (!log_type.endsWith('_template')) {
+      // Flat XP per ad-hoc log entry (never scaled by the metric's own value -- e.g.
+      // tying XP to calorie count would reward eating more, which Doc3 rules out).
       xp_gained = 25;
       await sql`UPDATE users SET xp = xp + ${xp_gained} WHERE id = ${user.id}`;
     }

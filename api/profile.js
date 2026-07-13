@@ -1,6 +1,7 @@
 import { sql } from '../lib/db.js';
 import { cors } from '../lib/cors.js';
 import { getUserFromRequest } from '../lib/auth.js';
+import { calculateBaseline } from '../lib/lifescore.js';
 
 // Handles /api/profile-creation and /api/valueprint via vercel.json rewrites
 // (?action=profile-creation|valueprint) -- both are "update my user record" mutations.
@@ -14,7 +15,8 @@ export default async function handler(req, res) {
   const action = req.query.action;
 
   if (action === 'profile-creation') {
-    const { username, dob, gender, height, weight, fitness_level, diet } = req.body || {};
+    const { username, dob, gender, height, weight, fitness_level, diet, sleep_quality, stress_level } = req.body || {};
+    const baseline = calculateBaseline({ height, weight, fitness_level, sleep_quality, stress_level });
     await sql`
       UPDATE users SET
         username = COALESCE(${username}, username),
@@ -24,7 +26,9 @@ export default async function handler(req, res) {
         weight = ${weight || null},
         fitness_level = ${fitness_level || null},
         diet = ${diet || null},
-        life_score = 65
+        sleep_quality = ${sleep_quality || null},
+        stress_level = ${stress_level || null},
+        life_score = ${baseline}
       WHERE id = ${user.id}
     `;
     return res.status(200).json({ message: 'Profile saved' });
