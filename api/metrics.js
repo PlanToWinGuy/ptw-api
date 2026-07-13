@@ -56,16 +56,33 @@ export default async function handler(req, res) {
   if (req.method === 'GET') {
     const pillar_id = req.query.pillar_id ? Number(req.query.pillar_id) : null;
     const days = Number(req.query.days) || 30;
+    const log_type = req.query.log_type || null;
 
-    const logs = pillar_id
-      ? await sql`SELECT * FROM metric_logs WHERE user_id = ${user.id} AND pillar_id = ${pillar_id} AND logged_at > now() - (${days} || ' days')::interval ORDER BY logged_at DESC`
-      : await sql`SELECT * FROM metric_logs WHERE user_id = ${user.id} AND logged_at > now() - (${days} || ' days')::interval ORDER BY logged_at DESC`;
+    // log_type filter has no day window (e.g. "My Meals" templates should never expire);
+    // everything else is windowed by `days`.
+    let logs;
+    if (log_type) {
+      logs = pillar_id
+        ? await sql`SELECT * FROM metric_logs WHERE user_id = ${user.id} AND pillar_id = ${pillar_id} AND log_type = ${log_type} ORDER BY logged_at DESC`
+        : await sql`SELECT * FROM metric_logs WHERE user_id = ${user.id} AND log_type = ${log_type} ORDER BY logged_at DESC`;
+    } else {
+      logs = pillar_id
+        ? await sql`SELECT * FROM metric_logs WHERE user_id = ${user.id} AND pillar_id = ${pillar_id} AND logged_at > now() - (${days} || ' days')::interval ORDER BY logged_at DESC`
+        : await sql`SELECT * FROM metric_logs WHERE user_id = ${user.id} AND logged_at > now() - (${days} || ' days')::interval ORDER BY logged_at DESC`;
+    }
 
     const totals = pillar_id
       ? await sql`SELECT log_type, COUNT(*) AS count, SUM(value) AS total, AVG(value) AS avg FROM metric_logs WHERE user_id = ${user.id} AND pillar_id = ${pillar_id} AND logged_at > now() - (${days} || ' days')::interval GROUP BY log_type`
       : [];
 
     return res.status(200).json({ logs, totals });
+  }
+
+  if (req.method === 'DELETE') {
+    const id = req.query.id;
+    if (!id) return res.status(422).json({ message: 'id is required' });
+    await sql`DELETE FROM metric_logs WHERE id = ${id} AND user_id = ${user.id}`;
+    return res.status(200).json({ message: 'deleted' });
   }
 
   if (req.method === 'POST') {
@@ -79,7 +96,17 @@ export default async function handler(req, res) {
               ${data ? JSON.stringify(data) : null}::jsonb, ${logged_at || new Date().toISOString()})
       RETURNING *
     `;
-    return res.status(200).json({ data: rows[0] });
+
+    // Flat XP per real log entry (never scaled by the metric's own value -- e.g. tying XP to
+    // calorie count would reward eating more, which is exactly the pattern Doc3 rules out).
+    // Saved templates aren't a logged action, so they don't earn XP.
+    let xp_gained = 0;
+    if (!log_type.endsWith('_template')) {
+      xp_gained = 25;
+      await sql`UPDATE users SET xp = xp + ${xp_gained} WHERE id = ${user.id}`;
+    }
+
+    return res.status(200).json({ data: rows[0], xp_gained });
   }
 
   res.status(405).json({ message: 'Method not allowed' });

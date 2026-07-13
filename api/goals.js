@@ -91,6 +91,13 @@ async function generateGoal(req, res, user) {
     return res.status(422).json({ message: 'Validation failed', errors: { user_goal: ['pillar_name and (user_goal or questionnaire_answers) are required.'] } });
   }
 
+  // Cost backstop: nobody legitimately needs unlimited plan regenerations in a day —
+  // this is a cap against runaway loops/bugs, not a real usage limit.
+  const [{ count }] = await sql`SELECT COUNT(*)::int AS count FROM goals WHERE user_id = ${user.id} AND created_at > now() - interval '1 day'`;
+  if (count >= 20) {
+    return res.status(429).json({ message: 'Too many plans generated today — try again tomorrow.' });
+  }
+
   const key = process.env.ANTHROPIC_API_KEY;
   let plan = {
     title: user_goal,
