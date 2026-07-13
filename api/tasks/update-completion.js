@@ -73,6 +73,8 @@ export default async function handler(req, res) {
 
     const tasksShortened = [];
     const tasksDeferred = [];
+    const deferredIds = []; // captured at the moment of deferral -- `rows` gets reassigned
+                             // right after in some branches, so this can't be reconstructed later
     let streakNote = 'Your highest-priority tasks were kept in place.';
     let startDelayMinutes = 0;
 
@@ -80,7 +82,7 @@ export default async function handler(req, res) {
     // be honest rules rather than something worth spending on a live model for).
     if (context === 'Low energy / Mental off-day') {
       const lowPri = rows.filter(t => t.priority === 'Low');
-      lowPri.forEach(t => tasksDeferred.push(t.name));
+      lowPri.forEach(t => { tasksDeferred.push(t.name); deferredIds.push(t.id); });
       rows = rows.filter(t => t.priority !== 'Low').map(t => {
         if (t.estimated_duration_minutes) {
           const shortened = Math.max(5, Math.round(t.estimated_duration_minutes * 0.67));
@@ -94,11 +96,11 @@ export default async function handler(req, res) {
       streakNote = 'Your core habits are still on track today.';
     } else if (context === 'Hungover or sick') {
       const coreHabit = rows.find(t => t.kind === 'habit');
-      rows.filter(t => t !== coreHabit).forEach(t => tasksDeferred.push(t.name));
+      rows.filter(t => t !== coreHabit).forEach(t => { tasksDeferred.push(t.name); deferredIds.push(t.id); });
       rows = coreHabit ? [coreHabit] : [];
       streakNote = coreHabit ? `Your '${coreHabit.name}' streak is safe because you selected "Sick" as your reason.` : 'Nothing mandatory today -- rest up.';
     } else if (context === 'Social surprise / Change of plans') {
-      rows.filter(t => t.priority !== 'High').forEach(t => tasksDeferred.push(t.name));
+      rows.filter(t => t.priority !== 'High').forEach(t => { tasksDeferred.push(t.name); deferredIds.push(t.id); });
       rows = rows.filter(t => t.priority === 'High');
       streakNote = 'High-priority tasks were protected around your change of plans.';
     } else if (context === 'Travel / Errands took longer') {
@@ -121,6 +123,7 @@ export default async function handler(req, res) {
       cursor = new Date(cursor.getTime() + durationMin * 60000);
       if (cursor.getHours() >= 23 && cursor.getMinutes() > 0) {
         tasksDeferred.push(t.name);
+        deferredIds.push(t.id);
         continue;
       }
       const endStr = cursor.toTimeString().slice(0, 8);
@@ -134,7 +137,7 @@ export default async function handler(req, res) {
         streak_protection_note: streakNote,
       },
       proposed_schedule: proposed.map(t => ({ taskId: t.id, name: t.name, startTime: t.start_time, endTime: t.end_time, estimatedDurationMinutes: t.estimated_duration_minutes })),
-      _deferredIds: rows.filter(t => tasksDeferred.includes(t.name)).map(t => t.id), // internal, used by confirm-shuffle
+      _deferredIds: deferredIds, // internal, used by confirm-shuffle
     });
   }
 
