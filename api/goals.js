@@ -21,7 +21,20 @@ const SYSTEM = `You create a personalized goal plan from someone's pillar, goal 
   "alts": ["<alternative version — different approach, same destination>"]
 }
 Timeline logic: habits need 21-66 days (fresh start=66, tried+stopped=30, in progress=21 to cement). Projects 60-90 days. Skills 90 days min. Mindset 30-60 days daily practice.
-If a Valueprint reading is provided (archetype, growth edge, pillar alignment), ground the "why" in it specifically — reference their actual edge or alignment gap, not generic encouragement.`;
+If a Valueprint reading is provided (archetype, growth edge, pillar alignment), ground the "why" in it specifically — reference their actual edge or alignment gap, not generic encouragement.
+For a significant, quantifiable goal (e.g. "lose 20kg", "save $10,000"), first work out a realistic, science-based rate (e.g. weight loss: 0.5-1kg/week) and let that rate set the timeline and milestones — don't just default to a round number of days.`;
+
+// Science-backed reasoning rules per pillar (from the Pillar Playbooks doc) -- appended to
+// SYSTEM based on which pillar is generating, so the AI's judgment calls are grounded in
+// the same principles across every generation, not just vibes.
+const PILLAR_PRINCIPLES = {
+  fitness: `Fitness principles: always include a daily step target (~8,000) alongside any training plan. For Strength Training/Build Muscle goals, use progressive overload — assign a target rep range and note that logging reps beyond the target on the final set is the signal to increase weight next session.`,
+  diet: `Diet principles: base calorie targets on their stated goal direction (deficit for weight loss, surplus for muscle gain) relative to an estimated TDEE from their profile. If they rarely cook, shift from recipes to meal suggestions and healthy takeaway guidelines instead.`,
+  finances: `Finance principles: if they don't currently track spending, the first phase must be establishing a simple daily/weekly expense-tracking habit before anything else. If their goal is getting out of debt, that takes priority over every other financial goal (use a debt-snowball-style approach). If income is variable/freelance, budget for a larger emergency fund. Any investing suggestion must match their stated risk tolerance.`,
+  relations: `Relations principles: filter every suggestion through their stated focus area and preferred way to connect (quality time, words of affirmation, etc.) so actions feel natural, not generic. If their initiative style is "I tend to wait," bias tasks toward building proactive-outreach habits.`,
+  personal: `Personal principles: match tasks to their preferred learning style (reading/listening/watching/doing). For travel or itinerary-style goals, generate specific day-by-day actionable stops, not vague suggestions.`,
+  work: `Work principles: activate a concrete playbook matching their primary work goal (e.g. "Find a New Job" -> resume, networking tasks). Adapt suggestions to their work environment (remote users need boundary-setting, not open-office focus tips). If they need help finding a system, recommend one concrete methodology (e.g. Time-Blocking) and build tasks around implementing it.`,
+};
 
 // Appended to SYSTEM only for Fitness -- asks for real starter workout plans in the same
 // call rather than a second AI request, so this doesn't add extra cost.
@@ -129,7 +142,11 @@ async function generateGoal(req, res, user) {
           model: 'claude-sonnet-4-6',
           max_tokens: 2400,
           temperature: 0.4,
-          system: pillar_name.toLowerCase() === 'fitness' ? SYSTEM + FITNESS_ADDENDUM : SYSTEM,
+          system: [
+            SYSTEM,
+            PILLAR_PRINCIPLES[pillar_name.toLowerCase()],
+            pillar_name.toLowerCase() === 'fitness' ? FITNESS_ADDENDUM : null,
+          ].filter(Boolean).join('\n\n'),
           messages: [{ role: 'user', content: [
             `Pillar: ${pillar_name}`,
             `Goal type: ${goal_type}`,
