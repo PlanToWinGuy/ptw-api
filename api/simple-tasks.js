@@ -8,6 +8,8 @@ function serializeTask(t) {
     id: t.id,
     user_id: t.user_id,
     goal_id: t.goal_id,
+    parent_task_id: t.parent_task_id,
+    session_started_at: t.session_started_at,
     name: t.name,
     kind: t.kind,
     recurrence: t.recurrence,
@@ -42,6 +44,7 @@ export default async function handler(req, res) {
     const dur = body.estimatedDurationMinutes ?? body.estimated_duration_minutes;
     const priority = body.priority || 'Medium';
     const due_date = body.due_date || new Date().toISOString().split('T')[0];
+    const kind = ['simple', 'project', 'habit'].includes(body.kind) ? body.kind : 'simple';
 
     const errors = {};
     if (!name) errors.name = ['The name field is required.'];
@@ -50,7 +53,7 @@ export default async function handler(req, res) {
 
     const rows = await sql`
       INSERT INTO tasks (user_id, name, pillar_id, estimated_duration_minutes, priority, due_date, kind)
-      VALUES (${user.id}, ${name}, ${pillar_id}, ${dur}, ${priority}, ${due_date}, 'simple')
+      VALUES (${user.id}, ${name}, ${pillar_id}, ${dur}, ${priority}, ${due_date}, ${kind})
       RETURNING *
     `;
     return res.status(200).json(serializeTask(rows[0]));

@@ -185,12 +185,28 @@ async function generateGoal(req, res, user) {
       `;
     }
   } else {
-    const firstPhase = (plan.phases || [])[0];
-    for (const action of (firstPhase?.actions || []).slice(0, 3)) {
-      await sql`
-        INSERT INTO tasks (user_id, goal_id, pillar_id, name, kind, phase_label, due_date, estimated_duration_minutes)
-        VALUES (${user.id}, ${goal_id}, ${pillar_id}, ${action}, 'project', ${firstPhase?.label || null}, ${today}, 30)
+    // A project/skill goal becomes one real parent Project (kind='project', the thing
+    // that shows up as a single "ProjectTask" block on the schedule) with its phase
+    // actions as real sub-tasks (parent_task_id), not a handful of disconnected rows.
+    const phases = plan.phases || [];
+    const allActions = [];
+    phases.forEach(ph => (ph.actions || []).forEach(a => allActions.push({ text: a, phaseLabel: ph.label || null })));
+
+    if (allActions.length) {
+      const subtaskMinutes = 30;
+      const parentRows = await sql`
+        INSERT INTO tasks (user_id, goal_id, pillar_id, name, kind, due_date, estimated_duration_minutes)
+        VALUES (${user.id}, ${goal_id}, ${pillar_id}, ${plan.title}, 'project', ${today}, ${allActions.length * subtaskMinutes})
+        RETURNING id
       `;
+      const parent_task_id = parentRows[0].id;
+
+      for (const action of allActions) {
+        await sql`
+          INSERT INTO tasks (user_id, goal_id, pillar_id, parent_task_id, name, kind, phase_label, estimated_duration_minutes)
+          VALUES (${user.id}, ${goal_id}, ${pillar_id}, ${parent_task_id}, ${action.text}, 'simple', ${action.phaseLabel}, ${subtaskMinutes})
+        `;
+      }
     }
   }
 

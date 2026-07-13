@@ -96,6 +96,9 @@ CREATE TABLE IF NOT EXISTS tasks (
   routine_id INTEGER REFERENCES routines(id) ON DELETE SET NULL, -- set when this task is a
                                                                    -- routine's materialized
                                                                    -- instance for its due_date
+  parent_task_id INTEGER REFERENCES tasks(id) ON DELETE CASCADE, -- set on a Project's sub-tasks
+                                                                   -- (null on the parent Project
+                                                                   -- itself and all other kinds)
   name TEXT NOT NULL,
   kind TEXT NOT NULL DEFAULT 'simple',     -- 'simple' | 'project' | 'habit'
   recurrence TEXT,                          -- null | 'daily' | 'weekly'
@@ -106,6 +109,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   due_date DATE,
   start_time TIME,                          -- nullable -- unscheduled tasks group under "Unscheduled"
   end_time TIME,
+  session_started_at TIMESTAMPTZ,           -- Project Preview -> Active transition marker
+  notes TEXT,                                -- Project notes (4.13's Notes section)
   xp_gained INTEGER NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -114,7 +119,10 @@ CREATE TABLE IF NOT EXISTS tasks (
 ALTER TABLE tasks
   ADD COLUMN IF NOT EXISTS start_time TIME,
   ADD COLUMN IF NOT EXISTS end_time TIME,
-  ADD COLUMN IF NOT EXISTS routine_id INTEGER REFERENCES routines(id) ON DELETE SET NULL;
+  ADD COLUMN IF NOT EXISTS routine_id INTEGER REFERENCES routines(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS parent_task_id INTEGER REFERENCES tasks(id) ON DELETE CASCADE,
+  ADD COLUMN IF NOT EXISTS session_started_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS notes TEXT;
 
 CREATE TABLE IF NOT EXISTS side_quests (
   id SERIAL PRIMARY KEY,
@@ -195,3 +203,12 @@ INSERT INTO user_pillars (user_id, pillar_id, activated_at)
 SELECT user_id, pillar_id, MIN(created_at) FROM pillar_answers
 GROUP BY user_id, pillar_id
 ON CONFLICT (user_id, pillar_id) DO NOTHING;
+
+-- Take a Break's optional mood check-in -- feeds future wellness-trend views and the
+-- Tired/Stressed + Mental Reset -> Shuffle Day prompt.
+CREATE TABLE IF NOT EXISTS mood_logs (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  mood TEXT NOT NULL,
+  logged_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

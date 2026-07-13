@@ -107,7 +107,9 @@ export default async function handler(req, res) {
       startDelayMinutes = 60; // assume an hour of today's window is already gone
       streakNote = 'Your schedule was compressed to fit the remaining time today.';
     } else if (context === "Feeling productive! Let's optimize") {
-      const backlog = await sql`SELECT * FROM tasks WHERE user_id = ${user.id} AND status = 'Pending' AND due_date IS NULL ORDER BY created_at ASC LIMIT 5`;
+      // parent_task_id IS NULL excludes Project sub-tasks -- those are never independently
+      // scheduled, so they must never get pulled into today's list as if they were backlog.
+      const backlog = await sql`SELECT * FROM tasks WHERE user_id = ${user.id} AND status = 'Pending' AND due_date IS NULL AND parent_task_id IS NULL ORDER BY created_at ASC LIMIT 5`;
       rows = [...rows, ...backlog];
       streakNote = 'Pulled a few backlog tasks in since you have the energy for it.';
     }

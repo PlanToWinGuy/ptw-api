@@ -1,6 +1,7 @@
 import { sql, pillarIdFromName, PILLARS } from '../../lib/db.js';
 import { cors } from '../../lib/cors.js';
 import { getUserFromRequest } from '../../lib/auth.js';
+import { getPillarState } from '../../lib/pillarState.js';
 
 // Static per-pillar activation questionnaires. These are fixed UI copy, not user data or
 // AI output, so they live here as config rather than in the database.
@@ -75,6 +76,12 @@ export default async function handler(req, res) {
   if (req.method === 'POST' && req.query.action === 'activate') {
     const user = await getUserFromRequest(req);
     if (!user) return res.status(401).json({ message: 'Unauthenticated' });
+
+    const pillarState = await getPillarState(user);
+    const alreadyUnlocked = pillarState.unlockedPillars.includes(pillarName.toLowerCase());
+    if (!alreadyUnlocked && !pillarState.canActivateNextPillar) {
+      return res.status(403).json({ message: "You haven't met the consistency requirements yet to unlock a new pillar." });
+    }
 
     const pillar_id = pillarIdFromName(pillarName);
     await sql`
