@@ -282,3 +282,26 @@ CREATE TABLE IF NOT EXISTS preferences (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE(user_id, scope)
 );
+
+-- Pass 3 -- Routines become the general recurring-content materializer (not just
+-- user-created ones): a goal-generated recurring action or daily_anchor is inserted as
+-- a routine tagged with goal_id, reusing materializeRoutinesForDate()'s already-reliable
+-- lazy day-by-day materialization instead of the old completion-gated regeneration that
+-- silently stopped forever the first time a day was missed. end_date bounds a
+-- project-linked recurring action to roughly the goal's own timeline; null (the default,
+-- unaffected for existing user-created routines and habit/mindset goals) means indefinite.
+ALTER TABLE routines
+  ADD COLUMN IF NOT EXISTS goal_id INTEGER REFERENCES goals(id) ON DELETE CASCADE,
+  ADD COLUMN IF NOT EXISTS tool_hint TEXT,
+  ADD COLUMN IF NOT EXISTS end_date DATE;
+
+-- is_active lets retaking a pillar assessment deactivate the previous goal (and its
+-- routines/pending tasks) instead of piling up duplicates forever. timeline_type drives
+-- 2.9's Dynamic (default; Plan Shift pushes the sequence forward a day when a task is
+-- missed) vs Strict (fixed deadline, AI feasibility-checked up front) behavior. end_date
+-- is a real computed date (see lib/scheduling.js's parseTimelineDays), replacing the
+-- free-text-only `timeline` column as the thing Plan Shift actually pushes forward.
+ALTER TABLE goals
+  ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true,
+  ADD COLUMN IF NOT EXISTS timeline_type TEXT NOT NULL DEFAULT 'dynamic',
+  ADD COLUMN IF NOT EXISTS end_date DATE;

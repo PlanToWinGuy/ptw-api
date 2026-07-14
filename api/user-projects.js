@@ -3,6 +3,7 @@ import { cors } from '../lib/cors.js';
 import { getUserFromRequest } from '../lib/auth.js';
 import { getPillarState, buildPillarStates } from '../lib/pillarState.js';
 import { materializeRoutinesForDate } from '../lib/routines.js';
+import { applyPlanShiftForUser, notifyStrictDeadlineRisk } from '../lib/planShift.js';
 import { computeStreakDays } from '../lib/tasks.js';
 
 const PRIORITY_FLAG = { High: '🚩', Medium: '🏳️', Low: '🏳️' };
@@ -39,6 +40,8 @@ export default async function handler(req, res) {
   const targetDate = date || new Date().toISOString().split('T')[0];
 
   await materializeRoutinesForDate(user, targetDate);
+  await applyPlanShiftForUser(sql, user, targetDate);
+  await notifyStrictDeadlineRisk(sql, user, targetDate);
 
   // A Project's due_date is set once, at goal-generation time -- it isn't a single day's
   // appointment like a simple/habit task, it's "when this project started". Without this,

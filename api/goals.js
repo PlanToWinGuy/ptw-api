@@ -1,7 +1,7 @@
 import { sql, PILLARS, pillarIdFromName } from '../lib/db.js';
 import { cors } from '../lib/cors.js';
 import { getUserFromRequest } from '../lib/auth.js';
-import { timeOfDayToClock, addMinutesToClock, inferToolHint, scheduleSubTasks } from '../lib/scheduling.js';
+import { timeOfDayToClock, addMinutesToClock, addDays, inferToolHint, isRecurringAction, parseTimelineDays, scheduleSubTasks } from '../lib/scheduling.js';
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 
@@ -59,6 +59,8 @@ function serialize(g) {
     goal: g.title,
     why: g.why,
     timeline: g.timeline,
+    timelineType: g.timeline_type,
+    endDate: g.end_date,
     dailyAnchor: g.daily_anchor,
     phases: g.phases,
     milestones: g.milestones,
@@ -70,9 +72,11 @@ function serialize(g) {
 
 async function listGoals(req, res, user) {
   const pillar_id = req.query.pillar_id ? Number(req.query.pillar_id) : null;
+  // is_active excludes a plan that's been superseded by a retake -- only ever one
+  // live goal per pillar going forward (see the cleanup step in generateGoal()).
   const rows = pillar_id
-    ? await sql`SELECT * FROM goals WHERE user_id = ${user.id} AND pillar_id = ${pillar_id} ORDER BY created_at DESC LIMIT 1`
-    : await sql`SELECT * FROM goals WHERE user_id = ${user.id} ORDER BY created_at DESC`;
+    ? await sql`SELECT * FROM goals WHERE user_id = ${user.id} AND pillar_id = ${pillar_id} AND is_active = true ORDER BY created_at DESC LIMIT 1`
+    : await sql`SELECT * FROM goals WHERE user_id = ${user.id} AND is_active = true ORDER BY created_at DESC`;
   res.status(200).json({ data: rows.map(serialize) });
 }
 
@@ -111,6 +115,8 @@ async function generateGoal(req, res, user) {
   const user_goal = body.user_goal || deriveGoalText(questionnaire_answers, pillar_name);
   const goal_type = GOAL_TYPES.has(body.goal_type) ? body.goal_type : 'project';
   const goal_difficulty = body.goal_difficulty || 3;
+  const timeline_type = body.timeline_type === 'strict' ? 'strict' : 'dynamic';
+  const target_end_date = body.target_end_date || null; // Strict only -- user-picked deadline
 
   if (!pillar_name || !user_goal) {
     return res.status(422).json({ message: 'Validation failed', errors: { user_goal: ['pillar_name and (user_goal or questionnaire_answers) are required.'] } });
@@ -121,6 +127,23 @@ async function generateGoal(req, res, user) {
   const [{ count }] = await sql`SELECT COUNT(*)::int AS count FROM goals WHERE user_id = ${user.id} AND created_at > now() - interval '1 day'`;
   if (count >= 20) {
     return res.status(429).json({ message: 'Too many plans generated today — try again tomorrow.' });
+  }
+
+  const pillar_id = pillarIdFromName(pillar_name);
+
+  // Retaking an assessment or regenerating a plan replaces the pillar's whole plan --
+  // deactivate the previous one (stop its recurring routines, clear its not-yet-done
+  // tasks) instead of piling up duplicate "do X daily" content alongside the new plan.
+  // Already-Completed tasks are left untouched so past XP/streaks aren't retroactively
+  // erased.
+  const supersededGoals = await sql`
+    UPDATE goals SET is_active = false WHERE user_id = ${user.id} AND pillar_id = ${pillar_id} AND is_active = true
+    RETURNING id
+  `;
+  if (supersededGoals.length) {
+    const oldGoalIds = supersededGoals.map(g => g.id);
+    await sql`UPDATE routines SET is_active = false WHERE goal_id = ANY(${oldGoalIds})`;
+    await sql`DELETE FROM tasks WHERE goal_id = ANY(${oldGoalIds}) AND status = 'Pending'`;
   }
 
   const key = process.env.ANTHROPIC_API_KEY;
@@ -167,43 +190,68 @@ async function generateGoal(req, res, user) {
     }
   }
 
-  const pillar_id = pillarIdFromName(pillar_name);
+  const today = new Date().toISOString().split('T')[0];
+  const pillarKey = pillar_name.toLowerCase();
+  const clockStart = timeOfDayToClock(questionnaire_answers?.time_of_day);
+
+  // Dynamic (default): end_date is a best-effort estimate parsed from the AI's own
+  // timeline text, purely informational until Plan Shift starts adjusting it. Strict:
+  // the user's own chosen deadline, already feasibility-checked before this call.
+  const end_date = timeline_type === 'strict' && target_end_date
+    ? target_end_date
+    : (() => { const days = parseTimelineDays(plan.timeline); return days ? addDays(today, days) : null; })();
+
   const goalRows = await sql`
-    INSERT INTO goals (user_id, pillar_id, type, title, why, timeline, daily_anchor, phases, milestones, alts, difficulty)
+    INSERT INTO goals (user_id, pillar_id, type, title, why, timeline, daily_anchor, phases, milestones, alts, difficulty, timeline_type, end_date)
     VALUES (${user.id}, ${pillar_id}, ${goal_type}, ${plan.title}, ${plan.why || null}, ${plan.timeline || null},
             ${plan.dailyAnchor || null}, ${JSON.stringify(plan.phases || [])}::jsonb,
-            ${JSON.stringify(plan.milestones || [])}::jsonb, ${JSON.stringify(plan.alts || [])}::jsonb, ${goal_difficulty})
+            ${JSON.stringify(plan.milestones || [])}::jsonb, ${JSON.stringify(plan.alts || [])}::jsonb, ${goal_difficulty},
+            ${timeline_type}, ${end_date})
     RETURNING id
   `;
   const goal_id = goalRows[0].id;
 
-  const today = new Date().toISOString().split('T')[0];
-  const pillarKey = pillar_name.toLowerCase();
-  const clockStart = timeOfDayToClock(questionnaire_answers?.time_of_day);
   if (goal_type === 'habit' || goal_type === 'mindset') {
+    // The daily anchor is a routine, not a one-off task -- materializes every day via
+    // materializeRoutinesForDate() regardless of whether yesterday's instance was ever
+    // completed, instead of the old completion-gated regeneration that silently stopped
+    // forever the first time a day was missed. end_date null: habits are indefinite.
     if (plan.dailyAnchor) {
-      const durationMin = 15;
-      const startTime = clockStart;
-      const endTime = addMinutesToClock(clockStart, durationMin);
       const toolHint = inferToolHint(pillarKey, plan.dailyAnchor);
       await sql`
-        INSERT INTO tasks (user_id, goal_id, pillar_id, name, kind, recurrence, due_date, estimated_duration_minutes, start_time, end_time, tool_hint)
-        VALUES (${user.id}, ${goal_id}, ${pillar_id}, ${plan.dailyAnchor}, 'habit', 'daily', ${today}, ${durationMin}, ${startTime}, ${endTime}, ${toolHint})
+        INSERT INTO routines (user_id, goal_id, name, category, is_active, schedule_days, schedule_time, steps, tool_hint, end_date)
+        VALUES (${user.id}, ${goal_id}, ${plan.dailyAnchor}, ${pillar_name}, true, ${[]}, ${clockStart}::time,
+                ${JSON.stringify([{ name: plan.dailyAnchor, durationMinutes: 15 }])}::jsonb, ${toolHint}, NULL)
       `;
     }
   } else {
     // A project/skill goal becomes one real parent Project (kind='project', the thing
-    // that shows up as a single "ProjectTask" block on the schedule) with its phase
-    // actions as real sub-tasks (parent_task_id), not a handful of disconnected rows.
+    // that shows up as a single "ProjectTask" block on the schedule) with its NON-recurring
+    // phase actions as real sub-tasks (parent_task_id). An action whose own text says
+    // "every day"/"daily"/etc. instead becomes its own routine (see above) -- reappearing
+    // every day for the goal's duration rather than a one-off checkbox that never repeats
+    // even though the plan describes it as recurring.
     const phases = plan.phases || [];
     const allActions = [];
     phases.forEach(ph => (ph.actions || []).forEach(a => allActions.push({ text: a, phaseLabel: ph.label || null })));
 
-    if (allActions.length) {
+    const recurringActions = allActions.filter(a => isRecurringAction(a.text));
+    const oneOffActions = allActions.filter(a => !isRecurringAction(a.text));
+
+    for (const action of recurringActions) {
+      const toolHint = inferToolHint(pillarKey, action.text);
+      await sql`
+        INSERT INTO routines (user_id, goal_id, name, category, is_active, schedule_days, schedule_time, steps, tool_hint, end_date)
+        VALUES (${user.id}, ${goal_id}, ${action.text}, ${pillar_name}, true, ${[]}, ${clockStart}::time,
+                ${JSON.stringify([{ name: action.text, durationMinutes: 30 }])}::jsonb, ${toolHint}, ${end_date})
+      `;
+    }
+
+    if (oneOffActions.length) {
       const subtaskMinutes = 30;
       const parentRows = await sql`
         INSERT INTO tasks (user_id, goal_id, pillar_id, name, kind, due_date, estimated_duration_minutes)
-        VALUES (${user.id}, ${goal_id}, ${pillar_id}, ${plan.title}, 'project', ${today}, ${allActions.length * subtaskMinutes})
+        VALUES (${user.id}, ${goal_id}, ${pillar_id}, ${plan.title}, 'project', ${today}, ${oneOffActions.length * subtaskMinutes})
         RETURNING id
       `;
       const parent_task_id = parentRows[0].id;
@@ -212,7 +260,7 @@ async function generateGoal(req, res, user) {
       // time budget, with real start_time/end_time within that day's block -- the literal
       // "2-hour block of the 6-hour project, from a certain time to another" scheduling.
       const dailyBudgetMinutes = Number(questionnaire_answers?.daily_time_budget) || 60;
-      const scheduled = scheduleSubTasks(allActions, { startDate: today, clockStart, dailyBudgetMinutes, subtaskMinutes });
+      const scheduled = scheduleSubTasks(oneOffActions, { startDate: today, clockStart, dailyBudgetMinutes, subtaskMinutes });
 
       for (const action of scheduled) {
         const toolHint = inferToolHint(pillarKey, action.text);
