@@ -1942,6 +1942,25 @@ const LOGGING_TASK_OPEN = {
   work:      ()=>openLogWorkSession(null,null),
 };
 
+// A generated task can carry a tool_hint (set server-side from keyword-matching its own
+// text, see lib/scheduling.js) so tapping it opens the exact tool that fulfills it --
+// e.g. a "journal about X" action opens Journal pre-filled, not a bare checkbox. Falls
+// back to the generic per-pillar routing above when there's no hint.
+const TOOL_HINT_OPEN = {
+  journal:      (t)=>openJournalEntry(t.name),
+  session:      ()=>openLogSession(null),
+  meal:         ()=>openMealLog('snack'),
+  workout:      ()=>openWorkoutHub(),
+  transaction:  ()=>openLogTransaction('expense'),
+  connection:   ()=>openConnectionLog(null),
+  work_session: (t)=>openLogWorkSession(null,t.name),
+};
+function openTaskByToolHint(t) {
+  const fn=t.toolHint && TOOL_HINT_OPEN[t.toolHint];
+  if(fn) { fn(t); return true; }
+  return false;
+}
+
 // Pillar nav's center "+" button: context-aware quick-add, one tap straight into
 // the pillar's own most-specific logging flow instead of the generic Add Task modal.
 const PILLAR_QUICK_ADD = {
@@ -1969,6 +1988,7 @@ function openCurrentTask() {
   const pk=getPillarKey(t.pillar);
   if(t.taskType==='Logging') {
     S.pendingTaskId=t.taskId;
+    if(openTaskByToolHint(t)) return;
     (LOGGING_TASK_OPEN[pk]||(()=>showPillarScreen(pk)))();
   } else if(t.taskType==='ProjectTask') {
     openProjectDetail(t.taskId, 'home');
@@ -2068,8 +2088,8 @@ function openTaskActionsMenu() {
 async function skipCurrentTask() {
   if(!S.currentTask) return;
   closeModal('modal-task-actions');
-  await req('POST','/tasks/skip',{task_id:S.currentTask.taskId});
-  toast("Skipped — it'll come back around");
+  const result=await req('POST','/tasks/skip',{task_id:S.currentTask.taskId});
+  toast(result?.message||"Skipped — it'll come back around");
   S.currentTask=null;
   await loadHomeData();
 }
@@ -2747,12 +2767,13 @@ function dailyTaskCard(t) {
   const isProject=t.taskType==='ProjectTask';
   const openCall = t.routineId ? `openActiveRoutineFromCard(${t.routineId},${t.taskId})`
     : isProject ? `openProjectDetail(${t.taskId},'daily')`
-    : (t.isAntiGoal && t.antiGoalType==='progressive' && t.status!=='Completed') ? `openLogAntiGoal(${t.taskId})` : '';
+    : (t.isAntiGoal && t.antiGoalType==='progressive' && t.status!=='Completed') ? `openLogAntiGoal(${t.taskId})`
+    : (t.taskType==='Logging' && t.status!=='Completed') ? `openDailyLoggingTask(${t.taskId})` : '';
   return `<div class="sq-card"${openCall?` onclick="${openCall}"`:''}>
     <div class="sq-icon" style="background:${p.color}22;color:${p.color}">${t.routineId?'🔁':(t.isAntiGoal?'🎯':p.emoji)}</div>
     <div class="sq-info">
       <div class="sq-name">${t.startTime?formatTimeOfDay(t.startTime)+' — ':''}${t.name}</div>
-      <div class="sq-meta">${goalLabel} · ${t.durationMinutes||0} min${t.status==='Completed'?' · ✓ Done':''}</div>
+      <div class="sq-meta">${goalLabel} · ${t.durationMinutes||0} min${t.status==='Completed'?' · ✓ Done':''}${t.wasSkipped&&t.status!=='Completed'?' · <span style="color:var(--blue)">⏭ moved to later today</span>':''}</div>
     </div>
     ${t.status==='Completed'||isProject?'':`<div style="display:flex;gap:4px">
       <button class="icon-btn ghost" style="width:30px;height:30px;font-size:13px" onclick="event.stopPropagation();openRescheduleTask(${t.taskId})" title="Reschedule">↻</button>
@@ -2795,6 +2816,19 @@ async function submitLogAntiGoal() {
   loadHomeData();
 }
 
+// A Logging-type Daily Overview card (a generated habit task, not a routine or anti-goal)
+// now routes into the real tool that fulfills it via tool_hint, falling back to the
+// pillar's generic logging entry point -- same routing openCurrentTask() uses for the
+// Home CTA ring, just reachable by tapping the card directly too.
+function openDailyLoggingTask(taskId) {
+  const t=(S.dailyAllTasks||[]).find(x=>x.taskId===taskId);
+  if(!t) return;
+  S.pendingTaskId=taskId;
+  if(openTaskByToolHint(t)) return;
+  const pk=getPillarKey(t.pillar);
+  (LOGGING_TASK_OPEN[pk]||(()=>showPillarScreen(pk)))();
+}
+
 async function openActiveRoutineFromCard(routineId, taskId) {
   if(!routinesCache[routineId]) {
     const rs=await req('GET','/routines');
@@ -2820,8 +2854,8 @@ async function submitReschedule() {
 }
 
 async function skipDailyTask(taskId) {
-  await req('POST','/tasks/skip',{task_id:taskId});
-  toast('Skipped');
+  const result=await req('POST','/tasks/skip',{task_id:taskId});
+  toast(result?.message||'Skipped');
   await loadDailyOverview();
 }
 
@@ -3222,9 +3256,12 @@ function weekTaskChip(t) {
   </div>`;
 }
 
-// Home-screen swipe gestures: right → Profile, down → Daily Overview
-(function setupHomeSwipe(){
-  const el=document.getElementById('screen-home');
+// Shared low-level swipe detector: calls onSwipe(dx, dy) once a fast (<600ms),
+// dominant-axis swipe past a 70px threshold is detected. Every swipe handler in the
+// app (Home's forward swipes, each screen's reverse swipe back, Pillar's dynamic
+// list-cycling) is built on this one primitive instead of hand-rolling the same
+// touchstart/touchmove/touchend threshold logic per screen.
+function detectSwipe(el, onSwipe) {
   let sx=0, sy=0, st=0;
   el.addEventListener('touchstart', e=>{
     const t=e.touches[0]; sx=t.clientX; sy=t.clientY; st=Date.now();
@@ -3233,33 +3270,53 @@ function weekTaskChip(t) {
     const t=e.changedTouches[0];
     const dx=t.clientX-sx, dy=t.clientY-sy, dt=Date.now()-st;
     if(dt>600) return;
-    if(Math.abs(dx)>70 && Math.abs(dx)>Math.abs(dy)*1.5 && dx>0) { openProfile(); return; }
-    if(Math.abs(dy)>70 && Math.abs(dy)>Math.abs(dx)*1.5 && dy>0) { openDailyOverview(); return; }
-    if(Math.abs(dy)>70 && Math.abs(dy)>Math.abs(dx)*1.5 && dy<0) { openTodoRoutines(); return; }
+    const dxDominant = Math.abs(dx)>70 && Math.abs(dx)>Math.abs(dy)*1.5;
+    const dyDominant = Math.abs(dy)>70 && Math.abs(dy)>Math.abs(dx)*1.5;
+    if(!dxDominant && !dyDominant) return;
+    onSwipe(dx, dy);
   }, {passive:true});
-})();
+}
+
+// Fixed direction -> action navigation. Home's forward swipes and every screen's
+// reverse swipe back to Home are built from this -- pass only the directions that
+// screen actually supports.
+function setupSwipeNav(elId, {left, right, up, down}) {
+  const el=document.getElementById(elId);
+  if(!el) return;
+  detectSwipe(el, (dx, dy) => {
+    if(Math.abs(dx)>Math.abs(dy)) {
+      if(dx>0 && right) right();
+      else if(dx<0 && left) left();
+    } else {
+      if(dy>0 && down) down();
+      else if(dy<0 && up) up();
+    }
+  });
+}
+
+// Home: right → Profile, down → Daily Overview, up → To-Do List. Reverse swipes let
+// you swipe back the way you came from each of those screens, same as tapping their
+// back button (Profile previously had no back-to-Home gesture or button at all).
+setupSwipeNav('screen-home', { right: openProfile, down: openDailyOverview, up: openTodoRoutines });
+setupSwipeNav('screen-profile', { left: ()=>showScreen('home') });
+setupSwipeNav('screen-daily', { up: ()=>showScreen('home') });
+setupSwipeNav('screen-todo-routines', { down: ()=>showScreen('home') });
 
 // Horizontal swipe between unlocked pillars on a pillar's own screen (3.4) --
 // cycles through S.unlocked only, wrapping around, skipping locked pillars entirely
-// since S.unlocked never contains them.
+// since S.unlocked never contains them. Dynamic list-cycling rather than a fixed
+// target, so it stays on the lower-level detectSwipe primitive instead of setupSwipeNav.
 (function setupPillarSwipe(){
   const el=document.getElementById('screen-pillar');
-  let sx=0, sy=0, st=0;
-  el.addEventListener('touchstart', e=>{
-    const t=e.touches[0]; sx=t.clientX; sy=t.clientY; st=Date.now();
-  }, {passive:true});
-  el.addEventListener('touchend', e=>{
-    const t=e.changedTouches[0];
-    const dx=t.clientX-sx, dy=t.clientY-sy, dt=Date.now()-st;
-    if(dt>600) return;
-    if(!(Math.abs(dx)>70 && Math.abs(dx)>Math.abs(dy)*1.5)) return;
+  detectSwipe(el, (dx, dy) => {
+    if(!(Math.abs(dx)>Math.abs(dy))) return;
     const list=S.unlocked;
     if(list.length<2) return;
     const idx=list.indexOf(S.activePillar);
     if(idx===-1) return;
     const nextIdx = dx<0 ? (idx+1)%list.length : (idx-1+list.length)%list.length;
     showPillarScreen(list[nextIdx]);
-  }, {passive:true});
+  });
 })();
 
 // ════════════════════════════════════════
