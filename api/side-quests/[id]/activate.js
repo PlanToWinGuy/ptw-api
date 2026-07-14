@@ -26,7 +26,7 @@ export default async function handler(req, res) {
       INSERT INTO tasks (user_id, pillar_id, quest_id, name, kind, recurrence, due_date, estimated_duration_minutes,
                           is_anti_goal, anti_goal_type, baseline_value, target_value, final_target_value)
       VALUES (${user.id}, ${draft.pillar_id}, ${id}, ${plan.title}, 'habit', 'daily', ${today}, 15,
-              true, ${plan.antiGoalType}, ${plan.baselineValue || null}, ${dayOneTarget}, ${plan.targetValue || null})
+              true, ${plan.antiGoalType}, ${plan.baselineValue ?? null}, ${dayOneTarget}, ${plan.targetValue ?? null})
     `;
   } else {
     const projects = plan.projects || [];
