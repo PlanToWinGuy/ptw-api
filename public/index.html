@@ -2324,10 +2324,27 @@ function renderPillarApps() {
 
 // Tap the ring: opens the correct detail/logging page for the current task, by
 // taskType (2.2's three task types). Never completes anything by itself.
+function getNextMealType() {
+  const hour=new Date().getHours();
+  return hour<11?'Breakfast':hour<15?'Lunch':hour<21?'Dinner':'Snack';
+}
+
+// Opens a real workout to log against, not a plans list -- uses the user's first saved
+// plan if one exists (fetching it if the cache is cold, e.g. on a fresh page load),
+// falling back to the Workout Hub's empty state only when there's truly nothing to log.
+async function openFitnessLogEntry() {
+  const cached=Object.keys(workoutPlansCache);
+  if(cached.length) { startWorkout(Number(cached[0])); return; }
+  const data=await req('GET','/metrics?pillar_id='+PILLARS.fitness.id+'&log_type=workout_plan');
+  const plans=data?.logs||[];
+  if(plans.length) { workoutPlansCache[plans[0].id]=plans[0].data; startWorkout(plans[0].id); return; }
+  openWorkoutHub();
+}
+
 const LOGGING_TASK_OPEN = {
-  fitness:   ()=>showPillarScreen('fitness'),
-  diet:      ()=>openMealHub(),
-  finances:  ()=>showPillarScreen('finances'),
+  fitness:   ()=>openFitnessLogEntry(),
+  diet:      ()=>openMealLog(getNextMealType()),
+  finances:  ()=>openLogTransaction('expense'),
   relations: ()=>openConnectionLog(null),
   personal:  ()=>openLogSession(null),
   work:      ()=>openLogWorkSession(null,null),
@@ -2667,7 +2684,21 @@ function renderPillarQuestForm(pillarKey) {
   const questions = PILLAR_QUESTIONS_CACHE[pillarKey]||[];
   document.getElementById('pillar-quest-body').innerHTML =
     questions.map((q,i)=>questionFieldHTML(q,i)).join('') +
-    `<button class="btn-p filled" style="margin:20px 0" onclick="submitPillarQuestionnaire('${pillarKey}')">Continue</button>`;
+    // 2.9.1 -- Dynamic (default, flexible end date, missed tasks push the sequence
+    // forward a day) vs Strict (fixed deadline, feasibility-checked before generating).
+    `<div class="section-sub" style="margin-top:20px">TIMELINE</div>
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <button type="button" class="q-opt sel" id="pq-timeline-dynamic" onclick="setTimelineType('dynamic')" style="flex:1">Dynamic (Recommended)</button>
+      <button type="button" class="q-opt" id="pq-timeline-strict" onclick="setTimelineType('strict')" style="flex:1">Strict Deadline</button>
+    </div>
+    <div id="pq-strict-date-wrap" style="display:none"><div class="field"><label>TARGET DATE</label><input type="date" id="pq-target-date"></div></div>` +
+    `<button class="btn-p filled" style="margin:8px 0 20px" onclick="submitPillarQuestionnaire('${pillarKey}')">Continue</button>`;
+}
+
+function setTimelineType(type) {
+  document.getElementById('pq-timeline-dynamic').classList.toggle('sel', type==='dynamic');
+  document.getElementById('pq-timeline-strict').classList.toggle('sel', type==='strict');
+  document.getElementById('pq-strict-date-wrap').style.display = type==='strict' ? 'block' : 'none';
 }
 
 function questionFieldHTML(q,i) {
@@ -2700,19 +2731,44 @@ async function submitPillarQuestionnaire(pillarKey) {
     else if(q.type==='single') { const sel=document.querySelector('#pq-'+q.key+' .q-opt.sel'); answers[q.key]=sel?sel.dataset.v:null; }
     else if(q.type==='multi') { answers[q.key]=[...document.querySelectorAll('#pq-'+q.key+' .q-opt.sel')].map(b=>b.dataset.v); }
   });
+  const timelineType = document.getElementById('pq-timeline-strict')?.classList.contains('sel') ? 'strict' : 'dynamic';
+  const targetEndDate = timelineType==='strict' ? document.getElementById('pq-target-date')?.value : null;
+  if(timelineType==='strict' && !targetEndDate) { toast('Pick a target date for your Strict deadline'); return; }
+
   const p = PILLARS[pillarKey];
   await req('POST','/pillar/'+p.label,{answers});
-  await generatePillarPlan(pillarKey, answers);
+
+  // 2.9.3 -- feasibility check runs before generation (this app doesn't hold goals in a
+  // draft state the way custom Side Quests do), so it validates the raw goal/questionnaire
+  // answers against the chosen deadline rather than an already-generated plan.
+  if(timelineType==='strict') {
+    toast('Checking if that deadline is realistic…');
+    const check = await req('POST','/goals/feasibility-check',{pillar_name:p.label, questionnaire_answers:answers, target_end_date:targetEndDate});
+    if(check?.verdict==='reject') { toast(check.message||"That deadline isn't realistic for this goal — try a later date."); return; }
+    if(check?.verdict==='warn') {
+      openConfirm('Ambitious Deadline', check.message||'This is achievable but demanding.', ()=>generatePillarPlan(pillarKey, answers, timelineType, targetEndDate));
+      return;
+    }
+  }
+  await generatePillarPlan(pillarKey, answers, timelineType, targetEndDate);
 }
 
-async function generatePillarPlan(pillarKey, answers) {
+async function generatePillarPlan(pillarKey, answers, timelineType, targetEndDate) {
   document.getElementById('pillar-quest-body').innerHTML = `<div style="padding:80px 0;text-align:center"><div class="spinner"></div><div style="font-size:13px;color:var(--stone);margin-top:12px">Building your blueprint…</div></div>`;
   const p = PILLARS[pillarKey];
-  const data = await req('POST','/goals/generate',{pillar_name:p.label, questionnaire_answers:answers, goal_type:'project', goal_difficulty:3});
+  const data = await req('POST','/goals/generate',{pillar_name:p.label, questionnaire_answers:answers, goal_type:'project', goal_difficulty:3, timeline_type:timelineType||'dynamic', target_end_date:targetEndDate||null});
   if(!data || data.errors) { toast(data?.message||'Could not build your plan — try again'); activationBack(); return; }
   S.pendingActivationPlan = data.data;
   S.pendingActivationPillar = pillarKey;
   renderReviewBlueprint(data.data, pillarKey);
+}
+
+// Same keyword pattern as ptw-api's lib/scheduling.js isRecurringAction() -- mirrored
+// here (not shared, since this file has no build step to import from the backend) just
+// to visually tag which actions will actually materialize as a real daily task versus a
+// one-off, so the plan's outline matches what will actually show up day to day.
+function isRecurringActionText(text) {
+  return /\bevery ?day\b|\bdaily\b|\beach day\b|\bevery morning\b|\bevery evening\b|\bevery night\b/i.test(String(text||''));
 }
 
 function renderReviewBlueprint(plan, pillarKey) {
@@ -2721,7 +2777,8 @@ function renderReviewBlueprint(plan, pillarKey) {
   let html = `
     <div class="section-title" style="margin-top:14px">${plan.title||plan.goal||''}</div>
     <div class="section-sub">${plan.why||''}</div>`;
-  if(plan.dailyAnchor) html += `<div class="rm-strategy" style="background:${p.color};margin-bottom:8px">Daily anchor: ${plan.dailyAnchor}</div>`;
+  html += `<div class="section-sub" style="margin-top:-8px">${plan.timelineType==='strict'?'🔒 Strict deadline':'🔀 Dynamic timeline'}${plan.endDate?' · Projected: '+new Date(plan.endDate).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):''}</div>`;
+  if(plan.dailyAnchor) html += `<div class="rm-strategy" style="background:${p.color};margin-bottom:8px">Daily anchor: ${plan.dailyAnchor} <span style="opacity:.8">· 🔁 Every day</span></div>`;
   (plan.phases||[]).forEach(ph=>{
     html += `<div class="rm-goal-card" style="margin-bottom:10px">
       <div style="display:flex;justify-content:space-between;margin-bottom:6px">
@@ -2729,7 +2786,7 @@ function renderReviewBlueprint(plan, pillarKey) {
         <span style="font-size:11px;color:var(--stone)">${ph.duration||''}</span>
       </div>
       <div style="font-size:12px;color:var(--muted);margin-bottom:8px">${ph.focus||''}</div>
-      ${(ph.actions||[]).map(a=>`<div style="font-size:13px;color:var(--text);padding:6px 0;border-top:1px solid rgba(196,184,168,.07)">• ${a}</div>`).join('')}
+      ${(ph.actions||[]).map(a=>`<div style="font-size:13px;color:var(--text);padding:6px 0;border-top:1px solid rgba(196,184,168,.07)">• ${a}${isRecurringActionText(a)?' <span style="color:'+p.color+';font-size:11px">🔁 Every day</span>':''}</div>`).join('')}
     </div>`;
   });
   if((plan.milestones||[]).length) {
@@ -4287,8 +4344,7 @@ async function loadDietMap() {
   let streak=0, d=new Date();
   while(mealDates.has(d.toISOString().split('T')[0])) { streak++; d.setDate(d.getDate()-1); }
 
-  const hour=new Date().getHours();
-  const nextMealType=hour<11?'Breakfast':hour<15?'Lunch':hour<21?'Dinner':'Snack';
+  const nextMealType=getNextMealType();
 
   const html=`
     <div class="metric-row">
@@ -6484,16 +6540,19 @@ async function loadPillarRoadmap(pillarKey) {
   }
 
   const milestones = g.milestones||[];
-  const lastDate = milestones[milestones.length-1]?.date;
   const doneCount = 0; // real completion tracking lands with task-level rollup (see roadmap)
   const pct = milestones.length ? Math.round(doneCount/milestones.length*100) : 0;
+  // A real computed date (see api/goals.js's parseTimelineDays + Plan Shift, which pushes
+  // this forward when a Dynamic goal falls behind) -- replaces the old fallback to the
+  // AI's raw timeline text ("60 days"), and to milestones[].date which was never populated.
+  const projectedDate = g.endDate ? new Date(g.endDate).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : (g.timeline||'—');
 
   let html = `<div class="rm-goal-card">
-    <div class="section-sub">AI STRATEGY</div>`;
+    <div class="section-sub">${g.timelineType==='strict'?'🔒 STRICT DEADLINE':'🔀 DYNAMIC TIMELINE'} · AI STRATEGY</div>`;
   (g.strategy||[]).forEach(s=>{
     html += `<div class="rm-strategy" style="background:${p.color}">${s}</div>`;
   });
-  if(g.dailyAnchor) html += `<div class="rm-strategy" style="background:${p.color};opacity:.85">Daily anchor: ${g.dailyAnchor}</div>`;
+  if(g.dailyAnchor) html += `<div class="rm-strategy" style="background:${p.color};opacity:.85">Daily anchor: ${g.dailyAnchor} <span style="opacity:.8">· 🔁 Every day</span></div>`;
 
   html += `<button class="view-log-btn" style="margin-top:12px" onclick="refinePillarGoal('${pillarKey}')">+ Refine / Set New Goal</button>
 
@@ -6502,7 +6561,7 @@ async function loadPillarRoadmap(pillarKey) {
 
   if(milestones.length) {
     html += `<div class="rm-progress-bar"><div class="rm-progress-fill" style="width:${pct}%;background:${p.color}"></div></div>
-    <div class="rm-progress-row"><span>${pct}% complete</span><span>Projected: ${lastDate||g.timeline||'—'}</span></div>
+    <div class="rm-progress-row"><span>${pct}% complete</span><span>Projected: ${projectedDate}</span></div>
     <div class="timeline">
       <div class="tm-row"><div class="tm-col"><div class="tm-dot done" style="background:${p.color}"></div><div class="tm-line"></div></div><div class="tm-content"><div class="tm-label">START</div><div class="tm-name">Goal set</div></div></div>`;
     milestones.forEach((m,i)=>{
@@ -6527,7 +6586,7 @@ async function loadPillarRoadmap(pillarKey) {
           <span style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text)">${ph.label||''}</span>
           <span style="font-size:11px;color:var(--stone)">${ph.duration||''}</span>
         </div>
-        ${(ph.actions||[]).map(a=>`<div class="view-log-btn" style="justify-content:space-between;margin-top:6px;text-align:left">${a} <span>›</span></div>`).join('')}
+        ${(ph.actions||[]).map(a=>`<div class="view-log-btn" style="justify-content:space-between;margin-top:6px;text-align:left">${a}${isRecurringActionText(a)?' <span style="color:'+p.color+';font-size:11px">🔁</span>':''} <span>›</span></div>`).join('')}
       </div>`;
     });
   }
