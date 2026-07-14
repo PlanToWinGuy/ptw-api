@@ -4617,7 +4617,9 @@ async function loadFitnessMap() {
   const today=new Date();
   const weekAgo=new Date(today.getTime()-7*86400000);
   const thisWeek=logs.filter(l=>new Date(l.logged_at)>weekAgo);
-  const weeklyVolume=thisWeek.reduce((s,l)=>s+(Number(l.value)||0),0);
+  // Only strength logs are additive in kg -- summing a cardio log's km or a HIIT log's
+  // round count into the same "Weekly Volume (kg)" card would be a meaningless number.
+  const weeklyVolume=thisWeek.filter(l=>(l.data?.activityType||'strength')==='strength').reduce((s,l)=>s+(Number(l.value)||0),0);
   const workoutsThisWeek=thisWeek.length;
   const prCount=logs.reduce((s,l)=>s+((l.data?.prs||[]).length),0);
 
@@ -4760,25 +4762,104 @@ function renderTemplateRows() {
 }
 function addTemplateRow() { S.tplRows.push({name:'',sets:3,reps:10,weight:0}); renderTemplateRows(); }
 
+// Activity type registry -- shared by the template creator, plan cards, active session
+// dispatch, and history/detail rendering, so adding a type in one place doesn't require
+// hunting down every consumer. 'strength' stays the default for AI-generated plans
+// (api/goals.js's FITNESS_ADDENDUM predates this and never sets activityType).
+const ACTIVITY_TYPES=[
+  {key:'strength', label:'Strength', icon:'🏋️'},
+  {key:'cardio', label:'Cardio', icon:'🏃'},
+  {key:'hiit', label:'HIIT', icon:'⏱️'},
+  {key:'mobility', label:'Mobility', icon:'🧘'},
+];
+function activityIcon(type) { return (ACTIVITY_TYPES.find(t=>t.key===type)||ACTIVITY_TYPES[0]).icon; }
+
+function workoutPlanSummary(d) {
+  const type=d.activityType||'strength';
+  if(type==='cardio') return `${d.intensity||'Moderate'} · ${d.durationMin||20} min${d.distance?` · ${d.distance}km`:''}`;
+  if(type==='hiit') return `${d.rounds||8} rounds · ${d.workSeconds||30}s/${d.restSeconds||15}s`;
+  if(type==='mobility') return `${(d.stretches||[]).length} stretches · ${d.durationMin||10} min`;
+  return `${(d.exercises||[]).length} Exercises`;
+}
+
 function openCreateWorkoutTemplate() {
+  S.tplActivityType='strength';
+  S.tplName='';
   S.tplRows=[{name:'',sets:3,reps:10,weight:0}];
-  openConfirm('Create Workout Template', 'Fill in the exercises below, then save.', ()=>{});
-  document.getElementById('confirm-body').innerHTML=`
-    <input type="text" id="tpl-name" placeholder="Plan name" style="width:100%;padding:10px;margin-bottom:10px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);outline:none">
-    <div id="tpl-rows" style="display:flex;flex-direction:column;gap:8px;max-height:220px;overflow-y:auto"></div>
-    <button class="view-log-btn" style="margin-top:10px" onclick="addTemplateRow()">+ Add Exercise Row</button>`;
-  renderTemplateRows();
+  S.tplCardio={durationMin:20, distance:0, intensity:'Moderate'};
+  S.tplHiit={rounds:8, workSeconds:30, restSeconds:15};
+  S.tplMobility={durationMin:10, stretches:''};
+  openConfirm('Create Workout Template', '', ()=>{});
+  renderTemplateForm();
   const yesBtn=document.getElementById('confirm-yes-btn');
   yesBtn.textContent='Save Template';
   yesBtn.onclick=async ()=>{
-    const name=document.getElementById('tpl-name').value.trim();
-    const exercises=S.tplRows.filter(r=>r.name.trim()).map(r=>({name:r.name.trim(), sets:r.sets||3, targetReps:r.reps||10, targetWeight:r.weight||0}));
-    if(!name||!exercises.length) { toast('Add a name and at least one exercise'); return; }
+    const name=(document.getElementById('tpl-name')?.value||'').trim();
+    if(!name) { toast('Enter a plan name'); return; }
+    let data={name, activityType:S.tplActivityType, source:'manual'}, value=45, unit='min';
+    if(S.tplActivityType==='strength') {
+      const exercises=S.tplRows.filter(r=>r.name.trim()).map(r=>({name:r.name.trim(), sets:r.sets||3, targetReps:r.reps||10, targetWeight:r.weight||0}));
+      if(!exercises.length) { toast('Add at least one exercise'); return; }
+      data.exercises=exercises;
+    } else if(S.tplActivityType==='cardio') {
+      data={...data, durationMin:S.tplCardio.durationMin||20, distance:S.tplCardio.distance||0, intensity:S.tplCardio.intensity};
+      value=data.durationMin; unit='min';
+    } else if(S.tplActivityType==='hiit') {
+      data={...data, rounds:S.tplHiit.rounds||8, workSeconds:S.tplHiit.workSeconds||30, restSeconds:S.tplHiit.restSeconds||15};
+      value=data.rounds; unit='rounds';
+    } else if(S.tplActivityType==='mobility') {
+      const stretches=S.tplMobility.stretches.split('\n').map(s=>s.trim()).filter(Boolean);
+      if(!stretches.length) { toast('Add at least one stretch'); return; }
+      data={...data, durationMin:S.tplMobility.durationMin||10, stretches};
+      value=data.durationMin; unit='min';
+    }
     closeModal('modal-confirm');
     yesBtn.textContent='Yes';
-    await req('POST','/metrics',{pillar_id:PILLARS.fitness.id, log_type:'workout_plan', value:45, unit:'min', data:{name, exercises, source:'manual'}});
+    await req('POST','/metrics',{pillar_id:PILLARS.fitness.id, log_type:'workout_plan', value, unit, data});
     toast('Template created');
   };
+}
+
+function setTplActivityType(type) { S.tplActivityType=type; renderTemplateForm(); }
+
+function renderTemplateForm() {
+  const body=document.getElementById('confirm-body');
+  body.innerHTML=`
+    <div style="display:flex;gap:6px;margin-bottom:10px">
+      ${ACTIVITY_TYPES.map(t=>`<button class="btn-p" style="flex:1;padding:8px 4px;font-size:11px;${S.tplActivityType===t.key?'background:var(--fitness);border-color:var(--fitness)':''}" onclick="setTplActivityType('${t.key}')">${t.icon} ${t.label}</button>`).join('')}
+    </div>
+    <input type="text" id="tpl-name" placeholder="Plan name" value="${S.tplName||''}" oninput="S.tplName=this.value" style="width:100%;padding:10px;margin-bottom:10px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);outline:none">
+    <div id="tpl-type-body"></div>`;
+  renderTplTypeBody();
+}
+
+function renderTplTypeBody() {
+  const el=document.getElementById('tpl-type-body');
+  if(S.tplActivityType==='strength') {
+    el.innerHTML=`<div id="tpl-rows" style="display:flex;flex-direction:column;gap:8px;max-height:180px;overflow-y:auto"></div>
+      <button class="view-log-btn" style="margin-top:10px" onclick="addTemplateRow()">+ Add Exercise Row</button>`;
+    renderTemplateRows();
+  } else if(S.tplActivityType==='cardio') {
+    el.innerHTML=`
+      <div style="display:flex;gap:8px">
+        <input type="number" placeholder="Duration (min)" value="${S.tplCardio.durationMin}" oninput="S.tplCardio.durationMin=Number(this.value)" style="flex:1;padding:10px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none">
+        <input type="number" placeholder="Distance (km)" value="${S.tplCardio.distance}" oninput="S.tplCardio.distance=Number(this.value)" style="flex:1;padding:10px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none">
+      </div>
+      <select id="tpl-cardio-intensity" onchange="S.tplCardio.intensity=this.value" style="width:100%;margin-top:8px;padding:10px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text)">
+        ${['Easy','Moderate','Hard'].map(o=>`<option ${S.tplCardio.intensity===o?'selected':''}>${o}</option>`).join('')}
+      </select>`;
+  } else if(S.tplActivityType==='hiit') {
+    el.innerHTML=`
+      <div style="display:flex;gap:8px">
+        <input type="number" placeholder="Rounds" value="${S.tplHiit.rounds}" oninput="S.tplHiit.rounds=Number(this.value)" style="flex:1;padding:10px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none">
+        <input type="number" placeholder="Work (sec)" value="${S.tplHiit.workSeconds}" oninput="S.tplHiit.workSeconds=Number(this.value)" style="flex:1;padding:10px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none">
+        <input type="number" placeholder="Rest (sec)" value="${S.tplHiit.restSeconds}" oninput="S.tplHiit.restSeconds=Number(this.value)" style="flex:1;padding:10px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none">
+      </div>`;
+  } else if(S.tplActivityType==='mobility') {
+    el.innerHTML=`
+      <input type="number" placeholder="Duration (min)" value="${S.tplMobility.durationMin}" oninput="S.tplMobility.durationMin=Number(this.value)" style="width:100%;padding:10px;margin-bottom:8px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none">
+      <textarea id="tpl-mobility-stretches" placeholder="One stretch per line" rows="4" oninput="S.tplMobility.stretches=this.value" style="width:100%;padding:10px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);outline:none;resize:none">${S.tplMobility.stretches}</textarea>`;
+  }
 }
 
 async function switchWorkoutHubTab(tab) {
@@ -4809,10 +4890,9 @@ function workoutPlanCard(plan) {
   const d=plan.data||{};
   return `<div class="rm-goal-card" style="margin-bottom:10px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-      <span style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text);cursor:pointer" onclick="viewWorkoutPlanDetail(${plan.id})">${d.name||'Plan'} <span style="color:var(--stone);font-size:11px">›</span></span>
-      <span style="font-size:11px;color:var(--stone)">${plan.value||45} min</span>
+      <span style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text);cursor:pointer" onclick="viewWorkoutPlanDetail(${plan.id})">${activityIcon(d.activityType)} ${d.name||'Plan'} <span style="color:var(--stone);font-size:11px">›</span></span>
     </div>
-    <div style="font-size:12px;color:var(--stone);margin-bottom:10px">${(d.exercises||[]).length} Exercises</div>
+    <div style="font-size:12px;color:var(--stone);margin-bottom:10px">${workoutPlanSummary(d)}</div>
     <button class="btn-p filled" style="background:var(--fitness);border-color:var(--fitness)" onclick="startWorkout(${plan.id})">Start Workout</button>
   </div>`;
 }
@@ -4824,31 +4904,51 @@ function workoutPlanCard(plan) {
 function viewWorkoutPlanDetail(planId) {
   const d=workoutPlansCache[planId];
   if(!d) return;
+  const type=d.activityType||'strength';
   showScreen('workout-log');
   document.getElementById('workout-log-header').textContent=d.name||'Plan';
-  document.getElementById('workout-log-body').innerHTML=`
-    <div class="section-sub" style="margin-top:14px">TEMPLATE PREVIEW · NOT YET STARTED</div>
-    <div class="section-title" style="margin-top:8px">Exercises</div>
+  let bodyHtml;
+  if(type==='cardio') {
+    bodyHtml=`<div class="rm-goal-card"><div class="section-sub">TARGET</div><div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:var(--text);margin:6px 0">${d.durationMin||20} min${d.distance?` · ${d.distance}km`:''}</div><div style="font-size:12px;color:var(--stone)">${d.intensity||'Moderate'} intensity</div></div>`;
+  } else if(type==='hiit') {
+    bodyHtml=`<div class="rm-goal-card"><div class="section-sub">INTERVALS</div><div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:var(--text);margin:6px 0">${d.rounds||8} rounds</div><div style="font-size:12px;color:var(--stone)">${d.workSeconds||30}s work / ${d.restSeconds||15}s rest</div></div>`;
+  } else if(type==='mobility') {
+    bodyHtml=`<div class="section-title" style="margin-top:8px">Stretches (${d.durationMin||10} min)</div>${(d.stretches||[]).map(s=>`<div class="rm-goal-card" style="margin-bottom:8px">${s}</div>`).join('')}`;
+  } else {
+    bodyHtml=`<div class="section-title" style="margin-top:8px">Exercises</div>
     ${(d.exercises||[]).map(ex=>`
       <div class="rm-goal-card" style="margin-bottom:10px">
         <div style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text);margin-bottom:8px">${ex.name}</div>
         ${Array.from({length:ex.sets||3}).map((_,i)=>`<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--stone);padding:4px 0;border-top:1px solid rgba(196,184,168,.07)">
           <span>Set ${i+1}</span><span>Target: ${ex.targetWeight||0}kg × ${ex.targetReps||10}</span>
         </div>`).join('')}
-      </div>`).join('')}
+      </div>`).join('')}`;
+  }
+  document.getElementById('workout-log-body').innerHTML=`
+    <div class="section-sub" style="margin-top:14px">TEMPLATE PREVIEW · NOT YET STARTED</div>
+    ${bodyHtml}
     <button class="btn-p filled" style="margin-top:16px;background:var(--fitness);border-color:var(--fitness)" onclick="startWorkout(${planId})">Start Workout</button>
     <button class="btn-p" style="margin:10px 0 20px" onclick="showScreen('workout-hub')">← Back to Workout Hub</button>`;
+}
+
+function workoutLogSummary(w) {
+  const d=w.data||{};
+  const type=d.activityType||'strength';
+  if(type==='cardio') return `${d.distance?d.distance+'km':(w.value||0)+' min'}${(d.prs||[]).length?' · '+d.prs.length+' PR'+(d.prs.length>1?'s':''):''}`;
+  if(type==='hiit') return `${d.rounds||0} rounds · ${d.workSeconds||30}s/${d.restSeconds||15}s`;
+  if(type==='mobility') return `${d.completedCount||0}/${(d.stretches||[]).length} stretches`;
+  return `Volume: ${w.value||0} kg${(d.prs||[]).length?' · '+d.prs.length+' PR'+(d.prs.length>1?'s':''):''}`;
 }
 
 function workoutHistoryCard(w) {
   const d=w.data||{};
   const date=w.logged_at?new Date(w.logged_at).toLocaleDateString():'';
   return `<div class="sq-card" onclick="viewWorkoutDetail(${w.id})">
-    <div class="sq-icon" style="background:var(--fitness)22;color:var(--fitness)">🏋️</div>
+    <div class="sq-icon" style="background:var(--fitness)22;color:var(--fitness)">${activityIcon(d.activityType)}</div>
     <div class="sq-info">
       <div class="sq-name">${d.planName||'Workout'}</div>
       <div class="sq-meta">${date} · ${d.durationMin||0} min</div>
-      <div class="sq-meta">Volume: <span style="color:var(--fitness);font-weight:600">${w.value||0} kg</span>${(d.prs||[]).length?' · '+d.prs.length+' PR'+(d.prs.length>1?'s':''):''}</div>
+      <div class="sq-meta" style="color:var(--fitness);font-weight:600">${workoutLogSummary(w)}</div>
     </div>
   </div>`;
 }
@@ -4858,30 +4958,122 @@ async function viewWorkoutDetail(id) {
   const w=(data?.logs||[]).find(l=>l.id===id);
   if(!w) return;
   const d=w.data||{};
+  const type=d.activityType||'strength';
   showScreen('workout-log');
   document.getElementById('workout-log-header').textContent=d.planName||'Workout';
-  document.getElementById('workout-log-body').innerHTML=`
-    <div class="metric-row" style="margin-top:14px">
+  let metricsHtml, bodyHtml;
+  if(type==='cardio') {
+    metricsHtml=`<div class="metric-row" style="margin-top:14px">
+      <div class="metric-card"><div class="metric-label">Duration</div><div class="metric-val" style="color:var(--fitness)">${d.durationMin||0} min</div></div>
+      <div class="metric-card"><div class="metric-label">Distance</div><div class="metric-val" style="color:var(--fitness)">${d.distance||0} km</div></div>
+    </div>`;
+    bodyHtml=`<div class="section-title" style="margin-top:16px">Intensity</div><div class="rm-goal-card">${d.intensity||'Moderate'}</div>`;
+  } else if(type==='hiit') {
+    metricsHtml=`<div class="metric-row" style="margin-top:14px">
+      <div class="metric-card"><div class="metric-label">Rounds</div><div class="metric-val" style="color:var(--fitness)">${d.rounds||0}</div></div>
+      <div class="metric-card"><div class="metric-label">Duration</div><div class="metric-val" style="color:var(--fitness)">${d.durationMin||0} min</div></div>
+    </div>`;
+    bodyHtml=`<div class="section-title" style="margin-top:16px">Intervals</div><div class="rm-goal-card">${d.workSeconds||30}s work / ${d.restSeconds||15}s rest</div>`;
+  } else if(type==='mobility') {
+    metricsHtml=`<div class="metric-row" style="margin-top:14px">
+      <div class="metric-card"><div class="metric-label">Duration</div><div class="metric-val" style="color:var(--fitness)">${d.durationMin||0} min</div></div>
+      <div class="metric-card"><div class="metric-label">Stretches</div><div class="metric-val" style="color:var(--fitness)">${d.completedCount||0}/${(d.stretches||[]).length}</div></div>
+    </div>`;
+    bodyHtml=`<div class="section-title" style="margin-top:16px">Stretches</div>${(d.stretches||[]).map(s=>`<div class="rm-goal-card" style="margin-bottom:8px">${s}</div>`).join('')}`;
+  } else {
+    metricsHtml=`<div class="metric-row" style="margin-top:14px">
       <div class="metric-card"><div class="metric-label">Total Duration</div><div class="metric-val" style="color:var(--fitness)">${d.durationMin||0} min</div></div>
       <div class="metric-card"><div class="metric-label">Total Volume</div><div class="metric-val" style="color:var(--fitness)">${w.value||0} kg</div></div>
-    </div>
-    ${d.sessionNotes?`<div class="section-sub" style="margin-top:14px">SESSION NOTES</div><div style="font-size:13px;color:var(--text);padding:10px;background:var(--bg3);border-radius:10px">${d.sessionNotes}</div>`:''}
-    <div class="section-title" style="margin-top:16px">Exercises</div>
+    </div>`;
+    bodyHtml=`<div class="section-title" style="margin-top:16px">Exercises</div>
     ${(d.exercises||[]).map(ex=>`
       <div class="rm-goal-card" style="margin-bottom:10px">
         <div style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text);margin-bottom:8px">${ex.name}</div>
         ${(ex.sets||[]).map((s,i)=>`<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--stone);padding:4px 0;border-top:1px solid rgba(196,184,168,.07)">
           <span>Set ${i+1}</span><span>Target: ${s.targetWeight}kg × ${s.targetReps}</span><span style="color:var(--fitness)">Actual: ${s.actualWeight||'—'}kg × ${s.actualReps||'—'}</span>
         </div>`).join('')}
-      </div>`).join('')}
+      </div>`).join('')}`;
+  }
+  document.getElementById('workout-log-body').innerHTML=`
+    ${metricsHtml}
+    ${d.sessionNotes?`<div class="section-sub" style="margin-top:14px">SESSION NOTES</div><div style="font-size:13px;color:var(--text);padding:10px;background:var(--bg3);border-radius:10px">${d.sessionNotes}</div>`:''}
+    ${bodyHtml}
+    ${/* Log Correction is scoped to strength for now -- cardio/HIIT/mobility logs are a
+         single duration/count field each, low-value to build a dedicated correction UI
+         for versus just re-logging; flagged here rather than silently unsupported. */''}
+    ${type==='strength'?`<button class="btn-p" style="margin-top:10px" onclick="openWorkoutLogCorrection(${id})">✎ Correct This Log</button>`:''}
     <button class="btn-p" style="margin:10px 0 20px" onclick="showScreen('workout-hub')">← Back to Workout Hub</button>`;
+}
+
+// Log Correction: an editable version of the same read-only detail view, for fixing a
+// mis-entered set after the fact (e.g. logged 60kg instead of 80kg) without redoing the
+// whole session. Saves via PATCH /metrics, which recomputes total volume server-side from
+// the corrected sets so the summary numbers stay honest.
+async function openWorkoutLogCorrection(id) {
+  const data=await req('GET','/metrics?pillar_id='+PILLARS.fitness.id+'&log_type=workout');
+  const w=(data?.logs||[]).find(l=>l.id===id);
+  if(!w) return;
+  const d=w.data||{};
+  showScreen('workout-log');
+  document.getElementById('workout-log-header').textContent='Correct: '+(d.planName||'Workout');
+  document.getElementById('workout-log-body').innerHTML=`
+    <div class="section-sub" style="margin-top:14px">EDIT LOGGED SETS</div>
+    ${(d.exercises||[]).map((ex,exi)=>`
+      <div class="rm-goal-card" style="margin-bottom:10px">
+        <div style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text);margin-bottom:8px">${ex.name}</div>
+        ${(ex.sets||[]).map((s,i)=>`<div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-top:1px solid rgba(196,184,168,.07)">
+          <span style="font-size:12px;color:var(--stone);width:44px">Set ${i+1}</span>
+          <input type="number" id="corr-w-${exi}-${i}" value="${s.actualWeight||''}" placeholder="kg" style="flex:1;padding:8px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none">
+          <input type="number" id="corr-r-${exi}-${i}" value="${s.actualReps||''}" placeholder="reps" style="flex:1;padding:8px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none">
+        </div>`).join('')}
+      </div>`).join('')}
+    <button class="btn-p filled" style="margin-top:10px;background:var(--fitness);border-color:var(--fitness)" onclick="saveWorkoutLogCorrection(${id})">Save Corrections</button>
+    <button class="btn-p" style="margin:10px 0 20px" onclick="viewWorkoutDetail(${id})">Cancel</button>`;
+}
+
+async function saveWorkoutLogCorrection(id) {
+  const data=await req('GET','/metrics?pillar_id='+PILLARS.fitness.id+'&log_type=workout');
+  const w=(data?.logs||[]).find(l=>l.id===id);
+  if(!w) return;
+  const d=w.data||{};
+  const exercises=(d.exercises||[]).map((ex,exi)=>({
+    ...ex,
+    sets:(ex.sets||[]).map((s,i)=>({
+      ...s,
+      actualWeight:Number(document.getElementById(`corr-w-${exi}-${i}`).value)||s.actualWeight,
+      actualReps:Number(document.getElementById(`corr-r-${exi}-${i}`).value)||s.actualReps,
+    })),
+  }));
+  await req('PATCH','/metrics',{id, data:{...d, exercises}});
+  toast('Log corrected ✓');
+  viewWorkoutDetail(id);
 }
 
 // ── Active workout logging ──
 function startWorkout(planId) {
   const planData=workoutPlansCache[planId];
   if(!planData) return;
+  const type=planData.activityType||'strength';
+  showScreen('workout-log');
+
+  if(type==='cardio') {
+    activeWorkout={ activityType:'cardio', planName:planData.name, targetDurationMin:planData.durationMin||20, targetDistance:planData.distance||0, intensity:planData.intensity||'Moderate', startTime:Date.now(), sessionNotes:'' };
+    renderCardioSession();
+    return;
+  }
+  if(type==='hiit') {
+    activeWorkout={ activityType:'hiit', planName:planData.name, rounds:planData.rounds||8, workSeconds:planData.workSeconds||30, restSeconds:planData.restSeconds||15, currentRound:1, phase:'work', startTime:Date.now(), sessionNotes:'' };
+    renderHiitSession();
+    return;
+  }
+  if(type==='mobility') {
+    activeWorkout={ activityType:'mobility', planName:planData.name, targetDurationMin:planData.durationMin||10, stretches:(planData.stretches||[]).map(s=>({name:s, done:false})), startTime:Date.now(), sessionNotes:'' };
+    renderMobilitySession();
+    return;
+  }
+
   activeWorkout={
+    activityType:'strength',
     planName: planData.name,
     exercises: (planData.exercises||[]).map(ex=>({
       name: ex.name,
@@ -4889,8 +5081,84 @@ function startWorkout(planId) {
     })),
     exerciseIdx:0, setIdx:0, startTime:Date.now(), sessionNotes:'',
   };
-  showScreen('workout-log');
   renderActiveWorkout();
+}
+
+// ── Cardio session: a single duration/distance entry, no sets ──
+function renderCardioSession() {
+  const w=activeWorkout;
+  document.getElementById('workout-log-header').textContent=`${w.planName} · Cardio`;
+  document.getElementById('workout-log-body').innerHTML=`
+    <div class="rm-goal-card" style="text-align:center;margin-top:14px">
+      <div class="section-sub">TARGET</div>
+      <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--text);margin:6px 0">${w.targetDurationMin} min${w.targetDistance?` · ${w.targetDistance}km`:''}</div>
+      <div style="font-size:12px;color:var(--stone)">${w.intensity} intensity</div>
+    </div>
+    <div class="rm-goal-card" style="margin-top:14px">
+      <div class="section-sub" style="text-align:center">LOG YOUR ACTUAL</div>
+      <div style="display:flex;gap:10px;justify-content:center;margin-top:10px">
+        <input type="number" id="cardio-actual-duration" placeholder="Duration (min)" value="${w.targetDurationMin}" style="flex:1;padding:10px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none">
+        <input type="number" id="cardio-actual-distance" placeholder="Distance (km)" value="${w.targetDistance||''}" style="flex:1;padding:10px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none">
+      </div>
+    </div>
+    <textarea id="workout-session-notes" placeholder="Add Session Notes:" rows="2" style="width:100%;margin-top:14px;padding:12px;background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:10px;color:var(--text);font-size:13px;outline:none;resize:none">${w.sessionNotes}</textarea>
+    <button class="btn-p filled" style="margin-top:16px;margin-bottom:20px;background:var(--fitness);border-color:var(--fitness)" onclick="finishWorkout()">Finish Workout</button>`;
+}
+
+// ── HIIT session: work/rest interval timer, same pattern as the strength rest timer ──
+function renderHiitSession() {
+  const w=activeWorkout;
+  document.getElementById('workout-log-header').textContent=`${w.planName} · Round ${w.currentRound} of ${w.rounds}`;
+  const seconds=w.phase==='work'?w.workSeconds:w.restSeconds;
+  document.getElementById('workout-log-body').innerHTML=`
+    <div style="text-align:center;padding:40px 0">
+      <div class="section-sub">${w.phase==='work'?'WORK':'REST'}</div>
+      <div id="hiit-countdown" style="font-family:'Syne',sans-serif;font-size:48px;font-weight:800;color:${w.phase==='work'?'var(--fitness)':'var(--text)'};margin:14px 0">${seconds}s</div>
+      <button class="btn-p filled" style="background:var(--fitness);border-color:var(--fitness)" onclick="skipHiitPhase()">Skip</button>
+    </div>`;
+  clearInterval(w.hiitTimer);
+  let remaining=seconds;
+  w.hiitTimer=setInterval(()=>{
+    remaining--;
+    const el=document.getElementById('hiit-countdown');
+    if(!el) { clearInterval(w.hiitTimer); return; }
+    if(remaining<=0) { clearInterval(w.hiitTimer); advanceHiitPhase(); return; }
+    el.textContent=remaining+'s';
+  },1000);
+}
+
+function advanceHiitPhase() {
+  const w=activeWorkout;
+  if(w.phase==='work') { w.phase='rest'; renderHiitSession(); return; }
+  if(w.currentRound<w.rounds) { w.currentRound++; w.phase='work'; renderHiitSession(); }
+  else renderHiitDone();
+}
+function skipHiitPhase() { clearInterval(activeWorkout.hiitTimer); advanceHiitPhase(); }
+
+function renderHiitDone() {
+  const w=activeWorkout;
+  document.getElementById('workout-log-header').textContent=w.planName+' · Complete';
+  document.getElementById('workout-log-body').innerHTML=`
+    <div class="rm-goal-card" style="text-align:center;margin-top:14px"><div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:var(--fitness)">All ${w.rounds} rounds complete! 🔥</div></div>
+    <textarea id="workout-session-notes" placeholder="Add Session Notes:" rows="2" style="width:100%;margin-top:14px;padding:12px;background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:10px;color:var(--text);font-size:13px;outline:none;resize:none">${w.sessionNotes}</textarea>
+    <button class="btn-p filled" style="margin-top:16px;margin-bottom:20px;background:var(--fitness);border-color:var(--fitness)" onclick="finishWorkout()">Finish Workout</button>`;
+}
+
+// ── Mobility session: a check-off stretch list, no timer needed ──
+function renderMobilitySession() {
+  const w=activeWorkout;
+  document.getElementById('workout-log-header').textContent=w.planName+' · Mobility';
+  document.getElementById('workout-log-body').innerHTML=`
+    <div class="section-sub" style="margin-top:14px">CHECK OFF AS YOU GO</div>
+    ${w.stretches.map((s,i)=>`<div class="rm-goal-card" style="margin-bottom:8px;display:flex;align-items:center;gap:10px;cursor:pointer" onclick="toggleMobilityStretch(${i})">
+      <span style="font-size:18px">${s.done?'✅':'⬜'}</span><span style="color:var(--text);${s.done?'text-decoration:line-through;opacity:.6':''}">${s.name}</span>
+    </div>`).join('')}
+    <textarea id="workout-session-notes" placeholder="Add Session Notes:" rows="2" style="width:100%;margin-top:14px;padding:12px;background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:10px;color:var(--text);font-size:13px;outline:none;resize:none">${w.sessionNotes}</textarea>
+    <button class="btn-p filled" style="margin-top:16px;margin-bottom:20px;background:var(--fitness);border-color:var(--fitness)" onclick="finishWorkout()">Finish Workout</button>`;
+}
+function toggleMobilityStretch(i) {
+  activeWorkout.stretches[i].done=!activeWorkout.stretches[i].done;
+  renderMobilitySession();
 }
 
 function renderActiveWorkout() {
@@ -5001,17 +5269,40 @@ async function finishWorkout() {
   const w=activeWorkout;
   w.sessionNotes=document.getElementById('workout-session-notes')?.value||w.sessionNotes;
   const durationMin=Math.max(1,Math.round((Date.now()-w.startTime)/60000));
-  const totalVolume=w.exercises.reduce((s,ex)=>s+ex.sets.reduce((s2,set)=>s2+(Number(set.actualWeight)||0)*(Number(set.actualReps)||0),0),0);
   const p=PILLARS.fitness;
   const taskId=S.pendingTaskId; S.pendingTaskId=null;
   const loggedAt=S.quickAddPastDate ? new Date(S.quickAddPastDate+'T12:00:00').toISOString() : undefined;
   S.quickAddPastDate=null;
-  const result=await req('POST','/metrics',{pillar_id:p.id, log_type:'workout', value:totalVolume, unit:'kg', task_id:taskId||undefined, logged_at:loggedAt, data:{planName:w.planName, exercises:w.exercises, durationMin, sessionNotes:w.sessionNotes}});
-  showWorkoutComplete({durationMin, totalVolume, xp:result?.xp_gained||0, prs:result?.data?.data?.prs||[], logId:result?.data?.id});
+
+  // PR detection (api/metrics.js) only ever fires for log_type='workout' rows carrying
+  // data.exercises, so cardio/HIIT/mobility logs safely skip it without any extra guard.
+  let value, unit, data;
+  if(w.activityType==='cardio') {
+    const actualDuration=Number(document.getElementById('cardio-actual-duration')?.value)||w.targetDurationMin;
+    const actualDistance=Number(document.getElementById('cardio-actual-distance')?.value)||w.targetDistance||0;
+    value=actualDistance||actualDuration; unit=actualDistance?'km':'min';
+    data={activityType:'cardio', planName:w.planName, durationMin:actualDuration, distance:actualDistance, intensity:w.intensity, sessionNotes:w.sessionNotes};
+  } else if(w.activityType==='hiit') {
+    value=w.rounds; unit='rounds';
+    data={activityType:'hiit', planName:w.planName, rounds:w.rounds, workSeconds:w.workSeconds, restSeconds:w.restSeconds, durationMin, sessionNotes:w.sessionNotes};
+  } else if(w.activityType==='mobility') {
+    const completedCount=w.stretches.filter(s=>s.done).length;
+    value=completedCount; unit='stretches';
+    data={activityType:'mobility', planName:w.planName, durationMin, stretches:w.stretches.map(s=>s.name), completedCount, sessionNotes:w.sessionNotes};
+  } else {
+    value=w.exercises.reduce((s,ex)=>s+ex.sets.reduce((s2,set)=>s2+(Number(set.actualWeight)||0)*(Number(set.actualReps)||0),0),0);
+    unit='kg';
+    data={activityType:'strength', planName:w.planName, exercises:w.exercises, durationMin, sessionNotes:w.sessionNotes};
+  }
+
+  const result=await req('POST','/metrics',{pillar_id:p.id, log_type:'workout', value, unit, task_id:taskId||undefined, logged_at:loggedAt, data});
+  showWorkoutComplete({durationMin, value, unit, activityType:w.activityType, xp:result?.xp_gained||0, prs:result?.data?.data?.prs||[], logId:result?.data?.id});
 }
 
 function showWorkoutComplete(m) {
   const hrs=Math.floor(m.durationMin/60), mins=m.durationMin%60;
+  const metricLabel = m.activityType==='cardio' ? (m.unit==='km'?'Distance':'Duration') : m.activityType==='hiit' ? 'Rounds' : m.activityType==='mobility' ? 'Stretches' : 'Total Volume';
+  const metricValue = m.activityType==='strength' ? `${m.value.toLocaleString()} kg` : `${m.value}${m.unit==='km'?' km':m.unit==='min'?' min':''}`;
   document.getElementById('workout-log-body').innerHTML=`
     <div style="text-align:center;padding:20px 0">
       <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--fitness)">✦ WORKOUT COMPLETE! ✦</div>
@@ -5020,7 +5311,7 @@ function showWorkoutComplete(m) {
       <div style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:var(--fitness);margin:6px 0 16px">+${m.xp} XP</div>
       <div class="section-sub">KEY METRICS</div>
       <div style="display:flex;justify-content:center;gap:30px;margin:8px 0 18px">
-        <div><div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:var(--fitness)">${m.totalVolume.toLocaleString()} kg</div><div style="font-size:11px;color:var(--stone)">Total Volume</div></div>
+        <div><div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:var(--fitness)">${metricValue}</div><div style="font-size:11px;color:var(--stone)">${metricLabel}</div></div>
         <div><div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:var(--fitness)">${hrs}h ${mins}m</div><div style="font-size:11px;color:var(--stone)">Duration</div></div>
       </div>
       ${m.prs.length?`<div class="section-sub">NEW PERSONAL RECORDS</div>${m.prs.map(pr=>`<div class="rm-strategy" style="background:var(--fitness);margin-top:8px">✨ ${pr.exercise}: ${pr.weight}kg × ${pr.reps} reps (New PR)</div>`).join('')}`:''}

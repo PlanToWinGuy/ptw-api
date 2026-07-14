@@ -95,8 +95,18 @@ export default async function handler(req, res) {
       await sql`UPDATE users SET xp = xp + ${xp_gained} WHERE id = ${user.id}`;
     }
 
+    // Log Correction: recompute total volume server-side from the corrected sets rather
+    // than trusting a client-sent value -- keeps the summary metric authoritative and in
+    // sync no matter which set got edited. PR history is intentionally left untouched by
+    // a correction (re-running PR detection retroactively against every later workout is
+    // its own feature, not part of fixing a typo in one past set).
+    let value = existing.value;
+    if (existing.log_type === 'workout' && data?.exercises) {
+      value = data.exercises.reduce((s, ex) => s + (ex.sets || []).reduce((s2, set) => s2 + (Number(set.actualWeight) || 0) * (Number(set.actualReps) || 0), 0), 0);
+    }
+
     const updated = await sql`
-      UPDATE metric_logs SET data = ${JSON.stringify(data)}::jsonb
+      UPDATE metric_logs SET data = ${JSON.stringify(data)}::jsonb, value = ${value}
       WHERE id = ${id} AND user_id = ${user.id} RETURNING *
     `;
     return res.status(200).json({ data: updated[0], xp_gained });
