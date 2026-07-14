@@ -239,3 +239,26 @@ CREATE TABLE IF NOT EXISTS notifications (
   deep_link_target JSONB,         -- {page, params} or null
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Custom Side Quests (4.7.B) -- a "draft" row holds an AI-generated-but-not-yet-accepted
+-- plan (draft_data); accepting it clears draft_data and materializes real linked tasks.
+ALTER TABLE side_quests
+  ADD COLUMN IF NOT EXISTS ai_strategy TEXT,
+  ADD COLUMN IF NOT EXISTS end_date DATE,
+  ADD COLUMN IF NOT EXISTS original_prompt TEXT,
+  ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active', -- 'draft' | 'active' | 'completed'
+  ADD COLUMN IF NOT EXISTS draft_data JSONB,
+  ADD COLUMN IF NOT EXISTS is_anti_goal BOOLEAN NOT NULL DEFAULT false;
+
+-- A Side Quest's "Projects" are just Universal Project tasks tagged with quest_id.
+-- Anti-Goals (4.15) instead materialize as a single recurring habit task carrying
+-- baseline/target values for the nuanced daily feedback logic.
+-- target_value is the CURRENT day's target, stepped down daily toward
+-- final_target_value (the quest's ultimate goal) -- the deterministic reduction ramp.
+ALTER TABLE tasks
+  ADD COLUMN IF NOT EXISTS quest_id INTEGER REFERENCES side_quests(id) ON DELETE CASCADE,
+  ADD COLUMN IF NOT EXISTS is_anti_goal BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS anti_goal_type TEXT,     -- 'binary' | 'progressive'
+  ADD COLUMN IF NOT EXISTS baseline_value NUMERIC,
+  ADD COLUMN IF NOT EXISTS target_value NUMERIC,
+  ADD COLUMN IF NOT EXISTS final_target_value NUMERIC;

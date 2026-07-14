@@ -63,6 +63,10 @@ export default async function handler(req, res) {
       status: t.status,
       xpValue: Math.round(durationMin * 1.5) + 20,
       customIcon: t.pillar_id ? (PILLARS[t.pillar_id] || '').toLowerCase() + '_icon' : (t.priority ? PRIORITY_FLAG[t.priority] : null),
+      isAntiGoal: t.is_anti_goal || false,
+      antiGoalType: t.anti_goal_type || null,
+      baselineValue: t.baseline_value,
+      targetValue: t.target_value,
     };
   });
 
