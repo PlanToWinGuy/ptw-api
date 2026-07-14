@@ -1961,6 +1961,19 @@ function settingsRow(icon, label, onclick, sub) {
 
 function openSettingsHub() { showScreen('settings'); renderSettingsBody(); }
 
+// Dev/testing only -- not wired to any visible button. Unlocks every pillar at once so
+// cross-pillar behavior can be tested without grinding through the real phase-gated
+// unlock pacing first. Call from the console: activateAllPillarsForTesting()
+async function activateAllPillarsForTesting() {
+  const result = await req('POST','/pillar/dev-activate-all',{});
+  if(!result?.unlocked_pillars) { toast('Could not activate all pillars'); return; }
+  S.unlocked = result.unlocked_pillars;
+  localStorage.setItem('ptw_unlocked', JSON.stringify(S.unlocked));
+  await loadUserData();
+  renderPillarApps();
+  toast('All pillars unlocked for testing ⚡');
+}
+
 // Tapping a pillar's own gear icon jumps straight to that pillar's preferences
 // (skips the hub) -- back button from there still returns to the full Settings list.
 function openSettings(focusPillarKey) {
