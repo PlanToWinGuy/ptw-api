@@ -76,6 +76,24 @@ const QUESTIONS = {
 export default async function handler(req, res) {
   if (cors(req, res)) return;
 
+  // Dev/testing-only: unlock every pillar at once, skipping the consistency gate, so
+  // cross-pillar behavior can be tested without grinding through the real phase-gated
+  // unlock pacing first. Not surfaced anywhere in the UI -- only reachable by calling
+  // this endpoint directly (console/devtools), same spirit as this app having no
+  // billing/paywall stakes tied to the gate in the first place.
+  if (req.method === 'POST' && req.query.pillar === 'dev-activate-all') {
+    const user = await getUserFromRequest(req);
+    if (!user) return res.status(401).json({ message: 'Unauthenticated' });
+    for (const name of Object.keys(QUESTIONS)) {
+      const pid = pillarIdFromName(name);
+      await sql`INSERT INTO user_pillars (user_id, pillar_id) VALUES (${user.id}, ${pid}) ON CONFLICT (user_id, pillar_id) DO NOTHING`;
+    }
+    await sql`UPDATE users SET phase_start_date = now() WHERE id = ${user.id}`;
+    const rows = await sql`SELECT pillar_id FROM user_pillars WHERE user_id = ${user.id} ORDER BY activated_at ASC`;
+    const unlocked_pillars = rows.map(r => (PILLARS[r.pillar_id] || '').toLowerCase());
+    return res.status(200).json({ unlocked_pillars });
+  }
+
   const pillarName = Object.keys(QUESTIONS).find(p => p.toLowerCase() === String(req.query.pillar).toLowerCase());
   if (!pillarName) return res.status(404).json({ message: 'Unknown pillar' });
 

@@ -159,12 +159,18 @@ async function generateGoal(req, res, user) {
 
   if (key) {
     try {
+      // 4000 (5000 for Fitness, which also has to fit 2-3 full workoutPlans on top of the
+      // normal phases/milestones/alts in the same response) -- 2400 was too tight for a
+      // detailed multi-phase plan and silently truncated mid-JSON on at least one real
+      // account, which JSON.parse then threw on, falling all the way back to the generic
+      // 1-milestone default plan with zero visibility into why.
+      const maxTokens = pillar_name.toLowerCase() === 'fitness' ? 5000 : 4000;
       const r = await fetch(ANTHROPIC_URL, {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
         body: JSON.stringify({
           model: 'claude-sonnet-4-6',
-          max_tokens: 2400,
+          max_tokens: maxTokens,
           temperature: 0.4,
           system: [
             SYSTEM,
@@ -182,11 +188,16 @@ async function generateGoal(req, res, user) {
         }),
       });
       const data = await r.json();
+      if (data.stop_reason === 'max_tokens') {
+        console.error('goals.generate: response truncated at max_tokens', { pillar_name, maxTokens, user_id: user.id });
+      }
       const text = (data.content || []).map(b => (b.type === 'text' ? b.text : '')).join('\n');
       const parsed = JSON.parse(text.trim().replace(/^```json\n?/, '').replace(/```$/, ''));
       if (parsed.title) plan = { ...plan, ...parsed };
     } catch (e) {
-      // fall back to the default plan above
+      // Falls back to the generic default plan above -- logged so a real failure (bad
+      // JSON, truncation, API error) is diagnosable instead of silently invisible.
+      console.error('goals.generate: AI call failed, using fallback plan', { pillar_name, user_id: user.id, error: String(e) });
     }
   }
 
