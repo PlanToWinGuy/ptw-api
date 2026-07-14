@@ -65,6 +65,7 @@ export default async function handler(req, res) {
       xp: user.xp,
       recommended_pillar: user.recommended_pillar,
       subscription_tier: null,
+      valueprint_data: user.valueprint_data || null,
     },
   });
 }
