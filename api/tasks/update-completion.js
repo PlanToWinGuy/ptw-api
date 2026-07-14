@@ -17,10 +17,49 @@ export default async function handler(req, res) {
   const action = req.query.action;
 
   if (action === 'skip') {
+    // Real daily task bank (Pass 1): a skip no longer just hides the task by marking it
+    // 'Skipped' forever -- the first skip bumps it to an end-of-day bank slot on the same
+    // date (still visible, still completable). Skipping it again from that bank slot rolls
+    // it to tomorrow instead of bumping it later and later forever. This is a lightweight
+    // two-tier rule, not the full AI-driven Plan Shift recalibration (2.9), which is a
+    // separate, deferred system.
     const { task_id } = req.body || {};
     if (!task_id) return res.status(422).json({ message: 'task_id is required' });
-    await sql`UPDATE tasks SET status = 'Skipped', updated_at = now() WHERE id = ${task_id} AND user_id = ${user.id}`;
-    return res.status(200).json({ message: 'Task skipped and will be rescheduled.' });
+    const rows = await sql`SELECT * FROM tasks WHERE id = ${task_id} AND user_id = ${user.id}`;
+    const task = rows[0];
+    if (!task) return res.status(404).json({ message: 'Task not found' });
+    const today = new Date().toISOString().split('T')[0];
+
+    if (task.was_skipped) {
+      const anchorDate = task.due_date || today;
+      const tomorrow = new Date(anchorDate + 'T00:00:00');
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      await sql`
+        UPDATE tasks SET due_date = ${tomorrow.toISOString().split('T')[0]}, start_time = NULL, end_time = NULL, was_skipped = false, updated_at = now()
+        WHERE id = ${task_id} AND user_id = ${user.id}
+      `;
+      return res.status(200).json({ message: 'Task moved to tomorrow.' });
+    }
+
+    const dueDate = task.due_date || today;
+    const BANK_START = '20:00:00';
+    let bankStart = BANK_START;
+    const [{ latest_end }] = await sql`
+      SELECT MAX(end_time) AS latest_end FROM tasks
+      WHERE user_id = ${user.id} AND due_date = ${dueDate} AND id != ${task_id} AND end_time IS NOT NULL
+    `;
+    if (latest_end && String(latest_end) > BANK_START) bankStart = String(latest_end);
+    const durationMin = task.estimated_duration_minutes || 20;
+    await sql`
+      UPDATE tasks SET
+        due_date = ${dueDate},
+        start_time = ${bankStart}::time,
+        end_time = (${bankStart}::time + (${durationMin} || ' minutes')::interval),
+        was_skipped = true,
+        updated_at = now()
+      WHERE id = ${task_id} AND user_id = ${user.id}
+    `;
+    return res.status(200).json({ message: 'Task moved to later today.' });
   }
 
   if (action === 'add-time') {

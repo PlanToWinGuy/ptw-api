@@ -45,12 +45,21 @@ export default async function handler(req, res) {
   // an incomplete multi-week Project would only ever appear on Daily Overview on the one
   // day it was created and then silently vanish forever. So Projects stay visible every day
   // from their due_date onward until they're actually completed (or explicitly skipped).
+  // Same logic applies to an undated backlog task (due_date IS NULL, e.g. added via the
+  // to-do modal with the date cleared, or created by AI chat without a date) -- it stays
+  // visible every day until it's given a real date, completed, or deleted, instead of being
+  // permanently invisible because NULL never equals an exact targetDate match.
+  // parent_task_id IS NULL excludes a Project's own sub-tasks -- now that sub-tasks get
+  // real due_date/start_time too (see api/goals.js), they'd otherwise start showing up as
+  // their own independent top-level cards here instead of only through the parent
+  // Project's card + detail page.
   const rows = await sql`
     SELECT * FROM tasks
-    WHERE user_id = ${user.id} AND status != 'Skipped'
+    WHERE user_id = ${user.id} AND status != 'Skipped' AND parent_task_id IS NULL
       AND (
         (kind = 'project' AND due_date <= ${targetDate})
         OR (kind != 'project' AND due_date = ${targetDate})
+        OR (kind != 'project' AND due_date IS NULL)
       )
     ORDER BY start_time ASC NULLS LAST, created_at ASC
   `;
@@ -76,6 +85,8 @@ export default async function handler(req, res) {
       antiGoalType: t.anti_goal_type || null,
       baselineValue: t.baseline_value,
       targetValue: t.target_value,
+      toolHint: t.tool_hint || null,
+      wasSkipped: t.was_skipped || false,
     };
   });
 

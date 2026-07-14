@@ -3,6 +3,7 @@ import { cors } from '../../lib/cors.js';
 import { getUserFromRequest } from '../../lib/auth.js';
 import { getPillarState, buildPillarStates } from '../../lib/pillarState.js';
 import { computeStreakDays } from '../../lib/tasks.js';
+import { materializeRoutinesForDate } from '../../lib/routines.js';
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 
@@ -39,13 +40,22 @@ async function runTool(sql, user, toolUse) {
   const today = new Date().toISOString().split('T')[0];
   if (toolUse.name === 'get_schedule') {
     const dateStr = toolUse.input.date || today;
-    // Projects stay on the schedule every day from their due_date onward until complete
+    // Materialize that date's routines first -- otherwise asking the assistant about a
+    // day before ever opening Daily Overview for it would miss that day's routines
+    // entirely (api/user-projects.js already does this; this tool needs it too).
+    await materializeRoutinesForDate(user, dateStr);
+    // Projects and undated backlog tasks stay on the schedule every day until resolved
     // (see api/user-projects.js) -- match that here so the assistant doesn't lose track
-    // of an ongoing project just because "today" isn't its original creation date.
+    // of an ongoing project or a floating to-do just because "today" isn't the day it
+    // was created.
     const rows = await sql`
       SELECT name, due_date, start_time, estimated_duration_minutes, priority, status FROM tasks
-      WHERE user_id = ${user.id} AND status != 'Skipped'
-        AND ((kind = 'project' AND due_date <= ${dateStr}) OR (kind != 'project' AND due_date = ${dateStr}))
+      WHERE user_id = ${user.id} AND status != 'Skipped' AND parent_task_id IS NULL
+        AND (
+          (kind = 'project' AND due_date <= ${dateStr})
+          OR (kind != 'project' AND due_date = ${dateStr})
+          OR (kind != 'project' AND due_date IS NULL)
+        )
       ORDER BY start_time ASC NULLS LAST, created_at ASC
     `;
     return { result: JSON.stringify(rows), action_taken: null };
@@ -82,10 +92,15 @@ export default async function handler(req, res) {
   const pillarState = await getPillarState(user);
   const pillarStates = buildPillarStates(pillarState, user.recommended_pillar);
   const streakDays = await computeStreakDays(sql, user);
+  await materializeRoutinesForDate(user, today);
   const todayTasks = await sql`
     SELECT name, priority, status FROM tasks
-    WHERE user_id = ${user.id} AND status != 'Skipped'
-      AND ((kind = 'project' AND due_date <= ${today}) OR (kind != 'project' AND due_date = ${today}))
+    WHERE user_id = ${user.id} AND status != 'Skipped' AND parent_task_id IS NULL
+      AND (
+        (kind = 'project' AND due_date <= ${today})
+        OR (kind != 'project' AND due_date = ${today})
+        OR (kind != 'project' AND due_date IS NULL)
+      )
     ORDER BY start_time ASC NULLS LAST LIMIT 10
   `;
 

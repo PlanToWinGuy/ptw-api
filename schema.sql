@@ -262,3 +262,11 @@ ALTER TABLE tasks
   ADD COLUMN IF NOT EXISTS baseline_value NUMERIC,
   ADD COLUMN IF NOT EXISTS target_value NUMERIC,
   ADD COLUMN IF NOT EXISTS final_target_value NUMERIC;
+
+-- Pass 1 scheduling/skip fixes -- tool_hint lets a generated task deep-link into the
+-- real tool that fulfills it (Journal, Log a Session, etc.) instead of a bare checkbox;
+-- was_skipped marks a task that's already been bumped to the end-of-day bank once, so a
+-- second Skip rolls it to tomorrow instead of bumping it later the same day forever.
+ALTER TABLE tasks
+  ADD COLUMN IF NOT EXISTS tool_hint TEXT,
+  ADD COLUMN IF NOT EXISTS was_skipped BOOLEAN NOT NULL DEFAULT false;

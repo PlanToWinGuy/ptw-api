@@ -1,6 +1,7 @@
 import { sql, PILLARS, pillarIdFromName } from '../lib/db.js';
 import { cors } from '../lib/cors.js';
 import { getUserFromRequest } from '../lib/auth.js';
+import { timeOfDayToClock, addMinutesToClock, inferToolHint, scheduleSubTasks } from '../lib/scheduling.js';
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 
@@ -177,11 +178,17 @@ async function generateGoal(req, res, user) {
   const goal_id = goalRows[0].id;
 
   const today = new Date().toISOString().split('T')[0];
+  const pillarKey = pillar_name.toLowerCase();
+  const clockStart = timeOfDayToClock(questionnaire_answers?.time_of_day);
   if (goal_type === 'habit' || goal_type === 'mindset') {
     if (plan.dailyAnchor) {
+      const durationMin = 15;
+      const startTime = clockStart;
+      const endTime = addMinutesToClock(clockStart, durationMin);
+      const toolHint = inferToolHint(pillarKey, plan.dailyAnchor);
       await sql`
-        INSERT INTO tasks (user_id, goal_id, pillar_id, name, kind, recurrence, due_date, estimated_duration_minutes)
-        VALUES (${user.id}, ${goal_id}, ${pillar_id}, ${plan.dailyAnchor}, 'habit', 'daily', ${today}, 15)
+        INSERT INTO tasks (user_id, goal_id, pillar_id, name, kind, recurrence, due_date, estimated_duration_minutes, start_time, end_time, tool_hint)
+        VALUES (${user.id}, ${goal_id}, ${pillar_id}, ${plan.dailyAnchor}, 'habit', 'daily', ${today}, ${durationMin}, ${startTime}, ${endTime}, ${toolHint})
       `;
     }
   } else {
@@ -201,10 +208,17 @@ async function generateGoal(req, res, user) {
       `;
       const parent_task_id = parentRows[0].id;
 
-      for (const action of allActions) {
+      // Bin-pack sub-tasks into sequential days, each capped at the questionnaire's daily
+      // time budget, with real start_time/end_time within that day's block -- the literal
+      // "2-hour block of the 6-hour project, from a certain time to another" scheduling.
+      const dailyBudgetMinutes = Number(questionnaire_answers?.daily_time_budget) || 60;
+      const scheduled = scheduleSubTasks(allActions, { startDate: today, clockStart, dailyBudgetMinutes, subtaskMinutes });
+
+      for (const action of scheduled) {
+        const toolHint = inferToolHint(pillarKey, action.text);
         await sql`
-          INSERT INTO tasks (user_id, goal_id, pillar_id, parent_task_id, name, kind, phase_label, estimated_duration_minutes)
-          VALUES (${user.id}, ${goal_id}, ${pillar_id}, ${parent_task_id}, ${action.text}, 'simple', ${action.phaseLabel}, ${subtaskMinutes})
+          INSERT INTO tasks (user_id, goal_id, pillar_id, parent_task_id, name, kind, phase_label, due_date, estimated_duration_minutes, start_time, end_time, tool_hint)
+          VALUES (${user.id}, ${goal_id}, ${pillar_id}, ${parent_task_id}, ${action.text}, 'simple', ${action.phaseLabel}, ${action.dueDate}, ${subtaskMinutes}, ${action.startTime}, ${action.endTime}, ${toolHint})
         `;
       }
     }

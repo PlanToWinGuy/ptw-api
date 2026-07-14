@@ -1,6 +1,7 @@
 import { sql, PILLARS } from '../../../lib/db.js';
 import { cors } from '../../../lib/cors.js';
 import { getUserFromRequest } from '../../../lib/auth.js';
+import { timeOfDayToClock, addMinutesToClock, inferToolHint, scheduleSubTasks } from '../../../lib/scheduling.js';
 
 export default async function handler(req, res) {
   if (cors(req, res)) return;
@@ -16,16 +17,29 @@ export default async function handler(req, res) {
   const plan = draft.draft_data;
   const today = new Date().toISOString().split('T')[0];
   const isAntiGoal = !!plan.antiGoalType;
+  const pillarKey = (PILLARS[draft.pillar_id] || '').toLowerCase();
+
+  // A custom quest doesn't have its own questionnaire, so borrow the user's most recent
+  // time-of-day/daily-budget answers for this pillar (if they've ever activated it) --
+  // same scheduling approach as api/goals.js, falling back to sensible defaults.
+  const [priorAnswers] = await sql`SELECT answers FROM pillar_answers WHERE user_id = ${user.id} AND pillar_id = ${draft.pillar_id} ORDER BY created_at DESC LIMIT 1`;
+  const clockStart = timeOfDayToClock(priorAnswers?.answers?.time_of_day);
+  const dailyBudgetMinutes = Number(priorAnswers?.answers?.daily_time_budget) || 60;
 
   let projectsOut = [];
   if (isAntiGoal) {
     // Day 1's target starts at the baseline itself (just match your current average)
     // and steps down daily toward final_target_value -- see log-progressive.js.
     const dayOneTarget = plan.antiGoalType === 'progressive' ? (plan.baselineValue ?? null) : null;
+    const startTime = clockStart;
+    const endTime = addMinutesToClock(clockStart, 15);
+    const toolHint = inferToolHint(pillarKey, plan.title);
     await sql`
       INSERT INTO tasks (user_id, pillar_id, quest_id, name, kind, recurrence, due_date, estimated_duration_minutes,
+                          start_time, end_time, tool_hint,
                           is_anti_goal, anti_goal_type, baseline_value, target_value, final_target_value)
       VALUES (${user.id}, ${draft.pillar_id}, ${id}, ${plan.title}, 'habit', 'daily', ${today}, 15,
+              ${startTime}, ${endTime}, ${toolHint},
               true, ${plan.antiGoalType}, ${plan.baselineValue ?? null}, ${dayOneTarget}, ${plan.targetValue ?? null})
     `;
   } else {
@@ -38,11 +52,13 @@ export default async function handler(req, res) {
         RETURNING id
       `;
       const parent_task_id = parentRows[0].id;
+      const scheduled = scheduleSubTasks(subTasks.map(st => ({ text: st.name })), { startDate: today, clockStart, dailyBudgetMinutes, subtaskMinutes: 30 });
       const subTaskRows = [];
-      for (const st of subTasks) {
+      for (const st of scheduled) {
+        const toolHint = inferToolHint(pillarKey, st.text);
         const r = await sql`
-          INSERT INTO tasks (user_id, pillar_id, quest_id, parent_task_id, name, kind, estimated_duration_minutes)
-          VALUES (${user.id}, ${draft.pillar_id}, ${id}, ${parent_task_id}, ${st.name}, 'simple', 30)
+          INSERT INTO tasks (user_id, pillar_id, quest_id, parent_task_id, name, kind, due_date, estimated_duration_minutes, start_time, end_time, tool_hint)
+          VALUES (${user.id}, ${draft.pillar_id}, ${id}, ${parent_task_id}, ${st.text}, 'simple', ${st.dueDate}, 30, ${st.startTime}, ${st.endTime}, ${toolHint})
           RETURNING id, name
         `;
         subTaskRows.push({ subTaskId: r[0].id, name: r[0].name, isCompleted: false });
