@@ -270,3 +270,15 @@ ALTER TABLE tasks
 ALTER TABLE tasks
   ADD COLUMN IF NOT EXISTS tool_hint TEXT,
   ADD COLUMN IF NOT EXISTS was_skipped BOOLEAN NOT NULL DEFAULT false;
+
+-- Pass 2 Settings (4.19) -- one generic table serves the universal GET/PUT
+-- /api/preferences/{scope} pattern for pillar preferences (scope = pillar name lowercase)
+-- plus the two non-pillar preference pages (scope = 'units' | 'notifications').
+CREATE TABLE IF NOT EXISTS preferences (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  scope TEXT NOT NULL,
+  data JSONB NOT NULL DEFAULT '{}'::jsonb,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(user_id, scope)
+);

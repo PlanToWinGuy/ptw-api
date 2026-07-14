@@ -10,6 +10,7 @@
   "rewrites": [
     { "source": "/api/signup", "destination": "/api/auth?action=signup" },
     { "source": "/api/login", "destination": "/api/auth?action=login" },
+    { "source": "/api/auth/logout", "destination": "/api/auth?action=logout" },
     { "source": "/api/profile-creation", "destination": "/api/profile?action=profile-creation" },
     { "source": "/api/valueprint", "destination": "/api/profile?action=valueprint" },
     { "source": "/api/goals/generate", "destination": "/api/goals?action=generate" },

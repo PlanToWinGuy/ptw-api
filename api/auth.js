@@ -44,5 +44,15 @@ export default async function handler(req, res) {
     return res.status(200).json({ access_token: token, token_type: 'Bearer' });
   }
 
+  if (action === 'logout') {
+    // Opaque bearer tokens, not JWTs -- "revoke" means deleting the row from the
+    // tokens table, so this exact token can never authenticate again even if leaked.
+    const header = req.headers.authorization || '';
+    const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+    if (!token) return res.status(401).json({ message: 'Unauthenticated' });
+    await sql`DELETE FROM tokens WHERE token = ${token}`;
+    return res.status(200).json({ message: 'Successfully logged out.' });
+  }
+
   res.status(404).json({ message: 'Unknown auth action' });
 }
