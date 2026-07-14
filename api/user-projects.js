@@ -40,9 +40,18 @@ export default async function handler(req, res) {
 
   await materializeRoutinesForDate(user, targetDate);
 
+  // A Project's due_date is set once, at goal-generation time -- it isn't a single day's
+  // appointment like a simple/habit task, it's "when this project started". Without this,
+  // an incomplete multi-week Project would only ever appear on Daily Overview on the one
+  // day it was created and then silently vanish forever. So Projects stay visible every day
+  // from their due_date onward until they're actually completed (or explicitly skipped).
   const rows = await sql`
     SELECT * FROM tasks
-    WHERE user_id = ${user.id} AND due_date = ${targetDate} AND status != 'Skipped'
+    WHERE user_id = ${user.id} AND status != 'Skipped'
+      AND (
+        (kind = 'project' AND due_date <= ${targetDate})
+        OR (kind != 'project' AND due_date = ${targetDate})
+      )
     ORDER BY start_time ASC NULLS LAST, created_at ASC
   `;
 

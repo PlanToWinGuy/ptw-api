@@ -39,9 +39,13 @@ async function runTool(sql, user, toolUse) {
   const today = new Date().toISOString().split('T')[0];
   if (toolUse.name === 'get_schedule') {
     const dateStr = toolUse.input.date || today;
+    // Projects stay on the schedule every day from their due_date onward until complete
+    // (see api/user-projects.js) -- match that here so the assistant doesn't lose track
+    // of an ongoing project just because "today" isn't its original creation date.
     const rows = await sql`
       SELECT name, due_date, start_time, estimated_duration_minutes, priority, status FROM tasks
-      WHERE user_id = ${user.id} AND due_date = ${dateStr} AND status != 'Skipped'
+      WHERE user_id = ${user.id} AND status != 'Skipped'
+        AND ((kind = 'project' AND due_date <= ${dateStr}) OR (kind != 'project' AND due_date = ${dateStr}))
       ORDER BY start_time ASC NULLS LAST, created_at ASC
     `;
     return { result: JSON.stringify(rows), action_taken: null };
@@ -80,7 +84,8 @@ export default async function handler(req, res) {
   const streakDays = await computeStreakDays(sql, user);
   const todayTasks = await sql`
     SELECT name, priority, status FROM tasks
-    WHERE user_id = ${user.id} AND due_date = ${today} AND status != 'Skipped'
+    WHERE user_id = ${user.id} AND status != 'Skipped'
+      AND ((kind = 'project' AND due_date <= ${today}) OR (kind != 'project' AND due_date = ${today}))
     ORDER BY start_time ASC NULLS LAST LIMIT 10
   `;
 
