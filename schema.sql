@@ -212,3 +212,19 @@ CREATE TABLE IF NOT EXISTS mood_logs (
   mood TEXT NOT NULL,
   logged_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Vision Board (4.3.5) -- user-uploaded motivational images, one per pillar per image.
+CREATE TABLE IF NOT EXISTS vision_board_images (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  pillar_id INTEGER REFERENCES pillars(id),
+  image_url TEXT NOT NULL,
+  blob_pathname TEXT NOT NULL, -- needed to delete the blob itself, not just the row
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- To-Do List (4.6) personalization -- a user-chosen icon/color accent per Simple Task,
+-- independent of pillar tagging.
+ALTER TABLE tasks
+  ADD COLUMN IF NOT EXISTS icon TEXT,
+  ADD COLUMN IF NOT EXISTS color TEXT;

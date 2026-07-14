@@ -68,7 +68,7 @@ export default async function handler(req, res) {
     const isToday = targetDate === new Date().toISOString().split('T')[0];
     let rows = await sql`
       SELECT * FROM tasks WHERE user_id = ${user.id} AND due_date = ${targetDate} AND status = 'Pending'
-      ORDER BY CASE priority WHEN 'High' THEN 0 WHEN 'Medium' THEN 1 ELSE 2 END, start_time NULLS LAST, created_at ASC
+      ORDER BY CASE priority WHEN 'Urgent' THEN -1 WHEN 'High' THEN 0 WHEN 'Medium' THEN 1 ELSE 2 END, start_time NULLS LAST, created_at ASC
     `;
 
     const tasksShortened = [];
@@ -100,8 +100,8 @@ export default async function handler(req, res) {
       rows = coreHabit ? [coreHabit] : [];
       streakNote = coreHabit ? `Your '${coreHabit.name}' streak is safe because you selected "Sick" as your reason.` : 'Nothing mandatory today -- rest up.';
     } else if (context === 'Social surprise / Change of plans') {
-      rows.filter(t => t.priority !== 'High').forEach(t => { tasksDeferred.push(t.name); deferredIds.push(t.id); });
-      rows = rows.filter(t => t.priority === 'High');
+      rows.filter(t => t.priority !== 'High' && t.priority !== 'Urgent').forEach(t => { tasksDeferred.push(t.name); deferredIds.push(t.id); });
+      rows = rows.filter(t => t.priority === 'High' || t.priority === 'Urgent');
       streakNote = 'High-priority tasks were protected around your change of plans.';
     } else if (context === 'Travel / Errands took longer') {
       startDelayMinutes = 60; // assume an hour of today's window is already gone
