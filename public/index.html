@@ -4606,10 +4606,10 @@ let workoutPlansCache={}, activeWorkout=null;
 async function loadFitnessMap() {
   const container=document.getElementById('pillar-tab-map');
   const p=PILLARS.fitness;
-  const todayStr=new Date().toISOString().split('T')[0];
-  const [data, overview, weightLogs]=await Promise.all([
+  const [data, goalData, plansData, weightLogs]=await Promise.all([
     req('GET','/metrics?pillar_id='+p.id+'&days=30'),
-    req('POST','/user-projects',{date:todayStr}),
+    req('GET','/goals?pillar_id='+p.id),
+    req('GET','/metrics?pillar_id='+p.id+'&log_type=workout_plan'),
     req('GET','/metrics?pillar_id='+p.id+'&log_type=weight'),
   ]);
   const logs=(data?.logs||[]).filter(l=>l.log_type==='workout');
@@ -4628,24 +4628,38 @@ async function loadFitnessMap() {
     streak++; d.setDate(d.getDate()-1);
   }
 
-  // Today's real scheduled workout -- a Fitness task tagged tool_hint='workout' from the
-  // same Daily Overview data everywhere else reads, not a separate guess. Absent -> Rest Day.
-  const todaysWorkoutTask=(overview?.data||[]).find(t=>t.pillar==='Fitness' && t.toolHint==='workout' && t.status!=='Completed');
+  // Today's Workout: this schema never materializes an individual lifting day as its own
+  // scheduled task (a Project's phase sub-tasks are parent_task_id-linked and intentionally
+  // never surface outside the parent Project's own card -- see user-projects.js), so "today's
+  // workout" is derived from real structural data instead: the goal's own weekly_days target
+  // (via the Strategy Card's weeklyTarget) vs. workouts actually logged this week. Under
+  // target -> rotate through the saved plan templates round-robin so every plan gets used;
+  // target met (or no target set but they've already trained today) -> Rest Day.
+  const plans=plansData?.logs||[];
+  plans.forEach(pl=>{ workoutPlansCache[pl.id]=pl.data; });
+  const g=(goalData?.data||[])[0];
+  const weeklyTarget=(g?.strategyCards||[]).find(c=>c.type==='workouts')?.weeklyTarget || null;
+  const trainedToday=logs.some(l=>dateOf(l)===today.toISOString().split('T')[0]);
+  const metTarget = weeklyTarget ? workoutsThisWeek>=weeklyTarget : trainedToday;
+  const todaysPlan = (!metTarget && plans.length) ? plans[workoutsThisWeek % plans.length] : null;
 
   const latestWeight=(weightLogs?.logs||[])[0];
 
   const html=`
     <div class="rm-goal-card" style="text-align:center;background:${p.color}">
-      ${todaysWorkoutTask ? `
+      ${todaysPlan ? `
         <div style="font-size:11px;color:rgba(255,255,255,.75);letter-spacing:.5px">TODAY'S WORKOUT</div>
-        <div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:#fff;margin:6px 0 14px">${todaysWorkoutTask.name}</div>
+        <div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:#fff;margin:6px 0 14px">${todaysPlan.data?.name||'Workout'}</div>
         <div style="display:flex;gap:10px;justify-content:center">
-          <button class="btn-p filled" style="background:#fff;color:${p.color};border-color:#fff" onclick="startTodaysWorkout(${todaysWorkoutTask.taskId})">Start Workout</button>
-          <button class="btn-p" style="border-color:rgba(255,255,255,.5);color:#fff" onclick="openTodaysWorkoutEdit(${todaysWorkoutTask.taskId})">Edit</button>
-        </div>` : `
+          <button class="btn-p filled" style="background:#fff;color:${p.color};border-color:#fff" onclick="startTodaysWorkout(${todaysPlan.id})">Start Workout</button>
+          <button class="btn-p" style="border-color:rgba(255,255,255,.5);color:#fff" onclick="openWorkoutHub()">Edit</button>
+        </div>` : plans.length ? `
         <div style="font-size:11px;color:rgba(255,255,255,.75);letter-spacing:.5px">TODAY</div>
-        <div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:#fff;margin:6px 0 14px">😴 Rest Day</div>
-        <button class="btn-p" style="border-color:rgba(255,255,255,.5);color:#fff" onclick="openWorkoutHub()">Modify Plan</button>`}
+        <div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:#fff;margin:6px 0 14px">😴 Rest Day${weeklyTarget?` -- ${workoutsThisWeek}/${weeklyTarget} this week`:''}</div>
+        <button class="btn-p" style="border-color:rgba(255,255,255,.5);color:#fff" onclick="openWorkoutHub()">Modify Plan</button>` : `
+        <div style="font-size:11px;color:rgba(255,255,255,.75);letter-spacing:.5px">TODAY</div>
+        <div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:#fff;margin:6px 0 14px">No plans yet</div>
+        <button class="btn-p" style="border-color:rgba(255,255,255,.5);color:#fff" onclick="openWorkoutHub()">Build a Plan</button>`}
     </div>
     <div class="metric-row" style="margin-top:14px">
       <div class="metric-card" style="background:${p.color}"><div class="metric-icon">🏋️</div><div class="metric-val" style="color:#fff">${weeklyVolume.toLocaleString()}</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Weekly Volume (kg)</div></div>
@@ -4664,23 +4678,12 @@ async function loadFitnessMap() {
   container.innerHTML=html;
 }
 
-// Today's Workout CTA -- links this session's completion to the real scheduled task
-// (same task_id-linked XP path finishWorkout()/api/metrics.js already support), so
-// finishing it also marks the Daily Overview task Completed instead of a disconnected log.
-function startTodaysWorkout(taskId) {
-  S.pendingTaskId=taskId;
-  openFitnessLogEntry();
-}
-
-// Edit action for today's scheduled workout: swap to a different saved plan (jumps into
-// My Plans, still linked to the same taskId via S.pendingTaskId), or mark today a rest day
-// via the existing Skip-to-bank flow instead of a bespoke "rest day" concept.
-function openTodaysWorkoutEdit(taskId) {
-  openConfirm('Today\'s Workout', 'Mark today as a rest day (skip this workout), or choose Cancel to pick a different plan from My Plans instead.', async ()=>{
-    await req('POST','/tasks/skip',{task_id:taskId});
-    toast('Marked as a rest day');
-    loadFitnessMap();
-  });
+// Today's Workout CTA -- no task-linkage exists for an individual lifting day in this
+// schema (see loadFitnessMap()'s comment), so this is just the same startWorkout() path
+// as tapping a plan from My Plans, with no pending task to complete alongside it.
+function startTodaysWorkout(planId) {
+  S.pendingTaskId=null;
+  startWorkout(planId);
 }
 
 async function openLogWeight() {

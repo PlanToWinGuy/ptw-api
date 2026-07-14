@@ -97,6 +97,9 @@ async function buildStrategyCards(user, g, unlockedPillarIds) {
           answers.activity_type ? `focused on ${answers.activity_type}` : null,
           planCount ? `${planCount} starter plan${planCount === 1 ? '' : 's'} ready in your Workout Hub` : null,
         ].filter(Boolean).join(' · '),
+        // Raw number (not just the formatted body above) so the Fitness Map's Today's
+        // Workout card can compare it against actual logged workouts this week.
+        weeklyTarget: answers.weekly_days ? Number(answers.weekly_days) : null,
       });
     }
   }
