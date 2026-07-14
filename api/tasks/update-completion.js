@@ -29,9 +29,13 @@ export default async function handler(req, res) {
     const task = rows[0];
     if (!task) return res.status(404).json({ message: 'Task not found' });
     const today = new Date().toISOString().split('T')[0];
+    // The neon driver returns a DATE column as a native JS Date object, not a string --
+    // normalize before doing any string work on it (unlike TIME columns, which already
+    // come back as plain "HH:MM:SS" strings).
+    const dueDateStr = task.due_date ? (task.due_date instanceof Date ? task.due_date.toISOString().split('T')[0] : String(task.due_date).split('T')[0]) : null;
 
     if (task.was_skipped) {
-      const anchorDate = task.due_date || today;
+      const anchorDate = dueDateStr || today;
       const tomorrow = new Date(anchorDate + 'T00:00:00');
       tomorrow.setDate(tomorrow.getDate() + 1);
       await sql`
@@ -41,7 +45,7 @@ export default async function handler(req, res) {
       return res.status(200).json({ message: 'Task moved to tomorrow.' });
     }
 
-    const dueDate = task.due_date || today;
+    const dueDate = dueDateStr || today;
     const BANK_START = '20:00:00';
     let bankStart = BANK_START;
     const [{ latest_end }] = await sql`
