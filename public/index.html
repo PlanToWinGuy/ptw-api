@@ -767,6 +767,17 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
 </div>
 
 <!-- ══════════════════════════════════
+     FITNESS QUICK-ADD: MULTI-OPTION MODAL
+══════════════════════════════════ -->
+<div class="modal-overlay" id="modal-workout-quick-add" onclick="closeModal('modal-workout-quick-add',event)">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-workout-quick-add')">×</button>
+    <h3>Log a Workout</h3>
+    <div id="workout-quick-add-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:6px"></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
      TAKE A BREAK: FOLLOW-UP PROMPT
 ══════════════════════════════════ -->
 <div class="modal-overlay" id="modal-break-followup" onclick="closeModal('modal-break-followup',event)">
@@ -2385,7 +2396,7 @@ function openTaskByToolHint(t) {
 // Pillar nav's center "+" button: context-aware quick-add, one tap straight into
 // the pillar's own most-specific logging flow instead of the generic Add Task modal.
 const PILLAR_QUICK_ADD = {
-  fitness:   ()=>openWorkoutHub(),
+  fitness:   ()=>openWorkoutQuickAdd(),
   diet:      ()=>openMealLog('snack'),
   finances:  ()=>openLogTransaction('expense'),
   relations: ()=>openConnectionLog(null),
@@ -4595,7 +4606,12 @@ let workoutPlansCache={}, activeWorkout=null;
 async function loadFitnessMap() {
   const container=document.getElementById('pillar-tab-map');
   const p=PILLARS.fitness;
-  const data=await req('GET','/metrics?pillar_id='+p.id+'&days=30');
+  const todayStr=new Date().toISOString().split('T')[0];
+  const [data, overview, weightLogs]=await Promise.all([
+    req('GET','/metrics?pillar_id='+p.id+'&days=30'),
+    req('POST','/user-projects',{date:todayStr}),
+    req('GET','/metrics?pillar_id='+p.id+'&log_type=weight'),
+  ]);
   const logs=(data?.logs||[]).filter(l=>l.log_type==='workout');
   const dateOf=l=>(l.logged_at||'').split('T')[0];
   const today=new Date();
@@ -4612,18 +4628,155 @@ async function loadFitnessMap() {
     streak++; d.setDate(d.getDate()-1);
   }
 
+  // Today's real scheduled workout -- a Fitness task tagged tool_hint='workout' from the
+  // same Daily Overview data everywhere else reads, not a separate guess. Absent -> Rest Day.
+  const todaysWorkoutTask=(overview?.data||[]).find(t=>t.pillar==='Fitness' && t.toolHint==='workout' && t.status!=='Completed');
+
+  const latestWeight=(weightLogs?.logs||[])[0];
+
   const html=`
-    <div class="metric-row">
+    <div class="rm-goal-card" style="text-align:center;background:${p.color}">
+      ${todaysWorkoutTask ? `
+        <div style="font-size:11px;color:rgba(255,255,255,.75);letter-spacing:.5px">TODAY'S WORKOUT</div>
+        <div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:#fff;margin:6px 0 14px">${todaysWorkoutTask.name}</div>
+        <div style="display:flex;gap:10px;justify-content:center">
+          <button class="btn-p filled" style="background:#fff;color:${p.color};border-color:#fff" onclick="startTodaysWorkout(${todaysWorkoutTask.taskId})">Start Workout</button>
+          <button class="btn-p" style="border-color:rgba(255,255,255,.5);color:#fff" onclick="openTodaysWorkoutEdit(${todaysWorkoutTask.taskId})">Edit</button>
+        </div>` : `
+        <div style="font-size:11px;color:rgba(255,255,255,.75);letter-spacing:.5px">TODAY</div>
+        <div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:#fff;margin:6px 0 14px">😴 Rest Day</div>
+        <button class="btn-p" style="border-color:rgba(255,255,255,.5);color:#fff" onclick="openWorkoutHub()">Modify Plan</button>`}
+    </div>
+    <div class="metric-row" style="margin-top:14px">
       <div class="metric-card" style="background:${p.color}"><div class="metric-icon">🏋️</div><div class="metric-val" style="color:#fff">${weeklyVolume.toLocaleString()}</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Weekly Volume (kg)</div></div>
       <div class="metric-card" style="background:${p.color}"><div class="metric-icon">📅</div><div class="metric-val" style="color:#fff">${workoutsThisWeek}</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Workouts This Week</div></div>
       <div class="metric-card" style="background:${p.color}"><div class="metric-icon">🔥</div><div class="metric-val" style="color:#fff">${streak}</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Day Streak</div></div>
       <div class="metric-card" style="background:${p.color}"><div class="metric-icon">✨</div><div class="metric-val" style="color:#fff">${prCount}</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Personal Records</div></div>
     </div>
-    <button class="view-log-btn" style="margin-top:16px" onclick="openWorkoutHub()">View Full Workout Hub</button>`;
+    <div class="rm-goal-card" style="margin-top:14px;display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div class="section-sub">Current Weight</div>
+        <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:var(--text)">${latestWeight?`${latestWeight.value} ${latestWeight.unit||'kg'}`:'Not logged yet'}</div>
+      </div>
+      <button class="view-log-btn" style="width:auto" onclick="openLogWeight()">+ Log Weight</button>
+    </div>
+    <button class="view-log-btn" style="margin-top:10px" onclick="openWorkoutHub()">View Full Workout Hub</button>`;
   container.innerHTML=html;
 }
 
+// Today's Workout CTA -- links this session's completion to the real scheduled task
+// (same task_id-linked XP path finishWorkout()/api/metrics.js already support), so
+// finishing it also marks the Daily Overview task Completed instead of a disconnected log.
+function startTodaysWorkout(taskId) {
+  S.pendingTaskId=taskId;
+  openFitnessLogEntry();
+}
+
+// Edit action for today's scheduled workout: swap to a different saved plan (jumps into
+// My Plans, still linked to the same taskId via S.pendingTaskId), or mark today a rest day
+// via the existing Skip-to-bank flow instead of a bespoke "rest day" concept.
+function openTodaysWorkoutEdit(taskId) {
+  openConfirm('Today\'s Workout', 'Mark today as a rest day (skip this workout), or choose Cancel to pick a different plan from My Plans instead.', async ()=>{
+    await req('POST','/tasks/skip',{task_id:taskId});
+    toast('Marked as a rest day');
+    loadFitnessMap();
+  });
+}
+
+async function openLogWeight() {
+  const prefs=await req('GET','/preferences/units')||{};
+  S.editingWeightUnit = prefs.weight==='lbs' ? 'lbs' : 'kg';
+  openConfirm('Log Current Weight', 'Enter your weight in the input that will appear, then confirm.', ()=>{});
+  // A dedicated numeric prompt is simpler and more honest here than repurposing the
+  // generic confirm modal's copy -- swap in a real input immediately after it renders.
+  const body=document.getElementById('confirm-body');
+  body.innerHTML=`<input type="number" id="weight-log-input" placeholder="Weight (${S.editingWeightUnit})" style="width:100%;padding:10px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none;margin-top:8px">`;
+  document.getElementById('confirm-yes-btn').onclick=async ()=>{
+    const val=Number(document.getElementById('weight-log-input').value);
+    if(!val) { toast('Enter a valid weight'); return; }
+    closeModal('modal-confirm');
+    await req('POST','/metrics',{pillar_id:PILLARS.fitness.id, log_type:'weight', value:val, unit:S.editingWeightUnit});
+    toast('Weight logged');
+    loadFitnessMap();
+  };
+}
+
 function openWorkoutHub() { showScreen('workout-hub'); switchWorkoutHubTab('myplans'); }
+
+// Multi-option FAB (Fitness's "+") -- same modal-break-options pattern reused for a
+// different pillar: one tap surfaces the 3 real ways to log a workout instead of always
+// dropping straight into the Workout Hub.
+function openWorkoutQuickAdd() {
+  document.getElementById('workout-quick-add-list').innerHTML = `
+    <div class="sq-card" onclick="closeModal('modal-workout-quick-add');openLogPastActivityPicker()">
+      <div class="sq-icon" style="background:var(--fitness)22;color:var(--fitness)">🗓️</div>
+      <div class="sq-info"><div class="sq-name">Log Past Activity</div><div class="sq-meta">Record a workout you already did</div></div>
+    </div>
+    <div class="sq-card" onclick="closeModal('modal-workout-quick-add');S.pendingTaskId=null;openWorkoutHub()">
+      <div class="sq-icon" style="background:var(--fitness)22;color:var(--fitness)">⚡</div>
+      <div class="sq-info"><div class="sq-name">Start Spontaneous Activity</div><div class="sq-meta">Jump into a workout right now</div></div>
+    </div>
+    <div class="sq-card" onclick="closeModal('modal-workout-quick-add');openCreateWorkoutTemplate()">
+      <div class="sq-icon" style="background:var(--fitness)22;color:var(--fitness)">✏️</div>
+      <div class="sq-info"><div class="sq-name">Create New Template</div><div class="sq-meta">Build a reusable workout plan</div></div>
+    </div>`;
+  document.getElementById('modal-workout-quick-add').classList.add('open');
+}
+
+// Reuses the generic Confirm modal as a plan picker -- the Yes button is hidden since
+// tapping a plan row IS the confirming action, restored after for the modal's other uses.
+async function openLogPastActivityPicker() {
+  const data=await req('GET','/metrics?pillar_id='+PILLARS.fitness.id+'&log_type=workout_plan');
+  const plans=data?.logs||[];
+  if(!plans.length) { toast('No saved plans yet — create a template first'); return; }
+  openConfirm('Log Past Activity', 'Pick a date, then choose a plan to log it against.', ()=>{});
+  document.getElementById('confirm-yes-btn').style.display='none';
+  document.getElementById('confirm-body').innerHTML=`
+    <input type="date" id="past-activity-date" value="${new Date().toISOString().split('T')[0]}" max="${new Date().toISOString().split('T')[0]}" style="width:100%;padding:10px;margin-bottom:10px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);outline:none">
+    <div style="display:flex;flex-direction:column;gap:6px">
+      ${plans.map(p=>`<div class="view-log-btn" style="text-align:left;justify-content:space-between" onclick="startPastWorkout(${p.id})">${p.data?.name||'Plan'} <span>›</span></div>`).join('')}
+    </div>`;
+}
+
+function startPastWorkout(planId) {
+  S.quickAddPastDate=document.getElementById('past-activity-date')?.value||null;
+  closeModal('modal-confirm');
+  document.getElementById('confirm-yes-btn').style.display='';
+  S.pendingTaskId=null;
+  startWorkout(planId);
+}
+
+function renderTemplateRows() {
+  document.getElementById('tpl-rows').innerHTML = S.tplRows.map((r,i)=>`
+    <div style="display:flex;gap:6px">
+      <input type="text" placeholder="Exercise" value="${r.name}" oninput="S.tplRows[${i}].name=this.value" style="flex:2;padding:8px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);outline:none">
+      <input type="number" placeholder="Sets" value="${r.sets}" oninput="S.tplRows[${i}].sets=Number(this.value)" style="flex:1;padding:8px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none">
+      <input type="number" placeholder="Reps" value="${r.reps}" oninput="S.tplRows[${i}].reps=Number(this.value)" style="flex:1;padding:8px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none">
+      <input type="number" placeholder="Kg" value="${r.weight}" oninput="S.tplRows[${i}].weight=Number(this.value)" style="flex:1;padding:8px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none">
+    </div>`).join('');
+}
+function addTemplateRow() { S.tplRows.push({name:'',sets:3,reps:10,weight:0}); renderTemplateRows(); }
+
+function openCreateWorkoutTemplate() {
+  S.tplRows=[{name:'',sets:3,reps:10,weight:0}];
+  openConfirm('Create Workout Template', 'Fill in the exercises below, then save.', ()=>{});
+  document.getElementById('confirm-body').innerHTML=`
+    <input type="text" id="tpl-name" placeholder="Plan name" style="width:100%;padding:10px;margin-bottom:10px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);outline:none">
+    <div id="tpl-rows" style="display:flex;flex-direction:column;gap:8px;max-height:220px;overflow-y:auto"></div>
+    <button class="view-log-btn" style="margin-top:10px" onclick="addTemplateRow()">+ Add Exercise Row</button>`;
+  renderTemplateRows();
+  const yesBtn=document.getElementById('confirm-yes-btn');
+  yesBtn.textContent='Save Template';
+  yesBtn.onclick=async ()=>{
+    const name=document.getElementById('tpl-name').value.trim();
+    const exercises=S.tplRows.filter(r=>r.name.trim()).map(r=>({name:r.name.trim(), sets:r.sets||3, targetReps:r.reps||10, targetWeight:r.weight||0}));
+    if(!name||!exercises.length) { toast('Add a name and at least one exercise'); return; }
+    closeModal('modal-confirm');
+    yesBtn.textContent='Yes';
+    await req('POST','/metrics',{pillar_id:PILLARS.fitness.id, log_type:'workout_plan', value:45, unit:'min', data:{name, exercises, source:'manual'}});
+    toast('Template created');
+  };
+}
 
 async function switchWorkoutHubTab(tab) {
   ['history','myplans'].forEach(t=>{
@@ -4653,12 +4806,35 @@ function workoutPlanCard(plan) {
   const d=plan.data||{};
   return `<div class="rm-goal-card" style="margin-bottom:10px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-      <span style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text)">${d.name||'Plan'}</span>
+      <span style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text);cursor:pointer" onclick="viewWorkoutPlanDetail(${plan.id})">${d.name||'Plan'} <span style="color:var(--stone);font-size:11px">›</span></span>
       <span style="font-size:11px;color:var(--stone)">${plan.value||45} min</span>
     </div>
     <div style="font-size:12px;color:var(--stone);margin-bottom:10px">${(d.exercises||[]).length} Exercises</div>
     <button class="btn-p filled" style="background:var(--fitness);border-color:var(--fitness)" onclick="startWorkout(${plan.id})">Start Workout</button>
   </div>`;
+}
+
+// Read-only preview of an un-started plan template -- mirrors viewWorkoutDetail()'s
+// completed-workout rendering, but reads target-only data from workoutPlansCache (a
+// template's exercises carry sets as a count, not a per-set actual/target array like a
+// finished log does) instead of an "Actual" column that doesn't exist yet.
+function viewWorkoutPlanDetail(planId) {
+  const d=workoutPlansCache[planId];
+  if(!d) return;
+  showScreen('workout-log');
+  document.getElementById('workout-log-header').textContent=d.name||'Plan';
+  document.getElementById('workout-log-body').innerHTML=`
+    <div class="section-sub" style="margin-top:14px">TEMPLATE PREVIEW · NOT YET STARTED</div>
+    <div class="section-title" style="margin-top:8px">Exercises</div>
+    ${(d.exercises||[]).map(ex=>`
+      <div class="rm-goal-card" style="margin-bottom:10px">
+        <div style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text);margin-bottom:8px">${ex.name}</div>
+        ${Array.from({length:ex.sets||3}).map((_,i)=>`<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--stone);padding:4px 0;border-top:1px solid rgba(196,184,168,.07)">
+          <span>Set ${i+1}</span><span>Target: ${ex.targetWeight||0}kg × ${ex.targetReps||10}</span>
+        </div>`).join('')}
+      </div>`).join('')}
+    <button class="btn-p filled" style="margin-top:16px;background:var(--fitness);border-color:var(--fitness)" onclick="startWorkout(${planId})">Start Workout</button>
+    <button class="btn-p" style="margin:10px 0 20px" onclick="showScreen('workout-hub')">← Back to Workout Hub</button>`;
 }
 
 function workoutHistoryCard(w) {
@@ -4737,9 +4913,12 @@ function renderActiveWorkout() {
       </div>
       <button class="btn-p filled" style="margin-top:14px;background:var(--fitness);border-color:var(--fitness)" onclick="logSet()">Log Set</button>
     </div>
+    <button class="view-log-btn" style="margin-top:14px" onclick="openAddExercise()">+ Add Exercise</button>
     <textarea id="workout-session-notes" placeholder="Add Session Notes:" rows="2" style="width:100%;margin-top:14px;padding:12px;background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:10px;color:var(--text);font-size:13px;outline:none;resize:none">${w.sessionNotes}</textarea>
     <button class="btn-p filled" style="margin-top:16px;margin-bottom:20px;background:var(--fitness);border-color:var(--fitness)" onclick="finishWorkout()">Finish Workout</button>`;
 }
+
+const REST_BETWEEN_SETS_SECONDS=90;
 
 function logSet() {
   const w=activeWorkout;
@@ -4748,14 +4927,69 @@ function logSet() {
   set.actualWeight=Number(document.getElementById('set-actual-weight').value)||set.targetWeight;
   set.actualReps=Number(document.getElementById('set-actual-reps').value)||set.targetReps;
   w.sessionNotes=document.getElementById('workout-session-notes').value;
-  if(w.setIdx<ex.sets.length-1) w.setIdx++;
-  else if(w.exerciseIdx<w.exercises.length-1) { w.exerciseIdx++; w.setIdx=0; }
-  else { toast('All sets logged — tap Finish Workout ⚡'); return; }
+  if(w.setIdx<ex.sets.length-1) { w.setIdx++; renderRestTimer(); }
+  else if(w.exerciseIdx<w.exercises.length-1) { w.exerciseIdx++; w.setIdx=0; renderRestTimer(); }
+  else toast('All sets logged — tap Finish Workout ⚡');
+}
+
+// Simple rest countdown between sets -- same screen, no new endpoint. Cleared on Skip
+// Rest or if the user navigates away mid-countdown (the DOM check inside the interval
+// catches that instead of leaking a timer against a screen that's no longer showing).
+function renderRestTimer() {
+  const w=activeWorkout;
+  let remaining=REST_BETWEEN_SETS_SECONDS;
+  document.getElementById('workout-log-body').innerHTML=`
+    <div style="text-align:center;padding:50px 0">
+      <div class="section-sub">REST</div>
+      <div id="rest-countdown" style="font-family:'Syne',sans-serif;font-size:48px;font-weight:800;color:var(--fitness);margin:14px 0">${remaining}s</div>
+      <button class="btn-p filled" style="background:var(--fitness);border-color:var(--fitness)" onclick="skipRest()">Skip Rest</button>
+    </div>`;
+  clearInterval(w.restTimer);
+  w.restTimer=setInterval(()=>{
+    remaining--;
+    const el=document.getElementById('rest-countdown');
+    if(!el) { clearInterval(w.restTimer); return; }
+    if(remaining<=0) { clearInterval(w.restTimer); renderActiveWorkout(); return; }
+    el.textContent=remaining+'s';
+  },1000);
+}
+
+function skipRest() {
+  clearInterval(activeWorkout.restTimer);
   renderActiveWorkout();
+}
+
+// Appends a custom exercise to this session only (no exercise database lookup) --
+// same data shape every other exercise already uses, so logSet()/finishWorkout() need
+// zero changes to handle it.
+function openAddExercise() {
+  openConfirm('Add Exercise', 'Add a one-off exercise for this session only.', ()=>{});
+  document.getElementById('confirm-body').innerHTML=`
+    <input type="text" id="ae-name" placeholder="Exercise name" style="width:100%;padding:10px;margin-bottom:8px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);outline:none">
+    <div style="display:flex;gap:8px">
+      <input type="number" id="ae-sets" placeholder="Sets" value="3" style="flex:1;padding:10px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none">
+      <input type="number" id="ae-reps" placeholder="Reps" value="10" style="flex:1;padding:10px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none">
+      <input type="number" id="ae-weight" placeholder="Weight (kg)" value="0" style="flex:1;padding:10px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none">
+    </div>`;
+  document.getElementById('confirm-yes-btn').onclick=()=>{
+    const name=document.getElementById('ae-name').value.trim();
+    if(!name) { toast('Enter an exercise name'); return; }
+    const sets=Number(document.getElementById('ae-sets').value)||3;
+    const reps=Number(document.getElementById('ae-reps').value)||10;
+    const weight=Number(document.getElementById('ae-weight').value)||0;
+    closeModal('modal-confirm');
+    activeWorkout.exercises.push({
+      name,
+      sets: Array.from({length:sets},()=>({targetWeight:weight, targetReps:reps, actualWeight:null, actualReps:null})),
+    });
+    toast(`${name} added to this session`);
+    renderActiveWorkout();
+  };
 }
 
 function skipExercise() {
   const w=activeWorkout;
+  clearInterval(w.restTimer);
   if(w.exerciseIdx<w.exercises.length-1) { w.exerciseIdx++; w.setIdx=0; renderActiveWorkout(); }
   else toast('Last exercise — tap Finish Workout');
 }
@@ -4767,8 +5001,10 @@ async function finishWorkout() {
   const totalVolume=w.exercises.reduce((s,ex)=>s+ex.sets.reduce((s2,set)=>s2+(Number(set.actualWeight)||0)*(Number(set.actualReps)||0),0),0);
   const p=PILLARS.fitness;
   const taskId=S.pendingTaskId; S.pendingTaskId=null;
-  const result=await req('POST','/metrics',{pillar_id:p.id, log_type:'workout', value:totalVolume, unit:'kg', task_id:taskId||undefined, data:{planName:w.planName, exercises:w.exercises, durationMin, sessionNotes:w.sessionNotes}});
-  showWorkoutComplete({durationMin, totalVolume, xp:result?.xp_gained||0, prs:result?.data?.data?.prs||[]});
+  const loggedAt=S.quickAddPastDate ? new Date(S.quickAddPastDate+'T12:00:00').toISOString() : undefined;
+  S.quickAddPastDate=null;
+  const result=await req('POST','/metrics',{pillar_id:p.id, log_type:'workout', value:totalVolume, unit:'kg', task_id:taskId||undefined, logged_at:loggedAt, data:{planName:w.planName, exercises:w.exercises, durationMin, sessionNotes:w.sessionNotes}});
+  showWorkoutComplete({durationMin, totalVolume, xp:result?.xp_gained||0, prs:result?.data?.data?.prs||[], logId:result?.data?.id});
 }
 
 function showWorkoutComplete(m) {
@@ -4785,7 +5021,8 @@ function showWorkoutComplete(m) {
         <div><div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:var(--fitness)">${hrs}h ${mins}m</div><div style="font-size:11px;color:var(--stone)">Duration</div></div>
       </div>
       ${m.prs.length?`<div class="section-sub">NEW PERSONAL RECORDS</div>${m.prs.map(pr=>`<div class="rm-strategy" style="background:var(--fitness);margin-top:8px">✨ ${pr.exercise}: ${pr.weight}kg × ${pr.reps} reps (New PR)</div>`).join('')}`:''}
-      <button class="btn-p filled" style="margin-top:20px" onclick="showPillarScreen('fitness')">🏠 Back to Home</button>
+      ${m.logId?`<button class="btn-p" style="margin-top:14px" onclick="viewWorkoutDetail(${m.logId})">View Full Details</button>`:''}
+      <button class="btn-p filled" style="margin-top:10px" onclick="showPillarScreen('fitness')">🏠 Back to Home</button>
     </div>`;
 }
 
@@ -6540,7 +6777,10 @@ async function loadPillarRoadmap(pillarKey) {
   container.innerHTML='<div class="spinner"></div>';
   const p=PILLARS[pillarKey];
 
-  const data = await req('GET','/goals?pillar_id='+p.id);
+  const [data, tasksData] = await Promise.all([
+    req('GET','/goals?pillar_id='+p.id),
+    req('GET','/simple-tasks'),
+  ]);
   const g = (data?.data||[])[0];
 
   if(!g) {
@@ -6552,18 +6792,28 @@ async function loadPillarRoadmap(pillarKey) {
     return;
   }
 
+  // Real milestone progress: the goal's linked Project's own sub-task completion ratio
+  // (same math as Work/Personal Hub's leastDone calc) maps onto how many milestones are
+  // "done" -- replaces the old hardcoded doneCount=0 that never moved.
+  const allTasks=(Array.isArray(tasksData)?tasksData:(tasksData?.data||[]));
+  const goalProject = buildProjectsFromTasks(allTasks, p.id).find(pr=>pr.goal_id===g.id);
+  const subTasks = goalProject?.subTasks||[];
+  const pct = subTasks.length ? Math.round(subTasks.filter(s=>s.status==='Completed').length/subTasks.length*100) : 0;
+
   const milestones = g.milestones||[];
-  const doneCount = 0; // real completion tracking lands with task-level rollup (see roadmap)
-  const pct = milestones.length ? Math.round(doneCount/milestones.length*100) : 0;
+  const milestonesDone = milestones.length ? Math.min(milestones.length, Math.floor((pct/100)*milestones.length)) : 0;
   // A real computed date (see api/goals.js's parseTimelineDays + Plan Shift, which pushes
   // this forward when a Dynamic goal falls behind) -- replaces the old fallback to the
   // AI's raw timeline text ("60 days"), and to milestones[].date which was never populated.
   const projectedDate = g.endDate ? new Date(g.endDate).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : (g.timeline||'—');
 
   let html = `<div class="rm-goal-card">
-    <div class="section-sub">${g.timelineType==='strict'?'🔒 STRICT DEADLINE':'🔀 DYNAMIC TIMELINE'} · AI STRATEGY</div>`;
-  (g.strategy||[]).forEach(s=>{
-    html += `<div class="rm-strategy" style="background:${p.color}">${s}</div>`;
+    <div class="section-sub">${g.timelineType==='strict'?'🔒 STRICT DEADLINE':'🔀 DYNAMIC TIMELINE'} · STRATEGY</div>`;
+  (g.strategyCards||[]).forEach(c=>{
+    html += `<div class="rm-strategy" style="background:${p.color};cursor:pointer" onclick="onStrategyCardTap('${c.type}','${pillarKey}',${c.pillarActive===false?'false':'true'})">
+      <div style="font-weight:700;margin-bottom:2px">${c.title}</div>
+      <div style="opacity:.9;font-size:12px">${c.body}</div>
+    </div>`;
   });
   if(g.dailyAnchor) html += `<div class="rm-strategy" style="background:${p.color};opacity:.85">Daily anchor: ${g.dailyAnchor} <span style="opacity:.8">· 🔁 Every day</span></div>`;
 
@@ -6579,9 +6829,11 @@ async function loadPillarRoadmap(pillarKey) {
       <div class="tm-row"><div class="tm-col"><div class="tm-dot done" style="background:${p.color}"></div><div class="tm-line"></div></div><div class="tm-content"><div class="tm-label">START</div><div class="tm-name">Goal set</div></div></div>`;
     milestones.forEach((m,i)=>{
       const isLast=i===milestones.length-1;
+      const isDone=i<milestonesDone, isHere=i===milestonesDone;
       html += `<div class="tm-row">
-        <div class="tm-col"><div class="tm-dot lock"></div>${!isLast?'<div class="tm-line"></div>':''}</div>
+        <div class="tm-col"><div class="tm-dot ${isDone?'done':'lock'}" style="${isDone?'background:'+p.color:''}"></div>${!isLast?'<div class="tm-line"></div>':''}</div>
         <div class="tm-content">
+          ${isHere?`<div class="tm-label" style="color:${p.color}">YOU ARE HERE</div>`:''}
           <div class="tm-label">${m.label||('M'+(i+1))}</div>
           <div class="tm-name">🏆 ${m.marker||m.name||''}</div>
           ${m.xp?`<div class="tm-xp">+${m.xp} XP</div>`:''}
@@ -6606,6 +6858,16 @@ async function loadPillarRoadmap(pillarKey) {
 
   html += `</div>`;
   container.innerHTML = html;
+}
+
+// Strategy Card tap routing -- Workouts jumps into the pillar's own logging hub (Fitness's
+// Workout Hub for a real destination; other pillars just switch to their Map tab), Habits
+// explains the Routines-backed materialization instead of repeating the card's own text,
+// Synergy opens Pillar Select only when the complementary pillar isn't active yet.
+function onStrategyCardTap(type, pillarKey, pillarActive) {
+  if(type==='workouts') { pillarKey==='fitness' ? openWorkoutHub() : switchPillarTab('map'); }
+  else if(type==='habits') { toast('This habit lives in your Routines Library -- open it there to change its time or pause it.'); openTodoRoutines(); }
+  else if(type==='synergy') { if(!pillarActive) openPillarSelect(); }
 }
 
 // Launches the same rich questionnaire+AI flow used during pillar activation, whether

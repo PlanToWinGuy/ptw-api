@@ -50,7 +50,12 @@ Also include a "workoutPlans" array — 2 concrete starter workout plans matchin
 
 const GOAL_TYPES = new Set(['habit', 'project', 'skill', 'mindset']);
 
-function serialize(g) {
+// Static complementary-pillar map for the Synergy card -- deterministic, no AI call.
+// Personal is the hub several other pillars point to; its own card points back at Work
+// as the single most common pairing rather than listing all three.
+const SYNERGY_MAP = { fitness: 'diet', diet: 'fitness', work: 'personal', personal: 'work', finances: 'personal', relations: 'personal' };
+
+function serialize(g, strategyCards) {
   return {
     id: g.id,
     pillar: PILLARS[g.pillar_id] || null,
@@ -67,7 +72,63 @@ function serialize(g) {
     alts: g.alts,
     difficulty: g.difficulty,
     created_at: g.created_at,
+    strategyCards: strategyCards || [],
   };
+}
+
+// Strategy Cards for the Roadmap's "AI Strategy" section -- computed deterministically
+// from data already on hand (questionnaire answers, workout plan templates, linked
+// routines, unlocked pillars) rather than a second AI call. Replaces the dead
+// `g.strategy` field the frontend used to read (never populated by the AI prompt).
+async function buildStrategyCards(user, g, unlockedPillarIds) {
+  const pillarName = (PILLARS[g.pillar_id] || '').toLowerCase();
+  const cards = [];
+
+  if (pillarName === 'fitness') {
+    const [{ count: planCount }] = await sql`SELECT COUNT(*)::int AS count FROM metric_logs WHERE user_id = ${user.id} AND pillar_id = ${g.pillar_id} AND log_type = 'workout_plan'`;
+    const answersRows = await sql`SELECT answers FROM pillar_answers WHERE user_id = ${user.id} AND pillar_id = ${g.pillar_id} ORDER BY created_at DESC LIMIT 1`;
+    const answers = answersRows[0]?.answers || {};
+    if (planCount || answers.weekly_days || answers.activity_type) {
+      cards.push({
+        type: 'workouts',
+        title: 'Your Training Plan',
+        body: [
+          answers.weekly_days ? `${answers.weekly_days} workouts/week` : null,
+          answers.activity_type ? `focused on ${answers.activity_type}` : null,
+          planCount ? `${planCount} starter plan${planCount === 1 ? '' : 's'} ready in your Workout Hub` : null,
+        ].filter(Boolean).join(' · '),
+      });
+    }
+  }
+
+  const routineRows = await sql`SELECT name FROM routines WHERE goal_id = ${g.id} AND is_active = true ORDER BY created_at ASC`;
+  if (routineRows.length) {
+    cards.push({
+      type: 'habits',
+      title: 'Daily Habit Added',
+      body: routineRows.length === 1
+        ? `"${routineRows[0].name}" has been added to your daily schedule -- it'll show up every day for the life of this plan.`
+        : `${routineRows.length} daily habits have been added to your schedule -- they'll show up every day for the life of this plan.`,
+    });
+  }
+
+  const complementKey = SYNERGY_MAP[pillarName];
+  if (complementKey) {
+    const complementId = pillarIdFromName(complementKey);
+    const complementLabel = PILLARS[complementId];
+    const isUnlocked = unlockedPillarIds.has(complementId);
+    cards.push({
+      type: 'synergy',
+      title: 'Synergy',
+      body: isUnlocked
+        ? `Your ${complementLabel} plan is already active -- keep both moving together for compounding results.`
+        : `Your ${complementLabel} pillar isn't active yet -- activating it could accelerate results here.`,
+      targetPillar: complementLabel,
+      pillarActive: isUnlocked,
+    });
+  }
+
+  return cards;
 }
 
 async function listGoals(req, res, user) {
@@ -77,7 +138,12 @@ async function listGoals(req, res, user) {
   const rows = pillar_id
     ? await sql`SELECT * FROM goals WHERE user_id = ${user.id} AND pillar_id = ${pillar_id} AND is_active = true ORDER BY created_at DESC LIMIT 1`
     : await sql`SELECT * FROM goals WHERE user_id = ${user.id} AND is_active = true ORDER BY created_at DESC`;
-  res.status(200).json({ data: rows.map(serialize) });
+
+  const unlockedRows = await sql`SELECT pillar_id FROM user_pillars WHERE user_id = ${user.id}`;
+  const unlockedPillarIds = new Set(unlockedRows.map(r => r.pillar_id));
+
+  const data = await Promise.all(rows.map(async g => serialize(g, await buildStrategyCards(user, g, unlockedPillarIds))));
+  res.status(200).json({ data });
 }
 
 // Pulls the Map of You reading into plan generation -- the archetype/edge/gap for this
