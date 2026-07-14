@@ -39,6 +39,8 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
 /* Scrollable content area */
 .scroll-body{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding-bottom:calc(var(--nav-h) + var(--sb) + 8px)}
 .scroll-body::-webkit-scrollbar{display:none}
+.modal-scroll{scrollbar-width:none}
+.modal-scroll::-webkit-scrollbar{display:none}
 
 /* ══════════════════════════════════
    SPLASH SCREEN
@@ -591,7 +593,7 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
       <button class="icon-btn" onclick="openBreak()">☕</button>
     </div>
     <div class="ptw-badge" onclick="openAIChat()"><svg width="27" height="27" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"><g transform="translate(34,79) scale(2)"><text x="0" y="17" font-family="Syne,sans-serif" font-weight="800" font-size="20" fill="#F2EDE6">PT</text><polyline points="39,2 43.5,19 48.5,7 53.5,19 58,2" fill="none" stroke="#F2EDE6" stroke-width="3.6" stroke-linejoin="miter" stroke-linecap="butt"/><polyline points="48.5,7 53.5,19 58,2" fill="none" stroke="#5BA4DC" stroke-width="3.6" stroke-linejoin="miter" stroke-linecap="butt"/></g></svg></div>
-    <button class="icon-btn" onclick="openProfile()">⚙️</button>
+    <button class="icon-btn" onclick="openProfile()" title="Profile">👤</button>
   </div>
 
   <div class="home-body">
@@ -1402,10 +1404,16 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
       <button class="modal-close" style="float:none;margin:0" onclick="closeModal('modal-task')">×</button>
     </div>
     <div class="modal-scroll" style="flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch">
-    <div class="field"><input type="text" id="t-name" placeholder="What do you need to do?"></div>
+    <div class="field"><label>TASK NAME <span style="color:#C46882">*</span></label><input type="text" id="t-name" placeholder="What do you need to do?"></div>
     <div id="quest-suggestions" style="margin:-6px 0 12px"></div>
-    <div class="field"><label>DESCRIPTION / CHECKLIST (OPTIONAL)</label>
-      <textarea id="t-desc" rows="3" placeholder="Add details or a checklist…" style="width:100%;padding:12px 14px;background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:10px;color:var(--text);font-size:14px;font-family:'Inter',sans-serif;outline:none;resize:none"></textarea>
+    <div class="field"><label>DURATION (MIN) <span style="color:#C46882">*</span></label><input type="number" id="t-dur" placeholder="30" min="5"></div>
+    <div class="field"><label>PRIORITY <span style="color:#C46882">*</span></label>
+      <div class="pillar-grid" id="task-priority-grid" style="grid-template-columns:repeat(4,1fr)">
+        <button class="pg-btn" style="background:var(--bg4)" data-priority="Low" onclick="selTaskPriority(this)">Low</button>
+        <button class="pg-btn sel" style="background:var(--bg4)" data-priority="Medium" onclick="selTaskPriority(this)">Medium</button>
+        <button class="pg-btn" style="background:var(--bg4)" data-priority="High" onclick="selTaskPriority(this)">High</button>
+        <button class="pg-btn" style="background:var(--bg4)" data-priority="Urgent" onclick="selTaskPriority(this)">Urgent</button>
+      </div>
     </div>
     <div class="field"><label>PILLAR</label>
       <div class="pillar-grid" id="task-pillar-grid">
@@ -1416,6 +1424,11 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
         <button class="pg-btn" style="background:var(--personal)" data-p="personal" onclick="selPillar(this,'task-pillar-grid')">Personal</button>
         <button class="pg-btn" style="background:var(--work)" data-p="work" onclick="selPillar(this,'task-pillar-grid')">Work</button>
       </div>
+    </div>
+    <div class="field"><label>DUE DATE (OPTIONAL)</label><input type="date" id="t-due-date"></div>
+    <div class="field"><label>DUE TIME (OPTIONAL)</label><input type="time" id="t-due-time"></div>
+    <div class="field"><label>DESCRIPTION / CHECKLIST (OPTIONAL)</label>
+      <textarea id="t-desc" rows="3" placeholder="Add details or a checklist…" style="width:100%;padding:12px 14px;background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:10px;color:var(--text);font-size:14px;font-family:'Inter',sans-serif;outline:none;resize:none"></textarea>
     </div>
     <div class="field"><label>ICON (OPTIONAL)</label>
       <div class="pillar-grid" id="task-icon-grid" style="grid-template-columns:repeat(4,1fr)">
@@ -1439,17 +1452,6 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
         <button class="pg-btn" style="background:#8B6FB0" data-color="#8B6FB0" onclick="selTaskColor(this)">&nbsp;</button>
         <button class="pg-btn" style="background:#C46882" data-color="#C46882" onclick="selTaskColor(this)">&nbsp;</button>
         <button class="pg-btn" style="background:#B0B0B0" data-color="#B0B0B0" onclick="selTaskColor(this)">&nbsp;</button>
-      </div>
-    </div>
-    <div class="field"><label>DUE DATE (OPTIONAL)</label><input type="date" id="t-due-date"></div>
-    <div class="field"><label>DUE TIME (OPTIONAL)</label><input type="time" id="t-due-time"></div>
-    <div class="field"><label>DURATION (min)</label><input type="number" id="t-dur" placeholder="30" min="5"></div>
-    <div class="field"><label>PRIORITY</label>
-      <div class="pillar-grid" id="task-priority-grid" style="grid-template-columns:repeat(4,1fr)">
-        <button class="pg-btn" style="background:var(--bg4)" data-priority="Low" onclick="selTaskPriority(this)">Low</button>
-        <button class="pg-btn sel" style="background:var(--bg4)" data-priority="Medium" onclick="selTaskPriority(this)">Medium</button>
-        <button class="pg-btn" style="background:var(--bg4)" data-priority="High" onclick="selTaskPriority(this)">High</button>
-        <button class="pg-btn" style="background:var(--bg4)" data-priority="Urgent" onclick="selTaskPriority(this)">Urgent</button>
       </div>
     </div>
     </div>
@@ -1836,22 +1838,25 @@ async function loadHomeData() {
   const proj=await req('POST','/user-projects',{date:today});
   const all=proj?.data||[];
   S.todaySchedule=all;
-  const pending=all.filter(t=>t.status==='Pending');
+  const pending=all.filter(t=>t.status==='Pending').sort((a,b)=>(a.startTime||'99').localeCompare(b.startTime||'99'));
 
-  if(pending.length>0) {
-    const t=pending[0];
+  // "Current" means actually happening right now (or unscheduled/floating, which has no
+  // time block to be out of) -- not just "the earliest pending task", which could be
+  // hours away. That distinction is what separates a real current task from a genuine
+  // gap in the schedule.
+  const nowStr=new Date().toTimeString().slice(0,8);
+  const activeNow=pending.find(t=>!t.startTime || (t.startTime<=nowStr && (!t.endTime || t.endTime>=nowStr)));
+  const nextUp=pending.find(t=>t!==activeNow && t.startTime && t.startTime>nowStr) || pending.find(t=>t!==activeNow);
+
+  if(activeNow) {
+    const t=activeNow;
     const pk=getPillarKey(t.pillar);
     const p=PILLARS[pk]||PILLARS.personal;
     document.getElementById('cta-label').textContent=t.name||'Your Quest';
     document.getElementById('cta-glyph').textContent=p.icon;
     document.getElementById('cta-ring').style.borderColor=p.color;
     document.getElementById('cta-ring').classList.add('active');
-    if(pending[1]) {
-      const nt=pending[1];
-      document.getElementById('next-txt').textContent='Next: '+nt.name+(nt.startTime?' at '+formatTimeOfDay(nt.startTime):'');
-    } else {
-      document.getElementById('next-txt').textContent='';
-    }
+    document.getElementById('next-txt').textContent=nextUp?('Next: '+nextUp.name+(nextUp.startTime?' at '+formatTimeOfDay(nextUp.startTime):'')):'';
     S.currentTask=t;
     updateCtaTimerRing();
   } else {
@@ -1859,14 +1864,13 @@ async function loadHomeData() {
     updateCtaTimerRing();
     document.getElementById('cta-ring').style.borderColor='var(--blue)';
     document.getElementById('cta-glyph').textContent='∞';
-    // 4.2.4 empty state: if a future task exists today, point to it; else the generic prompt.
-    const upcoming=all.find(t=>t.status==='Pending');
-    if(upcoming) {
-      document.getElementById('cta-label').textContent='Next Task:';
-      document.getElementById('next-txt').textContent=upcoming.name+(upcoming.startTime?' at '+formatTimeOfDay(upcoming.startTime):'');
+    if(nextUp) {
+      // A genuine gap in the schedule right now, but something real is coming up today.
+      document.getElementById('cta-label').textContent="Busy doing something else? Log it, or add something to do.";
+      document.getElementById('next-txt').textContent='Next: '+nextUp.name+(nextUp.startTime?' at '+formatTimeOfDay(nextUp.startTime):'');
     } else {
-      document.getElementById('cta-label').textContent=S.user?.name||S.userData?.username||'You';
-      document.getElementById('next-txt').textContent='Nothing planned yet — add a task';
+      document.getElementById('cta-label').textContent='Nothing scheduled — log how you spend your time, or add something to do.';
+      document.getElementById('next-txt').textContent='';
     }
   }
 }
@@ -2706,14 +2710,17 @@ function dailyTaskCard(t) {
   }
 
   const goalLabel = t.routineId ? 'Routine' : t.taskType==='ProjectTask' ? 'Main Goal' : t.isAntiGoal ? 'Anti-Goal' : t.taskType==='Logging' ? 'Habit' : (t.priority?t.priority+' Priority':'Quick Task');
-  const openCall = t.routineId ? `openActiveRoutineFromCard(${t.routineId},${t.taskId})` : (t.isAntiGoal && t.antiGoalType==='progressive' && t.status!=='Completed') ? `openLogAntiGoal(${t.taskId})` : '';
+  const isProject=t.taskType==='ProjectTask';
+  const openCall = t.routineId ? `openActiveRoutineFromCard(${t.routineId},${t.taskId})`
+    : isProject ? `openProjectDetail(${t.taskId},'daily')`
+    : (t.isAntiGoal && t.antiGoalType==='progressive' && t.status!=='Completed') ? `openLogAntiGoal(${t.taskId})` : '';
   return `<div class="sq-card"${openCall?` onclick="${openCall}"`:''}>
     <div class="sq-icon" style="background:${p.color}22;color:${p.color}">${t.routineId?'🔁':(t.isAntiGoal?'🎯':p.emoji)}</div>
     <div class="sq-info">
       <div class="sq-name">${t.startTime?formatTimeOfDay(t.startTime)+' — ':''}${t.name}</div>
       <div class="sq-meta">${goalLabel} · ${t.durationMinutes||0} min${t.status==='Completed'?' · ✓ Done':''}</div>
     </div>
-    ${t.status==='Completed'?'':`<div style="display:flex;gap:4px">
+    ${t.status==='Completed'||isProject?'':`<div style="display:flex;gap:4px">
       <button class="icon-btn ghost" style="width:30px;height:30px;font-size:13px" onclick="event.stopPropagation();openRescheduleTask(${t.taskId})" title="Reschedule">↻</button>
       <button class="icon-btn ghost" style="width:30px;height:30px;font-size:13px" onclick="event.stopPropagation();skipDailyTask(${t.taskId})" title="Skip">⏭</button>
     </div>`}
@@ -5979,7 +5986,7 @@ function openAddTask() {
   document.getElementById('modal-task-submit-btn').textContent='Add Task';
   document.getElementById('t-name').value='';
   document.getElementById('t-desc').value='';
-  document.getElementById('t-dur').value='';
+  document.getElementById('t-dur').value='30';
   document.getElementById('t-due-date').value=new Date().toISOString().split('T')[0];
   document.getElementById('t-due-time').value='';
   resetTaskModalGrid('task-pillar-grid','p','fitness',true);
