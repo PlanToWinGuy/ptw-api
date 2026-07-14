@@ -372,12 +372,12 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
    whatever screen was already open (usually Home) rather than replacing it, so
    the rest of the app dims underneath instead of going fully dark/dead.
 ══════════════════════════════════ */
-#focus-overlay{position:fixed;inset:0;z-index:300;background:rgba(4,4,6,.8);display:none;align-items:flex-end;justify-content:flex-end;padding:20px calc(20px + var(--sb,0px)) calc(20px + var(--sb,0px)) 20px}
+#focus-overlay{position:fixed;inset:0;z-index:300;background:rgba(8,8,10,.55);display:none;align-items:center;justify-content:center}
 #focus-overlay.open{display:flex}
-.focus-minimap{width:132px;padding:14px;border-radius:16px;background:rgba(20,20,24,.7);border:1px solid rgba(91,164,220,.3);text-align:center;pointer-events:none}
-.focus-minimap #focus-label{font-family:'Syne',sans-serif;font-size:12px;font-weight:600;color:rgba(232,226,217,.6);line-height:1.35}
-.focus-minimap #focus-mini-timer{font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:rgba(91,164,220,.75);margin-top:6px;min-height:18px}
-.focus-minimap .focus-exit-hint{font-size:9px;color:rgba(138,130,120,.4);letter-spacing:.3px;margin-top:8px}
+.focus-ring{width:210px;height:210px;border-radius:50%;background:var(--bg3);border:2.5px solid var(--blue);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:0 24px;text-align:center;pointer-events:none}
+.focus-ring #focus-label{font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:var(--text);line-height:1.3}
+.focus-ring #focus-mini-timer{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--blue);margin-top:2px;min-height:16px}
+.focus-ring .focus-exit-hint{font-size:10px;color:var(--stone);letter-spacing:.3px;margin-top:10px}
 .modal{
   background:var(--bg2);border-radius:20px 20px 0 0;
   padding:24px 20px calc(24px + var(--sb));
@@ -1046,7 +1046,7 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
      for that; this keeps the tab awake via Wake Lock while it's in the foreground.)
 ══════════════════════════════════ -->
 <div id="focus-overlay" onclick="exitFocusMode()">
-  <div class="focus-minimap">
+  <div class="focus-ring">
     <div id="focus-label">—</div>
     <div id="focus-mini-timer"></div>
     <div class="focus-exit-hint">tap to exit</div>
