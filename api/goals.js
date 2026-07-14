@@ -284,7 +284,7 @@ async function generateGoal(req, res, user) {
     }
   }
 
-  res.status(200).json({ data: { id: goal_id, pillar: pillar_name, type: goal_type, ...plan } });
+  res.status(200).json({ data: { id: goal_id, pillar: pillar_name, type: goal_type, timelineType: timeline_type, endDate: end_date, ...plan } });
 }
 
 // GET /api/goals lists goals; POST /api/goals/generate (rewritten to ?action=generate) creates one.
