@@ -4988,7 +4988,8 @@ async function viewWorkoutDetail(id) {
     bodyHtml=`<div class="section-title" style="margin-top:16px">Exercises</div>
     ${(d.exercises||[]).map(ex=>`
       <div class="rm-goal-card" style="margin-bottom:10px">
-        <div style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text);margin-bottom:8px">${ex.name}</div>
+        <div style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text);margin-bottom:${ex.substitutedFrom?'2px':'8px'}">${ex.name}</div>
+        ${ex.substitutedFrom?`<div style="font-size:11px;color:var(--stone);margin-bottom:6px">Swapped from ${ex.substitutedFrom}</div>`:''}
         ${(ex.sets||[]).map((s,i)=>`<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--stone);padding:4px 0;border-top:1px solid rgba(196,184,168,.07)">
           <span>Set ${i+1}</span><span>Target: ${s.targetWeight}kg × ${s.targetReps}</span><span style="color:var(--fitness)">Actual: ${s.actualWeight||'—'}kg × ${s.actualReps||'—'}</span>
         </div>`).join('')}
@@ -5171,7 +5172,9 @@ function renderActiveWorkout() {
     <div style="display:flex;justify-content:center;gap:14px;margin:14px 0">
       <button class="cta-micro" style="width:44px;height:44px;background:var(--bg3)" onclick="skipExercise()" title="Skip">⏭</button>
     </div>
-    <div style="text-align:center;font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:var(--text);margin:6px 0 14px">${ex.name}</div>
+    <div style="text-align:center;font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:var(--text);margin:6px 0 4px">${ex.name}</div>
+    ${ex.substitutedFrom?`<div style="text-align:center;font-size:11px;color:var(--stone);margin-bottom:6px">Swapped from ${ex.substitutedFrom}</div>`:''}
+    <div style="text-align:center;margin-bottom:10px"><button class="view-log-btn" style="width:auto;display:inline-flex" onclick="openSwapExercise()">⇄ Swap Exercise</button></div>
     <div class="rm-goal-card">
       <div class="section-sub" style="text-align:center">Set ${w.setIdx+1} of ${ex.sets.length}</div>
       <div style="display:flex;justify-content:space-around;margin:12px 0">
@@ -5187,6 +5190,53 @@ function renderActiveWorkout() {
     <button class="view-log-btn" style="margin-top:14px" onclick="openAddExercise()">+ Add Exercise</button>
     <textarea id="workout-session-notes" placeholder="Add Session Notes:" rows="2" style="width:100%;margin-top:14px;padding:12px;background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:10px;color:var(--text);font-size:13px;outline:none;resize:none">${w.sessionNotes}</textarea>
     <button class="btn-p filled" style="margin-top:16px;margin-bottom:20px;background:var(--fitness);border-color:var(--fitness)" onclick="finishWorkout()">Finish Workout</button>`;
+}
+
+// Live exercise substitution -- deterministic keyword matching against common lift names
+// (same cost-discipline precedent as inferToolHint()/isRecurringAction(), no AI call for
+// a mid-session swap). Falls back to generic variation labels for an exercise name we
+// don't recognize, so the swap is still useful rather than unavailable.
+const EXERCISE_SUBSTITUTE_RULES=[
+  [/bench|chest press/i, ['Push-ups', 'Dumbbell Bench Press', 'Incline Bench Press']],
+  [/squat/i, ['Goblet Squat', 'Leg Press', 'Bulgarian Split Squat']],
+  [/deadlift/i, ['Romanian Deadlift', 'Hip Thrust', 'Good Morning']],
+  [/\brow\b/i, ['Seated Cable Row', 'Dumbbell Row', 'Inverted Row']],
+  [/overhead press|shoulder press/i, ['Dumbbell Shoulder Press', 'Arnold Press', 'Pike Push-ups']],
+  [/\bcurl\b/i, ['Hammer Curl', 'Cable Curl', 'Resistance Band Curl']],
+  [/tricep|pushdown|skull ?crusher/i, ['Tricep Dips', 'Overhead Tricep Extension', 'Close-Grip Push-ups']],
+  [/lunge/i, ['Walking Lunge', 'Step-Up', 'Split Squat']],
+  [/lat pulldown|pull-?up/i, ['Assisted Pull-up', 'Lat Pulldown', 'Band Pull-Apart']],
+  [/leg press/i, ['Squat', 'Leg Extension', 'Hack Squat']],
+];
+function getExerciseSubstitutes(name) {
+  for(const [re,subs] of EXERCISE_SUBSTITUTE_RULES) if(re.test(name)) return subs;
+  return ['Bodyweight Variation', 'Machine Variation', 'Dumbbell Variation'];
+}
+
+function openSwapExercise() {
+  const w=activeWorkout;
+  const ex=w.exercises[w.exerciseIdx];
+  const subs=getExerciseSubstitutes(ex.name);
+  openConfirm('Swap Exercise', `Replace "${ex.name}" with:`, ()=>{});
+  document.getElementById('confirm-yes-btn').style.display='none';
+  document.getElementById('confirm-body').innerHTML=`
+    <div style="display:flex;flex-direction:column;gap:6px">
+      ${subs.map(s=>`<div class="view-log-btn" style="text-align:left;justify-content:space-between" onclick="substituteExercise(${JSON.stringify(s)})">${s} <span>›</span></div>`).join('')}
+    </div>
+    <input type="text" id="swap-custom-name" placeholder="Or type a custom exercise..." style="width:100%;margin-top:10px;padding:10px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);outline:none">
+    <button class="btn-p filled" style="margin-top:8px;background:var(--fitness);border-color:var(--fitness)" onclick="substituteExercise(document.getElementById('swap-custom-name').value.trim())">Use Custom</button>`;
+}
+
+function substituteExercise(newName) {
+  if(!newName) return;
+  const w=activeWorkout;
+  const ex=w.exercises[w.exerciseIdx];
+  if(!ex.substitutedFrom) ex.substitutedFrom=ex.name;
+  ex.name=newName;
+  closeModal('modal-confirm');
+  document.getElementById('confirm-yes-btn').style.display='';
+  toast(`Swapped to ${newName}`);
+  renderActiveWorkout();
 }
 
 const REST_BETWEEN_SETS_SECONDS=90;
