@@ -419,6 +419,19 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
 /* Section titles */
 .section-title{font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:var(--text);margin:14px 0 10px}
 .section-sub{font-size:12px;color:var(--stone);margin-bottom:12px}
+
+/* Settings (4.19) -- simple nav-style row: icon, label, chevron */
+.settings-row{background:var(--bg3);border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:12px;margin-bottom:8px;cursor:pointer}
+.settings-row .sr-icon{font-size:17px;width:22px;text-align:center;flex-shrink:0}
+.settings-row .sr-label{flex:1;font-size:14px;font-weight:600;color:var(--text)}
+.settings-row .sr-chevron{color:var(--stone);font-size:16px}
+.settings-row.disabled{opacity:.45;cursor:default}
+.toggle-switch{position:relative;display:inline-block;width:42px;height:24px;flex-shrink:0}
+.toggle-switch input{opacity:0;width:0;height:0}
+.toggle-slider{position:absolute;inset:0;background:var(--bg4);border-radius:24px;transition:background .15s;cursor:pointer}
+.toggle-slider::before{content:'';position:absolute;height:18px;width:18px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:transform .15s}
+.toggle-switch input:checked + .toggle-slider{background:var(--blue)}
+.toggle-switch input:checked + .toggle-slider::before{transform:translateX(18px)}
 </style>
 </head>
 <body>
@@ -603,6 +616,7 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
     <div style="display:flex;gap:8px">
       <button class="icon-btn" onclick="openNotifications()">🔔</button>
       <button class="icon-btn" onclick="openBreak()">☕</button>
+      <button class="icon-btn" onclick="openSettings()" title="Settings">⚙️</button>
     </div>
     <div class="ptw-badge" onclick="openAIChat()"><svg width="27" height="27" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"><g transform="translate(34,79) scale(2)"><text x="0" y="17" font-family="Syne,sans-serif" font-weight="800" font-size="20" fill="#F2EDE6">PT</text><polyline points="39,2 43.5,19 48.5,7 53.5,19 58,2" fill="none" stroke="#F2EDE6" stroke-width="3.6" stroke-linejoin="miter" stroke-linecap="butt"/><polyline points="48.5,7 53.5,19 58,2" fill="none" stroke="#5BA4DC" stroke-width="3.6" stroke-linejoin="miter" stroke-linecap="butt"/></g></svg></div>
     <button class="icon-btn" onclick="openProfile()" title="Profile">👤</button>
@@ -662,7 +676,10 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
   <div class="pillar-top-bar" id="pillar-topbar">
     <button class="icon-btn ghost" onclick="showScreen('home')" title="Home">🏠</button>
     <h2 id="pillar-title">Fitness</h2>
-    <span class="pillar-subtitle" id="pillar-lifescore" style="font-family:'Syne',sans-serif;font-weight:700;font-size:14px">—</span>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span class="pillar-subtitle" id="pillar-lifescore" style="font-family:'Syne',sans-serif;font-weight:700;font-size:14px">—</span>
+      <button class="icon-btn ghost" style="width:26px;height:26px;min-width:0;font-size:13px" onclick="openSettings(S.activePillar)" title="Pillar Settings">⚙️</button>
+    </div>
   </div>
 
   <!-- Tab content -->
@@ -1175,7 +1192,7 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
     <button class="icon-btn ghost" onclick="openProfileTools()" title="Tools">🔨</button>
     <button class="icon-btn ghost" onclick="openProfileTrophies()" title="Trophies">🏆</button>
     <h2 style="flex:1;text-align:center">Profile</h2>
-    <button class="icon-btn ghost" onclick="showScreen('settings')" title="Settings">⚙️</button>
+    <button class="icon-btn ghost" onclick="openSettings()" title="Settings">⚙️</button>
   </div>
   <div class="scroll-body" style="padding:0 18px">
     <div style="display:flex;align-items:center;gap:14px;margin:4px 0 18px">
@@ -1223,9 +1240,105 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
     <h2 style="font-size:15px">Settings</h2>
     <span style="width:36px"></span>
   </div>
-  <div class="scroll-body" style="padding:0 18px">
-    <div class="section-sub" style="margin-top:14px">ACCOUNT</div>
-    <button class="btn-p" style="margin:8px 0 20px" onclick="doLogout()">Log Out</button>
+  <div class="scroll-body" style="padding:0 18px" id="settings-body"></div>
+</div>
+
+<!-- ══════════════════════════════════
+     PROFILE EDIT (4.19.B)
+══════════════════════════════════ -->
+<div id="screen-profile-edit" class="screen">
+  <div class="pillar-top-bar">
+    <button class="icon-btn ghost" onclick="openSettingsHub()">←</button>
+    <h2 style="font-size:15px">Edit Profile</h2>
+    <button class="icon-btn ghost" onclick="submitProfileEdit()" title="Save">✓</button>
+  </div>
+  <div class="scroll-body" style="padding:0 18px" id="profile-edit-body"></div>
+</div>
+
+<!-- ══════════════════════════════════
+     ACCOUNT & SECURITY (4.19.D)
+══════════════════════════════════ -->
+<div id="screen-account-security" class="screen">
+  <div class="pillar-top-bar">
+    <button class="icon-btn ghost" onclick="openSettingsHub()">←</button>
+    <h2 style="font-size:15px">Account & Security</h2>
+    <span style="width:36px"></span>
+  </div>
+  <div class="scroll-body" style="padding:0 18px" id="account-security-body"></div>
+</div>
+
+<!-- ══════════════════════════════════
+     NOTIFICATION SETTINGS
+══════════════════════════════════ -->
+<div id="screen-notification-settings" class="screen">
+  <div class="pillar-top-bar">
+    <button class="icon-btn ghost" onclick="openSettingsHub()">←</button>
+    <h2 style="font-size:15px">Notification Settings</h2>
+    <button class="icon-btn ghost" onclick="saveNotificationSettings()" title="Save">✓</button>
+  </div>
+  <div class="scroll-body" style="padding:0 18px" id="notification-settings-body"></div>
+</div>
+
+<!-- ══════════════════════════════════
+     MEASUREMENT UNITS
+══════════════════════════════════ -->
+<div id="screen-measurement-units" class="screen">
+  <div class="pillar-top-bar">
+    <button class="icon-btn ghost" onclick="openSettingsHub()">←</button>
+    <h2 style="font-size:15px">Measurement Units</h2>
+    <button class="icon-btn ghost" onclick="saveMeasurementUnits()" title="Save">✓</button>
+  </div>
+  <div class="scroll-body" style="padding:0 18px" id="measurement-units-body"></div>
+</div>
+
+<!-- ══════════════════════════════════
+     PILLAR PREFERENCES (4.19.E-J) — one generic screen, config-driven per pillar
+══════════════════════════════════ -->
+<div id="screen-pillar-preferences" class="screen">
+  <div class="pillar-top-bar">
+    <button class="icon-btn ghost" onclick="openSettingsHub()">←</button>
+    <h2 style="font-size:15px" id="pillar-prefs-title">Preferences</h2>
+    <button class="icon-btn ghost" onclick="savePillarPreferences()" title="Save">✓</button>
+  </div>
+  <div class="scroll-body" style="padding:0 18px" id="pillar-prefs-body"></div>
+</div>
+
+<!-- ══════════════════════════════════
+     STATIC PAGE — Help/FAQ, Terms, Privacy share one generic screen
+══════════════════════════════════ -->
+<div id="screen-static-page" class="screen">
+  <div class="pillar-top-bar">
+    <button class="icon-btn ghost" onclick="openSettingsHub()">←</button>
+    <h2 style="font-size:15px" id="static-page-title">—</h2>
+    <span style="width:36px"></span>
+  </div>
+  <div class="scroll-body" style="padding:0 18px" id="static-page-body"></div>
+</div>
+
+<!-- ══════════════════════════════════
+     GENERIC CONFIRM MODAL
+══════════════════════════════════ -->
+<div class="modal-overlay" id="modal-confirm" onclick="closeModal('modal-confirm',event)">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-confirm')">×</button>
+    <h3 id="confirm-title">Are you sure?</h3>
+    <div id="confirm-body" style="font-size:13px;color:var(--stone);margin:-8px 0 16px"></div>
+    <button class="btn-p filled" id="confirm-yes-btn" style="margin-bottom:8px">Yes</button>
+    <button class="btn-p" style="background:var(--bg4);border-color:var(--bg4)" onclick="closeModal('modal-confirm')">Cancel</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     DELETE ACCOUNT CONFIRMATION MODAL
+══════════════════════════════════ -->
+<div class="modal-overlay" id="modal-delete-account" onclick="closeModal('modal-delete-account',event)">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-delete-account')">×</button>
+    <h3>Delete Account</h3>
+    <div style="font-size:13px;color:var(--stone);margin:-8px 0 16px">This permanently deletes your account and all data. This cannot be undone.</div>
+    <div class="field"><label>TYPE "DELETE" TO CONFIRM</label><input type="text" id="da-confirm-text" autocomplete="off"></div>
+    <div class="field"><label>YOUR PASSWORD</label><input type="password" id="da-password" autocomplete="current-password"></div>
+    <button class="btn-p filled" style="background:#C46882;border-color:#C46882;margin-top:8px" onclick="submitDeleteAccount()">Permanently Delete Account</button>
   </div>
 </div>
 
@@ -1814,10 +1927,288 @@ async function checkPendingValueprint() {
   } catch(e) { console.error('checkPendingValueprint failed', e); }
 }
 
-function doLogout() {
+function openConfirm(title, body, onYes) {
+  document.getElementById('confirm-title').textContent=title;
+  document.getElementById('confirm-body').textContent=body;
+  const btn=document.getElementById('confirm-yes-btn');
+  btn.onclick=()=>{ closeModal('modal-confirm'); onYes(); };
+  document.getElementById('modal-confirm').classList.add('open');
+}
+
+async function doLogout() {
+  // Revoke the token server-side (401s are ignored -- if it's already gone, the end
+  // state is the same) before clearing local state, so a leaked token can't be reused.
+  await req('POST','/auth/logout',{}).catch(()=>{});
   localStorage.clear();
   S.token=null; S.user=null; S.userData=null;
   showScreen('splash');
+}
+
+function confirmLogout() {
+  openConfirm('Log Out?', "You'll need to sign back in to access your plan.", doLogout);
+}
+
+// ════════════════════════════════════════
+// SETTINGS (4.19)
+// ════════════════════════════════════════
+function settingsRow(icon, label, onclick, sub) {
+  return `<div class="settings-row" onclick="${onclick}">
+    <div class="sr-icon">${icon}</div>
+    <div class="sr-label">${label}${sub?`<div style="font-size:11px;color:var(--stone);font-weight:400;margin-top:2px">${sub}</div>`:''}</div>
+    <div class="sr-chevron">›</div>
+  </div>`;
+}
+
+function openSettingsHub() { showScreen('settings'); renderSettingsBody(); }
+
+// Tapping a pillar's own gear icon jumps straight to that pillar's preferences
+// (skips the hub) -- back button from there still returns to the full Settings list.
+function openSettings(focusPillarKey) {
+  if(focusPillarKey && (S.unlocked||[]).includes(focusPillarKey)) { openPillarPreferences(focusPillarKey); return; }
+  openSettingsHub();
+}
+
+function renderSettingsBody() {
+  const body=document.getElementById('settings-body');
+  let html = `<div class="section-sub" style="margin-top:14px">ACCOUNT</div>`
+    + settingsRow('👤','Edit Profile',"openProfileEditScreen()")
+    + settingsRow('🔑','Account & Security',"openAccountSecurity()");
+
+  html += `<div class="section-sub" style="margin-top:20px">APP PREFERENCES</div>`
+    + settingsRow('🔔','Notification Settings',"openNotificationSettings()")
+    + settingsRow('📏','Measurement Units',"openMeasurementUnits()");
+
+  // One section per pillar the user has actually unlocked -- no premium paywall/lock
+  // icon here (unlike the original spec's model) since this app gates pillars by
+  // consistency/phase, not a subscription tier that doesn't exist yet.
+  (S.unlocked||[]).forEach(pk=>{
+    const p=PILLARS[pk];
+    if(!p) return;
+    html += `<div class="section-sub" style="margin-top:20px">${p.label.toUpperCase()} PILLAR</div>`
+      + settingsRow(p.emoji, p.label+' Preferences', `openPillarPreferences('${pk}')`)
+      + settingsRow('❓','Retake '+p.label+' Assessment', `refinePillarGoal('${pk}')`, 'This will generate a new plan');
+  });
+
+  html += `<div class="section-sub" style="margin-top:20px">SUPPORT & LEGAL</div>`
+    + settingsRow('❓','Help & Support / FAQ',"openStaticPage('help')")
+    + settingsRow('📄','Terms of Service',"openStaticPage('terms')")
+    + settingsRow('🛡️','Privacy Policy',"openStaticPage('privacy')");
+
+  html += `<button class="btn-p filled" style="background:#C46882;border-color:#C46882;margin:20px 0 6px" onclick="confirmLogout()">Log Out</button>`;
+  html += `<div style="text-align:center;font-size:11px;color:var(--stone);margin-bottom:24px">Version 1.0.0 (Build 1)</div>`;
+  body.innerHTML=html;
+}
+
+// ─── PROFILE EDIT (4.19.B) ───
+function openProfileEditScreen() {
+  showScreen('profile-edit');
+  const u=S.userData||{};
+  const raw=S.user||{};
+  document.getElementById('profile-edit-body').innerHTML = `
+    <div class="field" style="margin-top:14px"><label>FULL NAME</label><input type="text" id="pe-name" value="${raw.name||''}"></div>
+    <div class="field"><label>USERNAME</label><input type="text" id="pe-username" value="${u.username||''}"></div>
+    <div class="field"><label>DATE OF BIRTH</label><input type="date" id="pe-dob" value="${u.dob?String(u.dob).split('T')[0]:''}"></div>
+    <div class="field"><label>HEIGHT (cm)</label><input type="number" id="pe-height" value="${u.height||''}"></div>
+    <div class="field"><label>WEIGHT (kg)</label><input type="number" id="pe-weight" value="${u.weight||''}"></div>
+    <div class="field"><label>FITNESS LEVEL</label>
+      <select id="pe-fitness"><option value="">—</option>${['Beginner','Intermediate','Advanced'].map(o=>`<option ${u.fitness_level===o?'selected':''}>${o}</option>`).join('')}</select>
+    </div>
+    <div class="field"><label>TYPICAL DIET</label>
+      <select id="pe-diet"><option value="">—</option>${['Balanced','Vegetarian','Vegan','Low-Carb','High-Protein'].map(o=>`<option ${u.diet===o?'selected':''}>${o}</option>`).join('')}</select>
+    </div>`;
+}
+
+async function submitProfileEdit() {
+  const val=id=>document.getElementById(id)?.value||null;
+  const body={
+    fullName: val('pe-name'),
+    username: val('pe-username'),
+    dateOfBirth: val('pe-dob'),
+    height: val('pe-height') ? { value:Number(val('pe-height')), unit:'cm' } : null,
+    weight: val('pe-weight') ? { value:Number(val('pe-weight')), unit:'kg' } : null,
+    fitnessLevel: val('pe-fitness'),
+    typicalDiet: val('pe-diet'),
+  };
+  const result=await req('PUT','/user/profile',body);
+  if(!result || result.errors) { toast(result?.errors?.username?.[0]||result?.message||'Could not save'); return; }
+  toast('Profile updated ✓');
+  await loadUserData();
+  openSettingsHub();
+}
+
+// ─── ACCOUNT & SECURITY (4.19.D) ───
+function openAccountSecurity() {
+  showScreen('account-security');
+  document.getElementById('account-security-body').innerHTML = `
+    <div class="section-sub" style="margin-top:14px">SECURITY</div>
+    ${settingsRow('🔑','Change Password',"toast('Password reset via email is coming soon')")}
+    <div class="section-sub" style="margin-top:20px">ACCOUNT MANAGEMENT</div>
+    ${settingsRow('🗑️','Delete Account',"openDeleteAccountModal()",'This action is permanent')}
+  `;
+}
+
+function openDeleteAccountModal() {
+  document.getElementById('da-confirm-text').value='';
+  document.getElementById('da-password').value='';
+  document.getElementById('modal-delete-account').classList.add('open');
+}
+
+async function submitDeleteAccount() {
+  const confirmText=document.getElementById('da-confirm-text').value.trim();
+  const password=document.getElementById('da-password').value;
+  if(confirmText!=='DELETE') { toast('Type "DELETE" to confirm'); return; }
+  if(!password) { toast('Enter your password'); return; }
+  const r=await fetch(API+'/user/delete-account', {
+    method:'DELETE',
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+S.token},
+    body:JSON.stringify({password}),
+  });
+  if(r.status===204) {
+    closeModal('modal-delete-account');
+    localStorage.clear();
+    S.token=null; S.user=null; S.userData=null;
+    toast('Account deleted');
+    showScreen('splash');
+    return;
+  }
+  const data=await r.json().catch(()=>null);
+  toast(data?.message||'Could not delete account');
+}
+
+// ─── NOTIFICATION SETTINGS ───
+const NOTIFICATION_TOGGLES=[
+  {key:'taskReminders', label:'Task Reminders'},
+  {key:'achievements', label:'Achievements'},
+  {key:'aiInsights', label:'AI Insights'},
+  {key:'questUpdates', label:'Quest Updates'},
+];
+async function openNotificationSettings() {
+  showScreen('notification-settings');
+  const body=document.getElementById('notification-settings-body');
+  body.innerHTML='<div class="spinner"></div>';
+  const prefs=await req('GET','/preferences/notifications')||{};
+  body.innerHTML = `<div style="margin-top:14px">` + NOTIFICATION_TOGGLES.map(t=>`
+    <div class="settings-row" style="cursor:default">
+      <div class="sr-label" style="flex:1">${t.label}</div>
+      <label class="toggle-switch"><input type="checkbox" id="ns-${t.key}" ${prefs[t.key]!==false?'checked':''}><span class="toggle-slider"></span></label>
+    </div>`).join('') + `</div>`;
+}
+async function saveNotificationSettings() {
+  const data={};
+  NOTIFICATION_TOGGLES.forEach(t=>{ data[t.key]=document.getElementById('ns-'+t.key)?.checked!==false; });
+  await req('PUT','/preferences/notifications',data);
+  toast('Notification settings saved ✓');
+  openSettingsHub();
+}
+
+// ─── MEASUREMENT UNITS ───
+async function openMeasurementUnits() {
+  showScreen('measurement-units');
+  const body=document.getElementById('measurement-units-body');
+  body.innerHTML='<div class="spinner"></div>';
+  const prefs=await req('GET','/preferences/units')||{};
+  body.innerHTML = `
+    <div class="field" style="margin-top:14px"><label>DISTANCE</label>
+      <select id="mu-distance">${['km','mi'].map(o=>`<option ${prefs.distance===o?'selected':''}>${o}</option>`).join('')}</select>
+    </div>
+    <div class="field"><label>WEIGHT</label>
+      <select id="mu-weight">${['kg','lbs'].map(o=>`<option ${prefs.weight===o?'selected':''}>${o}</option>`).join('')}</select>
+    </div>
+    <div class="field"><label>HEIGHT</label>
+      <select id="mu-height">${['cm','ft'].map(o=>`<option ${prefs.height===o?'selected':''}>${o}</option>`).join('')}</select>
+    </div>`;
+}
+async function saveMeasurementUnits() {
+  const data={distance:document.getElementById('mu-distance').value, weight:document.getElementById('mu-weight').value, height:document.getElementById('mu-height').value};
+  await req('PUT','/preferences/units',data);
+  toast('Units saved ✓');
+  openSettingsHub();
+}
+
+// ─── PILLAR PREFERENCES (4.19.E-J) ───
+// Config-driven per pillar -- 'single'/'multi' render as the same button-choice grid
+// the pillar questionnaire already uses; 'link' rows just navigate somewhere real
+// (e.g. Personal's focus areas, Relations' contact list) instead of storing a value.
+const PILLAR_PREF_CONFIG = {
+  fitness: [
+    {key:'preferredWorkoutDays', type:'multi', label:'Preferred Workout Days', options:['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']},
+    {key:'preferredTimeOfDay', type:'single', label:'Preferred Time of Day', options:['Early Morning (6-9am)','Mid-Morning (9am-12pm)','Early Afternoon (12-3pm)','Late Afternoon (3-6pm)','Evening (6-9pm)','Flexible']},
+  ],
+  diet: [
+    {key:'preferredMealStructure', type:'single', label:'Preferred Meal Structure', options:['3 Main Meals','5-6 Smaller Meals','Intermittent Fasting (16:8)']},
+    {key:'dietaryRestrictions', type:'multi', label:'Dietary Restrictions', options:['No Restrictions','Vegetarian','Vegan','Gluten-Free','Dairy-Free']},
+  ],
+  finances: [
+    {key:'primaryCurrency', type:'single', label:'Primary Currency', options:['USD ($)','EUR (€)','GBP (£)','CAD ($)','AUD ($)']},
+    {key:'startOfWeek', type:'single', label:'Start of Financial Week', options:['Monday','Sunday']},
+  ],
+  relations: [
+    {key:'reminderFrequency', type:'single', label:'Reminder Frequency', options:['Once a week','Every 2 weeks','Once a month']},
+    {key:'_contacts', type:'link', label:'Key Contacts', linkLabel:'Manage List →', action:'openSocialHub()'},
+  ],
+  personal: [
+    {key:'_focusAreas', type:'link', label:'Focus Area Management', linkLabel:'Manage Your Focus Areas →', action:'openPersonalHub()'},
+  ],
+  work: [
+    {key:'defaultDeepWorkMinutes', type:'single', label:'Default Deep Work Duration', options:['60 minutes','90 minutes','120 minutes']},
+  ],
+};
+
+async function openPillarPreferences(pillarKey) {
+  const p=PILLARS[pillarKey];
+  if(!p) return;
+  S.activePrefsPillar=pillarKey;
+  showScreen('pillar-preferences');
+  document.getElementById('pillar-prefs-title').textContent=p.label+' Preferences';
+  const body=document.getElementById('pillar-prefs-body');
+  body.innerHTML='<div class="spinner"></div>';
+  const prefs=await req('GET','/preferences/'+pillarKey)||{};
+  const fields=PILLAR_PREF_CONFIG[pillarKey]||[];
+  let html='<div style="margin-top:14px"></div>';
+  fields.forEach(f=>{
+    if(f.type==='link') {
+      html+=`<div class="settings-row" onclick="${f.action}"><div class="sr-label">${f.label}</div><div class="sr-chevron">${f.linkLabel}</div></div>`;
+      return;
+    }
+    const saved=prefs[f.key];
+    html+=`<div style="font-size:11px;color:var(--stone);letter-spacing:.3px;margin:16px 0 8px">${f.label}</div>
+      <div id="pp-${f.key}" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">`+
+      f.options.map(opt=>{
+        const sel = f.type==='multi' ? (Array.isArray(saved)&&saved.includes(opt)) : saved===opt;
+        return `<button type="button" class="q-opt${sel?' sel':''}" data-v="${opt}" onclick="toggleQuestOption(this,'${f.key}','${f.type}')">${opt}</button>`;
+      }).join('')+`</div>`;
+  });
+  html+=`<div class="section-sub" style="margin-top:20px">ASSESSMENT</div>`
+    + settingsRow('❓','Retake '+p.label+' Assessment', `refinePillarGoal('${pillarKey}')`, 'This will generate a new plan');
+  body.innerHTML=html;
+}
+
+async function savePillarPreferences() {
+  const pillarKey=S.activePrefsPillar;
+  const fields=PILLAR_PREF_CONFIG[pillarKey]||[];
+  const data={};
+  fields.forEach(f=>{
+    if(f.type==='link') return;
+    if(f.type==='multi') data[f.key]=[...document.querySelectorAll('#pp-'+f.key+' .q-opt.sel')].map(b=>b.dataset.v);
+    else { const sel=document.querySelector('#pp-'+f.key+' .q-opt.sel'); data[f.key]=sel?sel.dataset.v:null; }
+  });
+  await req('PUT','/preferences/'+pillarKey,data);
+  toast('Preferences saved ✓');
+  openSettingsHub();
+}
+
+// ─── SUPPORT & LEGAL (static placeholder content) ───
+const STATIC_PAGES={
+  help: {title:'Help & Support', body:"Need a hand? Reach out to us anytime at support@plantowin.app and we'll get back to you as soon as we can. A full FAQ is coming soon."},
+  terms: {title:'Terms of Service', body:'Our full Terms of Service are being finalized and will appear here soon. In the meantime, questions can be sent to support@plantowin.app.'},
+  privacy: {title:'Privacy Policy', body:'Our full Privacy Policy is being finalized and will appear here soon. In the meantime, questions can be sent to support@plantowin.app.'},
+};
+function openStaticPage(key) {
+  const page=STATIC_PAGES[key];
+  if(!page) return;
+  showScreen('static-page');
+  document.getElementById('static-page-title').textContent=page.title;
+  document.getElementById('static-page-body').innerHTML=`<div style="font-size:14px;color:var(--text);line-height:1.7;margin-top:16px">${page.body}</div>`;
 }
 
 // ════════════════════════════════════════
@@ -2293,7 +2684,10 @@ function questionFieldHTML(q,i) {
 }
 
 function toggleQuestOption(btn,key,type) {
-  if(type==='single') { document.querySelectorAll('#pq-'+key+' .q-opt').forEach(b=>b.classList.remove('sel')); btn.classList.add('sel'); }
+  // Operates on the clicked button's own parent rather than guessing an ID prefix, so
+  // this works identically whether it's rendered inside the pillar questionnaire's
+  // #pq-{key} container or the Pillar Preferences screen's #pp-{key} container.
+  if(type==='single') { btn.parentElement.querySelectorAll('.q-opt').forEach(b=>b.classList.remove('sel')); btn.classList.add('sel'); }
   else btn.classList.toggle('sel');
 }
 
