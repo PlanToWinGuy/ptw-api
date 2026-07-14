@@ -5221,7 +5221,7 @@ function openSwapExercise() {
   document.getElementById('confirm-yes-btn').style.display='none';
   document.getElementById('confirm-body').innerHTML=`
     <div style="display:flex;flex-direction:column;gap:6px">
-      ${subs.map(s=>`<div class="view-log-btn" style="text-align:left;justify-content:space-between" onclick="substituteExercise(${JSON.stringify(s)})">${s} <span>›</span></div>`).join('')}
+      ${subs.map(s=>`<div class="view-log-btn" style="text-align:left;justify-content:space-between" onclick="substituteExercise('${s.replace(/'/g,"\\'")}')">${s} <span>›</span></div>`).join('')}
     </div>
     <input type="text" id="swap-custom-name" placeholder="Or type a custom exercise..." style="width:100%;margin-top:10px;padding:10px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);outline:none">
     <button class="btn-p filled" style="margin-top:8px;background:var(--fitness);border-color:var(--fitness)" onclick="substituteExercise(document.getElementById('swap-custom-name').value.trim())">Use Custom</button>`;
