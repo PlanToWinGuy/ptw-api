@@ -366,6 +366,18 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
 ══════════════════════════════════ */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:200;display:none;align-items:flex-end;justify-content:center}
 .modal-overlay.open{display:flex}
+
+/* ══════════════════════════════════
+   FOCUS MODE — dimmed, subtle "minimap" overlay (2.12/4.13.1). Sits ON TOP of
+   whatever screen was already open (usually Home) rather than replacing it, so
+   the rest of the app dims underneath instead of going fully dark/dead.
+══════════════════════════════════ */
+#focus-overlay{position:fixed;inset:0;z-index:300;background:rgba(4,4,6,.8);display:none;align-items:flex-end;justify-content:flex-end;padding:20px calc(20px + var(--sb,0px)) calc(20px + var(--sb,0px)) 20px}
+#focus-overlay.open{display:flex}
+.focus-minimap{width:132px;padding:14px;border-radius:16px;background:rgba(20,20,24,.7);border:1px solid rgba(91,164,220,.3);text-align:center;pointer-events:none}
+.focus-minimap #focus-label{font-family:'Syne',sans-serif;font-size:12px;font-weight:600;color:rgba(232,226,217,.6);line-height:1.35}
+.focus-minimap #focus-mini-timer{font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:rgba(91,164,220,.75);margin-top:6px;min-height:18px}
+.focus-minimap .focus-exit-hint{font-size:9px;color:rgba(138,130,120,.4);letter-spacing:.3px;margin-top:8px}
 .modal{
   background:var(--bg2);border-radius:20px 20px 0 0;
   padding:24px 20px calc(24px + var(--sb));
@@ -673,7 +685,7 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
       <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14l-5-5 1.41-1.41L12 14.17l7.59-7.59L21 8l-9 9z"/></svg>
       Side-Quests
     </button>
-    <button class="pnav-center" id="pnav-add" onclick="openAddTask()" style="background:var(--blue)">+</button>
+    <button class="pnav-center" id="pnav-add" onclick="openPillarQuickAdd()" style="background:var(--blue)">+</button>
     <button class="pnav-item" id="pnav-roadmap" onclick="switchPillarTab('roadmap')">
       <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M3.5 18.49l6-6.01 4 4L22 6.92l-1.41-1.41-7.09 7.97-4-4L2 16.99z"/></svg>
       Roadmap
@@ -702,6 +714,7 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
         <div id="break-timer" style="font-family:'Syne',sans-serif;font-size:36px;font-weight:800;color:var(--blue)">05:00</div>
       </div>
       <div id="break-active-hint" style="font-size:13px;color:var(--stone);max-width:260px;line-height:1.6">Breathe. Stretch. Look away from the screen.</div>
+      <button class="btn-p" style="border-color:var(--blue);color:var(--blue)" onclick="openEssentialApps(S.activeBreakType)">🔗 Essential Apps</button>
       <button class="btn-p filled" onclick="finishBreakNow()">Finish Break Now</button>
     </div>
   </div>
@@ -891,12 +904,13 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
   <div class="pillar-top-bar">
     <button class="icon-btn ghost" onclick="showPillarScreen('personal')">←</button>
     <h2>Personal Hub</h2>
-    <span style="width:36px"></span>
+    <button class="icon-btn" style="background:var(--personal)" onclick="openAddProject('personal')">+</button>
   </div>
-  <div style="display:flex;gap:8px;padding:0 18px 10px">
-    <button class="pg-btn sel" id="ph-tab-focus" style="background:var(--personal);flex:1;font-size:11px" onclick="switchPersonalHubTab('focus')">My Focus</button>
-    <button class="pg-btn" id="ph-tab-history" style="background:var(--bg4);flex:1;font-size:11px" onclick="switchPersonalHubTab('history')">History</button>
-    <button class="pg-btn" id="ph-tab-journal" style="background:var(--bg4);flex:1;font-size:11px" onclick="switchPersonalHubTab('journal')">Journal</button>
+  <div style="display:flex;gap:6px;padding:0 18px 10px">
+    <button class="pg-btn sel" id="ph-tab-focus" style="background:var(--personal);flex:1;font-size:10px" onclick="switchPersonalHubTab('focus')">My Focus</button>
+    <button class="pg-btn" id="ph-tab-identity" style="background:var(--bg4);flex:1;font-size:10px" onclick="switchPersonalHubTab('identity')">Identity</button>
+    <button class="pg-btn" id="ph-tab-history" style="background:var(--bg4);flex:1;font-size:10px" onclick="switchPersonalHubTab('history')">History</button>
+    <button class="pg-btn" id="ph-tab-journal" style="background:var(--bg4);flex:1;font-size:10px" onclick="switchPersonalHubTab('journal')">Journal</button>
   </div>
   <div id="ph-subfilter" style="display:flex;gap:8px;padding:0 18px 12px;font-size:11px;color:var(--stone);flex-wrap:wrap"></div>
   <div class="scroll-body" style="padding:0 18px" id="personal-hub-body"></div>
@@ -1014,12 +1028,11 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
      In-app dimmed screen (not true OS Always-On-Display — a PWA has no API
      for that; this keeps the tab awake via Wake Lock while it's in the foreground.)
 ══════════════════════════════════ -->
-<div id="screen-focus" class="screen" style="background:#000">
-  <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px" onclick="exitFocusMode()">
-    <div style="width:180px;height:180px;border-radius:50%;border:1.5px solid rgba(91,164,220,.35);display:flex;align-items:center;justify-content:center;padding:0 26px;text-align:center">
-      <div id="focus-label" style="font-family:'Syne',sans-serif;font-size:15px;font-weight:600;color:rgba(232,226,217,.55);line-height:1.4">—</div>
-    </div>
-    <div style="font-size:11px;color:rgba(138,130,120,.4);letter-spacing:.3px">tap anywhere to exit</div>
+<div id="focus-overlay" onclick="exitFocusMode()">
+  <div class="focus-minimap">
+    <div id="focus-label">—</div>
+    <div id="focus-mini-timer"></div>
+    <div class="focus-exit-hint">tap to exit</div>
   </div>
 </div>
 
@@ -1384,12 +1397,13 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
 ══════════════════════════════════ -->
 <div id="screen-essential" class="screen">
   <div class="pillar-top-bar">
-    <button class="icon-btn ghost" onclick="showScreen('home')">←</button>
+    <button class="icon-btn ghost" onclick="closeEssentialApps()">←</button>
     <h2>Essential Apps</h2>
     <span style="width:36px"></span>
   </div>
   <div class="scroll-body" style="padding:0 18px">
     <div class="section-sub" style="margin-top:4px" id="essential-context">Quick tools to stay in the zone — tap to open.</div>
+    <div id="essential-hint"></div>
     <div id="essential-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:10px"></div>
   </div>
 </div>
@@ -1928,6 +1942,22 @@ const LOGGING_TASK_OPEN = {
   work:      ()=>openLogWorkSession(null,null),
 };
 
+// Pillar nav's center "+" button: context-aware quick-add, one tap straight into
+// the pillar's own most-specific logging flow instead of the generic Add Task modal.
+const PILLAR_QUICK_ADD = {
+  fitness:   ()=>openWorkoutHub(),
+  diet:      ()=>openMealLog('snack'),
+  finances:  ()=>openLogTransaction('expense'),
+  relations: ()=>openConnectionLog(null),
+  personal:  ()=>openLogSession(null),
+  work:      ()=>openLogWorkSession(null,null),
+};
+function openPillarQuickAdd() {
+  const fn=S.activePillar && PILLAR_QUICK_ADD[S.activePillar];
+  if(fn) { fn(); return; }
+  openAddTask();
+}
+
 function openCurrentTask() {
   const t=S.currentTask;
   if(!t) { if(S.activePillar) showPillarScreen(S.activePillar); else if(S.unlocked[0]) showPillarScreen(S.unlocked[0]); return; }
@@ -2333,12 +2363,13 @@ let wakeLock=null, ctaLongPressFired=false;
 
 async function enterFocusMode() {
   document.getElementById('focus-label').textContent = document.getElementById('cta-label').textContent || 'Focus';
-  showScreen('focus');
+  document.getElementById('focus-overlay').classList.add('open');
   try { if('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch(e) {}
+  updateCtaTimerRing(); // populate the mini timer immediately instead of waiting for the next tick
 }
 function exitFocusMode() {
   if(wakeLock) { wakeLock.release().catch(()=>{}); wakeLock=null; }
-  showScreen('home');
+  document.getElementById('focus-overlay').classList.remove('open');
 }
 function handleCtaClick() {
   if(ctaLongPressFired) { ctaLongPressFired=false; return; }
@@ -2352,10 +2383,12 @@ const CTA_RING_CIRCUMFERENCE=634.6;
 function updateCtaTimerRing() {
   const svg=document.getElementById('cta-timer-svg');
   const label=document.getElementById('cta-timer-label');
+  const miniTimer=document.getElementById('focus-mini-timer');
   const homeScreen=document.getElementById('screen-home');
   if(!homeScreen || !homeScreen.classList.contains('active') || !S.currentTask?.startTime) {
     if(svg) svg.style.display='none';
     if(label) label.style.display='none';
+    if(miniTimer) miniTimer.textContent='';
     return;
   }
   const t=S.currentTask;
@@ -2370,7 +2403,7 @@ function updateCtaTimerRing() {
     end=new Date(start.getTime()+(t.durationMinutes||20)*60000);
   }
   const totalMs=end-start;
-  if(totalMs<=0) { svg.style.display='none'; label.style.display='none'; return; }
+  if(totalMs<=0) { svg.style.display='none'; label.style.display='none'; if(miniTimer) miniTimer.textContent=''; return; }
 
   const arc=document.getElementById('cta-timer-arc');
   if(now<start) {
@@ -2389,6 +2422,7 @@ function updateCtaTimerRing() {
   }
   svg.style.display='block';
   label.style.display='block';
+  if(miniTimer) miniTimer.textContent=label.textContent;
 }
 setInterval(updateCtaTimerRing, 1000);
 (function setupFocusLongPress(){
@@ -3599,19 +3633,32 @@ function switchLifeScoreDetailTab(tab) {
 // falls back to a toast (no scheme = no real universal deep link, e.g. Camera) if
 // the app isn't installed or no scheme exists for it.
 // ════════════════════════════════════════
-const ESSENTIAL_ICONS = { mail_icon:'✉️', calendar_icon:'📅', notes_icon:'📝', spotify_icon:'♪', camera_icon:'📷', health_icon:'❤️', calculator_icon:'🧮' };
+const ESSENTIAL_ICONS = { mail_icon:'✉️', calendar_icon:'📅', notes_icon:'📝', spotify_icon:'♪', camera_icon:'📷', health_icon:'❤️', calculator_icon:'🧮', duolingo_icon:'🦉', podcasts_icon:'🎙️' };
 let essentialAppsCache=[];
+let essentialAppsBreakType=null; // set when opened mid-break, so the back button returns there
 
-async function openEssentialApps() {
+async function openEssentialApps(breakType) {
+  essentialAppsBreakType=breakType||null;
   showScreen('essential');
   document.getElementById('essential-grid').innerHTML='<div class="spinner"></div>';
+  document.getElementById('essential-hint').innerHTML='';
   const t=S.currentTask;
-  document.getElementById('essential-context').textContent = t ? 'For: '+t.name : 'Quick tools to stay in the zone — tap to open.';
-  const data=await req('GET','/essential-apps'+(t?.taskId?('?taskId='+t.taskId):''));
+  let qs='';
+  if(breakType) { qs='?breakType='+breakType; document.getElementById('essential-context').textContent='For your '+(BREAK_TYPES[breakType]?.label||'break')+' — tap to open.'; }
+  else { qs=t?.taskId?('?taskId='+t.taskId):''; document.getElementById('essential-context').textContent = t ? 'For: '+t.name : 'Quick tools to stay in the zone — tap to open.'; }
+  const data=await req('GET','/essential-apps'+qs);
   essentialAppsCache=data?.apps||[];
-  renderEssentialApps();
+  renderEssentialApps(data?.habitStack);
 }
-function renderEssentialApps() {
+function closeEssentialApps() {
+  const breakType=essentialAppsBreakType;
+  essentialAppsBreakType=null;
+  showScreen(breakType?'break':'home');
+}
+function renderEssentialApps(habitStack) {
+  document.getElementById('essential-hint').innerHTML = habitStack
+    ? `<div class="sq-card" style="background:var(--blue)15;border:1px solid var(--blue)55;margin-top:8px"><div class="sq-info"><div class="sq-meta">💡 ${habitStack}</div></div></div>`
+    : '';
   document.getElementById('essential-grid').innerHTML = essentialAppsCache.map((a,i)=>`
     <button class="pillar-app-btn" style="width:100%" onclick="launchEssentialApp(${i})">
       <div class="pillar-app-icon" style="background:var(--bg3)"><span>${ESSENTIAL_ICONS[a.iconName]||'🔗'}</span></div>
@@ -3620,6 +3667,9 @@ function renderEssentialApps() {
 }
 function launchEssentialApp(i) {
   const a=essentialAppsCache[i];
+  // Tracking-only, best-effort -- surfaces later as "which app did you reach for during
+  // free time" insight (4.14's real motivation for putting this drawer inside breaks).
+  req('POST','/essential-apps',{appName:a?.appName, context:essentialAppsBreakType?('break:'+essentialAppsBreakType):(S.currentTask?'task':'home')}).catch(()=>{});
   if(!a?.urlScheme) { toast('Open your '+(a?.appName||'app')+' app directly for this one'); return; }
   window.location.href=a.urlScheme;
 }
@@ -4814,15 +4864,22 @@ const PERSONAL_LOG_TYPES={
   'Recharge Ritual': {category:'Self-Care',   hint:'Self-care that actually recharges you'},
 };
 let focusAreasCache={};
+let personalProjectsCache={};
 
 async function loadPersonalMap() {
   const container=document.getElementById('pillar-tab-map');
   const p=PILLARS.personal;
-  const data=await req('GET','/metrics?pillar_id='+p.id+'&days=365');
+  const [data, tasksData]=await Promise.all([
+    req('GET','/metrics?pillar_id='+p.id+'&days=365'),
+    req('GET','/simple-tasks'),
+  ]);
   const logs=data?.logs||[];
   const focusAreas=logs.filter(l=>l.log_type==='focus_area');
   const sessions=logs.filter(l=>l.log_type==='personal_log');
   focusAreas.forEach(f=>focusAreasCache[f.id]=f);
+  const allTasks=(Array.isArray(tasksData)?tasksData:(tasksData?.data||[]));
+  const personalProjects=buildProjectsFromTasks(allTasks, p.id);
+  personalProjects.forEach(pr=>personalProjectsCache[pr.id]=pr);
 
   const now=new Date();
   const weekAgo=new Date(now.getTime()-7*86400000);
@@ -4854,8 +4911,22 @@ async function loadPersonalMap() {
   });
   const consistency=focusAreas.length?Math.round(onPace/focusAreas.length*100):0;
 
-  // Next task: the focus area furthest behind its own weekly goal this week —
-  // a real heuristic (no AI call needed for every dashboard load).
+  // Next task: a real goal-derived project (overdue beats due-today beats least-progressed --
+  // same priority order as Work's Map tab) takes priority, since that's the actual plan
+  // tied to the user's Personal goal. Falls back to the focus-area-behind-pace heuristic
+  // only when there's no active project to point to yet.
+  const today=now.toISOString().split('T')[0];
+  const activePersonalProjects=personalProjects.filter(pr=>pr.status!=='Completed');
+  const overdueProject=activePersonalProjects.find(pr=>pr.due_date && pr.due_date<today);
+  const dueTodayProject=activePersonalProjects.find(pr=>pr.due_date===today);
+  let leastDoneProject=null, leastPct=Infinity;
+  activePersonalProjects.forEach(pr=>{
+    const subs=pr.subTasks||[];
+    const pct=subs.length?subs.filter(s=>s.status==='Completed').length/subs.length:0;
+    if(pct<leastPct) { leastPct=pct; leastDoneProject=pr; }
+  });
+  const nextProject=overdueProject||dueTodayProject||leastDoneProject;
+
   let behind=null, behindPct=Infinity;
   focusAreas.forEach(f=>{
     const theirSessions=sessions.filter(s=>s.data?.focusAreaId===f.id && new Date(s.logged_at)>weekAgo);
@@ -4866,9 +4937,14 @@ async function loadPersonalMap() {
     const pct=progress/target;
     if(pct<behindPct) { behindPct=pct; behind=f; }
   });
-  const nextTaskName = !behind ? 'Add your first focus area'
-    : behindPct>=1 ? `You're on pace this week ✨`
-    : `Practice: ${behind.data?.name}`;
+
+  const nextTaskName = nextProject ? (overdueProject?`Catch up: ${nextProject.name}`:`Continue: ${nextProject.name}`)
+    : behind ? (behindPct>=1?`You're on pace this week ✨`:`Practice: ${behind.data?.name}`)
+    : 'Add your first goal project';
+  const nextAction = nextProject ? `openProjectDetail(${nextProject.id},'pillar')`
+    : behind ? `openLogSession(${behind.id})`
+    : `openAddProject('personal')`;
+  const nextBtnLabel = nextProject ? 'Continue' : behind ? 'Start' : 'Add';
 
   const html=`
     <div class="metric-row">
@@ -4884,7 +4960,7 @@ async function loadPersonalMap() {
         <div class="pt-name">${nextTaskName}</div>
       </div>
       <div class="pt-actions">
-        <button class="pt-btn start" onclick="${behind?`openLogSession(${behind.id})`:`openAddFocusArea()`}">${behind?'Start':'Add'}</button>
+        <button class="pt-btn start" onclick="${nextAction}">${nextBtnLabel}</button>
       </div>
     </div>
     <button class="view-log-btn" style="margin-top:14px" onclick="openPersonalHub()">View Full Personal Hub</button>`;
@@ -4895,7 +4971,7 @@ function openPersonalHub() { showScreen('personal-hub'); switchPersonalHubTab('f
 
 async function switchPersonalHubTab(tab) {
   S.personalHubTab=tab;
-  ['focus','history','journal'].forEach(t=>{
+  ['focus','identity','history','journal'].forEach(t=>{
     const btn=document.getElementById('ph-tab-'+t);
     btn.classList.toggle('sel', t===tab);
     btn.style.background = t===tab ? 'var(--personal)' : 'var(--bg4)';
@@ -4906,12 +4982,23 @@ async function switchPersonalHubTab(tab) {
   const p=PILLARS.personal;
 
   if(tab==='focus') {
-    const data=await req('GET','/metrics?pillar_id='+p.id+'&log_type=focus_area');
+    const [data, sessData, tasksData]=await Promise.all([
+      req('GET','/metrics?pillar_id='+p.id+'&log_type=focus_area'),
+      req('GET','/metrics?pillar_id='+p.id+'&log_type=personal_log'),
+      req('GET','/simple-tasks'),
+    ]);
     const focusAreas=data?.logs||[];
     focusAreas.forEach(f=>focusAreasCache[f.id]=f);
-    const sessData=await req('GET','/metrics?pillar_id='+p.id+'&log_type=personal_log');
     S.personalSessionsCache=sessData?.logs||[];
-    renderPersonalFocusBody(focusAreas, S.personalSessionsCache);
+    const allTasks=(Array.isArray(tasksData)?tasksData:(tasksData?.data||[]));
+    const personalProjects=buildProjectsFromTasks(allTasks, p.id);
+    personalProjects.forEach(pr=>personalProjectsCache[pr.id]=pr);
+    renderPersonalFocusBody(focusAreas, S.personalSessionsCache, personalProjects);
+    return;
+  }
+
+  if(tab==='identity') {
+    renderPersonalIdentityBody();
     return;
   }
 
@@ -4948,7 +5035,7 @@ function setPersonalFilter(tab, val) {
   else if(tab==='history') S.personalHistoryFilter=val;
   else S.journalFilter=val;
   renderPersonalSubfilter(tab);
-  if(tab==='focus') renderPersonalFocusBody(Object.values(focusAreasCache), S.personalSessionsCache||[]);
+  if(tab==='focus') renderPersonalFocusBody(Object.values(focusAreasCache), S.personalSessionsCache||[], Object.values(personalProjectsCache));
   else if(tab==='history') renderPersonalHistoryBody(S.personalSessionsCache||[]);
   else renderJournalBody(S.journalCache||[]);
 }
@@ -4957,12 +5044,54 @@ function addFocusAreaBtn() {
   return `<button class="btn-p filled" style="background:var(--personal);border-color:var(--personal);margin:14px 0 20px" onclick="openAddFocusArea()">+ Add Focus Area</button>`;
 }
 
-function renderPersonalFocusBody(focusAreas, sessions) {
+function renderPersonalFocusBody(focusAreas, sessions, projects) {
   const body=document.getElementById('personal-hub-body');
-  if(!focusAreas.length) { body.innerHTML=`<div class="empty"><div class="empty-icon">🎯</div><div class="empty-text">No focus areas yet — add a skill, hobby, or habit you want to grow.</div></div>`+addFocusAreaBtn(); return; }
+  const projectsHtml = (projects && projects.length)
+    ? `<div class="section-sub" style="margin-top:2px">FROM YOUR PERSONAL GOAL</div>${projects.map(pr=>projectCard(pr,'personal','personal-hub')).join('')}`
+    : '';
+
+  if(!focusAreas.length) {
+    body.innerHTML = projectsHtml + `<div class="empty" style="margin-top:${projectsHtml?'14px':'0'}"><div class="empty-icon">🎯</div><div class="empty-text">No focus areas yet — add a skill, hobby, or habit you want to grow.</div></div>`+addFocusAreaBtn();
+    return;
+  }
   const filter=S.personalFocusFilter||'All';
   const filtered=filter==='All'?focusAreas:focusAreas.filter(f=>f.data?.category===filter);
-  body.innerHTML = (filtered.length?filtered.map(f=>focusCard(f,sessions)).join(''):`<div class="empty"><div class="empty-text">No focus areas in this category yet.</div></div>`) + addFocusAreaBtn();
+  body.innerHTML = projectsHtml
+    + (projectsHtml?`<div class="section-sub" style="margin-top:14px">SKILLS & HABITS</div>`:'')
+    + (filtered.length?filtered.map(f=>focusCard(f,sessions)).join(''):`<div class="empty"><div class="empty-text">No focus areas in this category yet.</div></div>`)
+    + addFocusAreaBtn();
+}
+
+// "Personal development tools" (Mapper + Identity) live here -- real, connected surfaces
+// rather than aspirational stubs: the Mapper card reads the Valueprint data actually saved
+// on the user's account (api/user.js now returns it), and Identity Reflection prompts write
+// into the same real journal_entry log the Journal tab already reads from, just tagged with
+// a distinguishing source so they can be told apart later if needed.
+const IDENTITY_PROMPTS=[
+  "Who am I becoming, and did today match that?",
+  "What's one belief about myself I'm ready to update?",
+  "Where did I act out of alignment with who I want to be today?",
+];
+
+function renderPersonalIdentityBody() {
+  const body=document.getElementById('personal-hub-body');
+  const vp=S.userData?.valueprint_data;
+  const vpCard = vp ? `
+    <div class="sq-card" style="flex-direction:column;align-items:stretch;background:var(--personal)15;border:1px solid var(--personal)55">
+      <div class="sq-name">Your Valueprint</div>
+      ${vp.archetype?`<div class="sq-meta" style="margin-top:8px"><b>Archetype:</b> ${vp.archetype}</div>`:''}
+      ${vp.oneLiner?`<div class="sq-meta" style="margin-top:4px;font-style:italic">"${vp.oneLiner}"</div>`:''}
+      ${vp.edge?`<div class="sq-meta" style="margin-top:4px"><b>Growth edge:</b> ${vp.edge}</div>`:''}
+      <button class="btn-p" style="margin-top:12px" onclick="openValueprint()">View Full Results / Retake →</button>
+    </div>`
+    : `<div class="empty"><div class="empty-icon">🧭</div><div class="empty-text">You haven't taken your Valueprint yet — it's how PTW gets to know who you're becoming.</div></div>
+       <button class="btn-p filled" style="background:var(--personal);border-color:var(--personal);margin:12px 0" onclick="openValueprint()">Take Your Valueprint →</button>`;
+
+  body.innerHTML = vpCard + `
+    <div class="section-sub" style="margin-top:18px">IDENTITY REFLECTION</div>
+    ${IDENTITY_PROMPTS.map(pr=>`<div class="sq-card" onclick="openJournalEntry('${pr.replace(/'/g,"\\'")}')">
+      <div class="sq-info"><div class="sq-name">${pr}</div></div>
+    </div>`).join('')}`;
 }
 
 function focusCard(f, sessions) {
@@ -5108,12 +5237,14 @@ function journalCard(e) {
   </div>`;
 }
 
-function openJournalEntry() {
+function openJournalEntry(prompt) {
   S.journalEditId=null;
+  S.journalEntrySource=prompt?'identity_reflection':null;
   showScreen('journal-entry');
-  document.getElementById('journal-entry-title').textContent='New Entry';
+  document.getElementById('journal-entry-title').textContent=prompt?'Identity Reflection':'New Entry';
   document.getElementById('journal-entry-body').innerHTML=`
-    <textarea id="journal-text" rows="14" placeholder="What's on your mind today?" style="width:100%;padding:14px;background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:10px;color:var(--text);font-size:14px;font-family:'Inter',sans-serif;outline:none;resize:none"></textarea>
+    ${prompt?`<div class="sq-meta" style="margin-bottom:10px;font-style:italic">${prompt}</div>`:''}
+    <textarea id="journal-text" rows="14" placeholder="${prompt?'Write your reflection…':"What's on your mind today?"}" style="width:100%;padding:14px;background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:10px;color:var(--text);font-size:14px;font-family:'Inter',sans-serif;outline:none;resize:none"></textarea>
     <button class="btn-p filled" style="margin:14px 0 20px;background:var(--personal);border-color:var(--personal)" onclick="submitJournalEntry()">Save Entry</button>`;
 }
 
@@ -5131,10 +5262,13 @@ function viewJournalEntry(id) {
 async function submitJournalEntry() {
   const text=document.getElementById('journal-text').value.trim();
   if(!text) { toast('Write something first'); return; }
-  const result=await req('POST','/metrics',{pillar_id:PILLARS.personal.id, log_type:'journal_entry', data:{text}});
+  const data = S.journalEntrySource ? {text, source:S.journalEntrySource} : {text};
+  const result=await req('POST','/metrics',{pillar_id:PILLARS.personal.id, log_type:'journal_entry', data});
   toast(`+${result?.xp_gained||0} XP ⚡`);
+  const returnTab = S.journalEntrySource==='identity_reflection' ? 'identity' : 'journal';
+  S.journalEntrySource=null;
   showScreen('personal-hub');
-  switchPersonalHubTab('journal');
+  switchPersonalHubTab(returnTab);
 }
 
 // ════════════════════════════════════════
@@ -5297,31 +5431,41 @@ function renderWorkProjectsBody(projects) {
   body.innerHTML=html;
 }
 
-function projectCard(pr) {
+function projectCard(pr, pillarKey, returnScreen) {
+  const color=PILLARS[pillarKey||'work']?.color||PILLARS.work.color;
   const subs=pr.subTasks||[];
   const done=subs.filter(s=>s.status==='Completed').length;
   const pct=subs.length?Math.round(done/subs.length*100):(pr.status==='Completed'?100:0);
   const remainingMin=subs.filter(s=>s.status!=='Completed').reduce((sum,s)=>sum+(Number(s.estimated_duration_minutes)||0),0);
-  return `<div class="sq-card" style="flex-direction:column;align-items:stretch" onclick="openProjectDetail(${pr.id},'work-hub')">
+  return `<div class="sq-card" style="flex-direction:column;align-items:stretch" onclick="openProjectDetail(${pr.id},'${returnScreen||'work-hub'}')">
     <div class="sq-name">${pr.name||''}</div>
     <div class="sq-meta" style="margin-top:2px">${subs.length?`Est. Time Remaining: ${(remainingMin/60).toFixed(1)} hours`:'No sub-tasks yet'}</div>
     <div style="margin-top:8px">
-      <div style="height:6px;background:var(--bg4);border-radius:4px;overflow:hidden"><div style="height:100%;width:${pct}%;background:var(--work)"></div></div>
+      <div style="height:6px;background:var(--bg4);border-radius:4px;overflow:hidden"><div style="height:100%;width:${pct}%;background:${color}"></div></div>
       <div class="sq-meta" style="margin-top:6px">${pct}% Complete</div>
     </div>
   </div>`;
 }
 
-function openAddProject() { document.getElementById('modal-project').classList.add('open'); setTimeout(()=>document.getElementById('wp-name').focus(),300); }
+function openAddProject(pillarKey) {
+  S.addProjectPillar=pillarKey||'work';
+  const p=PILLARS[S.addProjectPillar];
+  const btn=document.querySelector('#modal-project .btn-p');
+  if(btn) { btn.style.background=p.color; btn.style.borderColor=p.color; }
+  document.getElementById('modal-project').classList.add('open');
+  setTimeout(()=>document.getElementById('wp-name').focus(),300);
+}
 
 async function submitProject() {
   const name=document.getElementById('wp-name').value.trim();
   if(!name) { toast('Enter a project name'); return; }
-  await req('POST','/simple-tasks',{name, pillar_id:PILLARS.work.id, estimatedDurationMinutes:0, kind:'project'});
+  const pillarKey=S.addProjectPillar||'work';
+  await req('POST','/simple-tasks',{name, pillar_id:PILLARS[pillarKey].id, estimatedDurationMinutes:0, kind:'project'});
   closeModal('modal-project');
   toast('Project added ✓');
   document.getElementById('wp-name').value='';
-  if(document.getElementById('screen-work-hub').classList.contains('active')) switchWorkHubTab('projects');
+  if(pillarKey==='work' && document.getElementById('screen-work-hub').classList.contains('active')) switchWorkHubTab('projects');
+  if(pillarKey==='personal' && document.getElementById('screen-personal-hub').classList.contains('active')) switchPersonalHubTab('focus');
 }
 
 // ─── UNIVERSAL PROJECT TASK DETAIL PAGE (4.13) — Preview / Active / Completed ───
