@@ -803,6 +803,7 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
   </div>
   <div style="display:flex;gap:8px;padding:0 18px 10px">
     <button class="pg-btn sel" id="mh-tab-history" style="background:var(--diet);flex:1" onclick="switchMealHubTab('history')">History</button>
+    <button class="pg-btn" id="mh-tab-mealplans" style="background:var(--bg4);flex:1" onclick="switchMealHubTab('mealplans')">Meal Plans</button>
     <button class="pg-btn" id="mh-tab-mymeals" style="background:var(--bg4);flex:1" onclick="switchMealHubTab('mymeals')">My Meals</button>
     <button class="pg-btn" id="mh-tab-grocery" style="background:var(--bg4);flex:1" onclick="switchMealHubTab('grocery')">Grocery List</button>
   </div>
@@ -2836,6 +2837,11 @@ function renderReviewBlueprint(plan, pillarKey) {
     <div class="section-title" style="margin-top:14px">${plan.title||plan.goal||''}</div>
     <div class="section-sub">${plan.why||''}</div>`;
   html += `<div class="section-sub" style="margin-top:-8px">${plan.timelineType==='strict'?'🔒 Strict deadline':'🔀 Dynamic timeline'}${plan.endDate?' · Projected: '+new Date(plan.endDate).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):''}</div>`;
+  if(plan.firstStep) html += `<div class="rm-goal-card" style="background:${p.color};margin:12px 0">
+    <div style="font-size:11px;color:rgba(255,255,255,.75);letter-spacing:.4px">🎯 YOUR FIRST STEP</div>
+    <div style="font-family:'Syne',sans-serif;font-weight:700;color:#fff;margin-top:4px">${plan.firstStep.name}</div>
+    <div style="font-size:12px;color:rgba(255,255,255,.85);margin-top:6px">This is the first real action that moves you toward this goal — and toward who you're becoming.</div>
+  </div>`;
   if(plan.dailyAnchor) html += `<div class="rm-strategy" style="background:${p.color};margin-bottom:8px">Daily anchor: ${plan.dailyAnchor} <span style="opacity:.8">· 🔁 Every day</span></div>`;
   (plan.phases||[]).forEach(ph=>{
     html += `<div class="rm-goal-card" style="margin-bottom:10px">
@@ -2863,6 +2869,10 @@ function renderReviewBlueprint(plan, pillarKey) {
 async function acceptPillarPlan() {
   const key = S.pendingActivationPillar;
   const wasNew = key && !S.unlocked.includes(key);
+  // One-time highlight on whichever Daily Overview card matches this task -- cleared the
+  // first time that card renders (see dailyTaskCard()) so it doesn't linger forever.
+  const firstStep = S.pendingActivationPlan?.firstStep;
+  if(firstStep?.type==='task' && firstStep.taskId) localStorage.setItem('ptw_first_step_task_id', String(firstStep.taskId));
   if(wasNew) {
     const p = PILLARS[key];
     const result = await req('POST','/pillar/'+p.label+'?action=activate');
@@ -3257,6 +3267,12 @@ function dailyTaskCard(t) {
   const pk=getPillarKey(t.pillar);
   const p=PILLARS[pk]||PILLARS.personal;
 
+  // One-time "this is your first step" highlight, set by acceptPillarPlan() right after a
+  // new goal is generated -- shown exactly once the first time this specific task actually
+  // renders in Daily Overview, then cleared so it doesn't linger on every subsequent visit.
+  const isFirstStepHighlight = String(t.taskId)===localStorage.getItem('ptw_first_step_task_id');
+  if(isFirstStepHighlight) localStorage.removeItem('ptw_first_step_task_id');
+
   // Binary Anti-Goal (4.15.A): two buttons instead of a checkbox -- "yes I did it" vs
   // "no I slipped up" both count as real logging, neither is punished as a miss.
   if(t.isAntiGoal && t.antiGoalType==='binary' && t.status!=='Completed') {
@@ -3278,9 +3294,10 @@ function dailyTaskCard(t) {
     : isProject ? `openProjectDetail(${t.taskId},'daily')`
     : (t.isAntiGoal && t.antiGoalType==='progressive' && t.status!=='Completed') ? `openLogAntiGoal(${t.taskId})`
     : (t.taskType==='Logging' && t.status!=='Completed') ? `openDailyLoggingTask(${t.taskId})` : '';
-  return `<div class="sq-card"${openCall?` onclick="${openCall}"`:''}>
+  return `<div class="sq-card"${openCall?` onclick="${openCall}"`:''}${isFirstStepHighlight?` style="border:1.5px solid ${p.color}"`:''}>
     <div class="sq-icon" style="background:${p.color}22;color:${p.color}">${t.routineId?'🔁':(t.isAntiGoal?'🎯':p.emoji)}</div>
     <div class="sq-info">
+      ${isFirstStepHighlight?`<div style="font-size:10px;color:${p.color};font-weight:700;letter-spacing:.4px;margin-bottom:2px">🎯 YOUR FIRST STEP</div>`:''}
       <div class="sq-name">${t.startTime?formatTimeOfDay(t.startTime)+' — ':''}${t.name}</div>
       <div class="sq-meta">${goalLabel} · ${t.durationMinutes||0} min${t.status==='Completed'?' · ✓ Done':''}${t.wasSkipped&&t.status!=='Completed'?' · <span style="color:var(--blue)">⏭ moved to later today</span>':''}</div>
     </div>
@@ -4383,7 +4400,10 @@ async function loadPillarMap(pillarKey) {
 async function loadDietMap() {
   const container=document.getElementById('pillar-tab-map');
   const p=PILLARS.diet;
-  const data=await req('GET','/metrics?pillar_id='+p.id+'&days=30');
+  const [data, plansData]=await Promise.all([
+    req('GET','/metrics?pillar_id='+p.id+'&days=30'),
+    req('GET','/metrics?pillar_id='+p.id+'&log_type=meal_plan'),
+  ]);
   const logs=data?.logs||[];
   const today=new Date().toISOString().split('T')[0];
   const dateOf=l=>(l.logged_at||'').split('T')[0];
@@ -4403,31 +4423,46 @@ async function loadDietMap() {
   while(mealDates.has(d.toISOString().split('T')[0])) { streak++; d.setDate(d.getDate()-1); }
 
   const nextMealType=getNextMealType();
+  const plans=plansData?.logs||[];
+  plans.forEach(pl=>{ mealPlansCache[pl.id]=pl.data; });
+  // Today's Meal Plan CTA: same rotation idea as Fitness's Today's Workout -- prefer a plan
+  // matching the current meal type (breakfast/lunch/dinner/snack by clock), rotating through
+  // however many of that type exist so the same plan doesn't repeat every single day; only
+  // matched by mealType singular vs the plural filter labels used elsewhere in Meal Hub.
+  const matchingPlans=plans.filter(pl=>(pl.data?.mealType||'').toLowerCase()===nextMealType.toLowerCase());
+  const mealsOfThisTypeToday=todayMeals.filter(m=>(m.data?.meal_type||'').toLowerCase()===nextMealType.toLowerCase()).length;
+  const todaysPlan = matchingPlans.length ? matchingPlans[mealsOfThisTypeToday % matchingPlans.length] : null;
 
   const html=`
-    <div class="metric-row">
+    <div class="rm-goal-card" style="text-align:center;background:${p.color}">
+      ${todaysPlan ? `
+        <div style="font-size:11px;color:rgba(255,255,255,.75);letter-spacing:.5px">${nextMealType.toUpperCase()} PLAN</div>
+        <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:#fff;margin:6px 0 12px">${todaysPlan.data?.name}</div>
+        <div style="display:flex;gap:10px;justify-content:center">
+          <button class="btn-p filled" style="background:#fff;color:${p.color};border-color:#fff" onclick="logMealFromPlan(${todaysPlan.id})">Log This Meal</button>
+          <button class="btn-p" style="border-color:rgba(255,255,255,.5);color:#fff" onclick="viewMealPlanDetail(${todaysPlan.id})">View Recipe</button>
+        </div>` : `
+        <div style="font-size:11px;color:rgba(255,255,255,.75);letter-spacing:.5px">${nextMealType.toUpperCase()}</div>
+        <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:#fff;margin:6px 0 12px">No plan set</div>
+        <div style="display:flex;gap:10px;justify-content:center">
+          <button class="btn-p filled" style="background:#fff;color:${p.color};border-color:#fff" onclick="openMealLog('${nextMealType}')">Log a Meal</button>
+          <button class="btn-p" style="border-color:rgba(255,255,255,.5);color:#fff" onclick="openCreateMealPlan()">+ Create Plan</button>
+        </div>`}
+    </div>
+    <div class="metric-row" style="margin-top:14px">
       <div class="metric-card" style="background:${p.color}"><div class="metric-icon">📈</div><div class="metric-val" style="color:#fff">${calories}</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Daily Calories</div><div class="metric-delta" style="color:rgba(255,255,255,.7)">/ 2300</div></div>
       <div class="metric-card" style="background:${p.color}"><div class="metric-icon">🔥</div><div class="metric-val" style="color:#fff;font-size:16px">P:${macroPct.p} C:${macroPct.c} F:${macroPct.f}</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Macro Targets</div></div>
-      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">🔥</div><div class="metric-val" style="color:#fff">${streak}</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Meal Streak</div><div class="metric-delta" style="color:rgba(255,255,255,.7)">next… ${nextMealType}</div></div>
+      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">🔥</div><div class="metric-val" style="color:#fff">${streak}</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Meal Streak</div></div>
       <div class="metric-card" style="background:${p.color}"><div class="metric-icon">📈</div><div class="metric-val" style="color:#fff;font-size:16px">${water.toFixed(1)} / 3.0 L</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Hydration</div></div>
     </div>
-    <div style="display:flex;justify-content:center;margin:18px 0">
-      <div onclick="openMealLog('${nextMealType}')" style="width:190px;height:190px;border-radius:50%;background:${p.color};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;cursor:pointer;text-align:center;padding:0 20px">
-        <div style="font-size:11px;color:rgba(255,255,255,.75);letter-spacing:.3px">${nextMealType}</div>
-        <div style="font-family:'Syne',sans-serif;font-size:17px;font-weight:700;color:#fff">Log a meal</div>
-        <div style="display:flex;gap:10px;margin-top:6px">
-          <button class="pt-btn" style="background:rgba(255,255,255,.2)" onclick="event.stopPropagation();openMealLog('${nextMealType}')">Log</button>
-        </div>
-      </div>
-    </div>
-    <button class="view-log-btn" onclick="openMealHub()">View Full Meal Hub</button>`;
+    <button class="view-log-btn" style="margin-top:14px" onclick="openMealHub()">View Full Meal Hub</button>`;
   container.innerHTML=html;
 }
 
 function openMealHub() { showScreen('meal-hub'); switchMealHubTab('history'); }
 
 async function switchMealHubTab(tab) {
-  ['history','mymeals','grocery'].forEach(t=>{
+  ['history','mealplans','mymeals','grocery'].forEach(t=>{
     const btn=document.getElementById('mh-tab-'+t);
     btn.classList.toggle('sel', t===tab);
     btn.style.background = t===tab ? 'var(--diet)' : 'var(--bg4)';
@@ -4440,6 +4475,16 @@ async function switchMealHubTab(tab) {
   if(tab==='grocery') {
     sub.innerHTML='';
     renderGroceryList();
+    return;
+  }
+
+  if(tab==='mealplans') {
+    sub.innerHTML='';
+    const data=await req('GET','/metrics?pillar_id='+PILLARS.diet.id+'&log_type=meal_plan');
+    const plans=data?.logs||[];
+    body.innerHTML = plans.length ? plans.map(mealPlanCard).join('') :
+      `<div class="empty"><div class="empty-icon">📋</div><div class="empty-text">No meal plans yet — accept a Diet goal, or create one yourself.</div>
+       <button class="btn-p filled" style="margin-top:14px;background:var(--diet);border-color:var(--diet)" onclick="openCreateMealPlan()">+ Create Meal Plan</button></div>`;
     return;
   }
 
@@ -4496,9 +4541,78 @@ async function viewMealDetail(id) {
     <button class="btn-p" onclick="showScreen('meal-hub')">← Back to Meal Hub</button>`;
 }
 
-function renderGroceryList() {
-  const items=JSON.parse(localStorage.getItem('ptw_grocery')||'[]');
+// Meal Plans -- same granularity as Fitness's workoutPlans (one plan = one recipe/meal,
+// not a whole week), stored as metric_logs (log_type='meal_plan') from api/goals.js's
+// DIET_ADDENDUM or created manually below.
+function mealPlanCard(plan) {
+  mealPlansCache[plan.id]=plan.data;
+  const d=plan.data||{};
+  return `<div class="rm-goal-card" style="margin-bottom:10px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <span style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text);cursor:pointer" onclick="viewMealPlanDetail(${plan.id})">${d.name||'Meal Plan'} <span style="color:var(--stone);font-size:11px">›</span></span>
+      <span style="font-size:11px;color:var(--stone)">${plan.value||0} kcal</span>
+    </div>
+    <div style="font-size:12px;color:var(--stone);margin-bottom:10px">${d.mealType||'Meal'} · P:${d.protein_g||0} C:${d.carbs_g||0} F:${d.fat_g||0} · ${(d.ingredients||[]).length} ingredients</div>
+    <button class="btn-p filled" style="background:var(--diet);border-color:var(--diet)" onclick="logMealFromPlan(${plan.id})">Log This Meal</button>
+  </div>`;
+}
+
+function viewMealPlanDetail(planId) {
+  const d=mealPlansCache[planId];
+  if(!d) return;
+  showScreen('meal-log');
+  document.getElementById('meal-log-title').textContent=d.name||'Meal Plan';
+  document.getElementById('meal-log-body').innerHTML=`
+    <div class="section-sub" style="text-align:center;margin-top:14px">${d.mealType||'Meal'} · ${d.protein_g||0}g P / ${d.carbs_g||0}g C / ${d.fat_g||0}g F</div>
+    <div class="section-title" style="margin-top:14px">Ingredients</div>
+    ${(d.ingredients||[]).map(ing=>`<div class="rm-goal-card" style="margin-bottom:6px;display:flex;justify-content:space-between"><span>${ing.name}</span><span style="color:var(--stone)">${ing.qty||''}</span></div>`).join('')}
+    ${d.instructions?`<div class="section-title" style="margin-top:16px">Instructions</div><div class="rm-goal-card" style="font-size:13px;color:var(--text)">${d.instructions}</div>`:''}
+    <button class="btn-p filled" style="margin-top:16px;background:var(--diet);border-color:var(--diet)" onclick="logMealFromPlan(${planId})">Log This Meal</button>
+    <button class="btn-p" style="margin:10px 0 20px" onclick="showScreen('meal-hub')">← Back to Meal Hub</button>`;
+}
+
+// Pre-fills the same manual-entry review screen as a normal log, but tags the draft with
+// this plan's ingredients so confirmLogMeal() can remove them from the Grocery List --
+// the "logging it clears what you used" half of the plan <-> grocery sync.
+function logMealFromPlan(planId) {
+  const d=mealPlansCache[planId];
+  if(!d) return;
+  mealLogMealType=d.mealType||'Meal';
+  mealLogDraft={ name:d.name, calories:d.calories||0, protein_g:d.protein_g||0, carbs_g:d.carbs_g||0, fat_g:d.fat_g||0, ingredients:d.ingredients||[] };
+  showScreen('meal-log');
+  document.getElementById('meal-log-title').textContent='Log '+(d.mealType||'Meal');
+  renderMealReview();
+}
+
+// Grocery List moved off localStorage onto the backend (a single metric_logs row,
+// log_type='grocery_list', same "one flexible row" pattern the Diet goal-generation
+// persistence uses) so it's the same list a meal plan's ingredients actually merge into,
+// instead of a disconnected per-device checklist.
+async function fetchGroceryList() {
+  const data=await req('GET','/metrics?pillar_id='+PILLARS.diet.id+'&log_type=grocery_list');
+  const row=(data?.logs||[])[0];
+  S.groceryListId=row?.id||null;
+  return row?.data?.items||[];
+}
+async function saveGroceryItems(items) {
+  if(S.groceryListId) {
+    await req('PATCH','/metrics',{id:S.groceryListId, data:{items}});
+  } else {
+    const result=await req('POST','/metrics',{pillar_id:PILLARS.diet.id, log_type:'grocery_list', data:{items}});
+    S.groceryListId=result?.data?.id||null;
+  }
+}
+async function removeIngredientsFromGroceryList(ingredients) {
+  const items=await fetchGroceryList();
+  const namesToRemove=new Set(ingredients.map(i=>String(i.name).toLowerCase()));
+  const remaining=items.filter(it=>!namesToRemove.has(String(it.name).toLowerCase()));
+  if(remaining.length!==items.length) await saveGroceryItems(remaining);
+}
+
+async function renderGroceryList() {
   const body=document.getElementById('meal-hub-body');
+  body.innerHTML='<div class="spinner"></div>';
+  const items=await fetchGroceryList();
   body.innerHTML=`
     <div style="display:flex;gap:8px;margin:10px 0">
       <input type="text" id="grocery-input" placeholder="Add an item…" style="flex:1;padding:10px 14px;background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:10px;color:var(--text);font-size:14px;outline:none">
@@ -4512,24 +4626,84 @@ function renderGroceryItems(items) {
   document.getElementById('grocery-items').innerHTML = items.length ? items.map((it,i)=>`
     <div class="sq-card" style="cursor:pointer" onclick="toggleGroceryItem(${i})">
       <div class="sq-icon" style="background:var(--diet)22;color:var(--diet)">${it.done?'✓':'○'}</div>
-      <div class="sq-info"><div class="sq-name" style="${it.done?'text-decoration:line-through;color:var(--stone)':''}">${it.name}</div></div>
+      <div class="sq-info"><div class="sq-name" style="${it.done?'text-decoration:line-through;color:var(--stone)':''}">${it.name}${it.qty?' · '+it.qty:''}</div>${it.source==='meal_plan'?'<div class="sq-meta">From a meal plan</div>':''}</div>
     </div>`).join('') : `<div class="empty"><div class="empty-icon">🛒</div><div class="empty-text">Your grocery list is empty.</div></div>`;
 }
-function addGroceryItem() {
+async function addGroceryItem() {
   const input=document.getElementById('grocery-input');
   const name=input.value.trim();
   if(!name) return;
-  const items=JSON.parse(localStorage.getItem('ptw_grocery')||'[]');
-  items.push({name,done:false});
-  localStorage.setItem('ptw_grocery',JSON.stringify(items));
+  const items=await fetchGroceryList();
+  items.push({name,done:false,source:'manual'});
+  await saveGroceryItems(items);
   input.value='';
   renderGroceryItems(items);
 }
-function toggleGroceryItem(i) {
-  const items=JSON.parse(localStorage.getItem('ptw_grocery')||'[]');
+async function toggleGroceryItem(i) {
+  const items=await fetchGroceryList();
   items[i].done=!items[i].done;
-  localStorage.setItem('ptw_grocery',JSON.stringify(items));
+  await saveGroceryItems(items);
   renderGroceryItems(items);
+}
+
+// Manual meal plan creation -- same modal-confirm-based repeatable-row pattern as Fitness's
+// Create Workout Template, and its ingredients merge into the Grocery List the same way an
+// AI-generated plan's do (see api/goals.js's mergeIntoGroceryList()), just done client-side
+// here since there's no second AI call involved.
+function renderMealPlanIngredientRows() {
+  document.getElementById('mp-ingredients').innerHTML = S.mpIngredients.map((r,i)=>`
+    <div style="display:flex;gap:6px">
+      <input type="text" placeholder="Ingredient" value="${r.name}" oninput="S.mpIngredients[${i}].name=this.value" style="flex:2;padding:8px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);outline:none">
+      <input type="text" placeholder="Qty" value="${r.qty}" oninput="S.mpIngredients[${i}].qty=this.value" style="flex:1;padding:8px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none">
+    </div>`).join('');
+}
+function addMealPlanIngredientRow() { S.mpIngredients.push({name:'',qty:''}); renderMealPlanIngredientRows(); }
+
+function openCreateMealPlan() {
+  S.mpIngredients=[{name:'',qty:''}];
+  openConfirm('Create Meal Plan', '', ()=>{});
+  document.getElementById('confirm-body').innerHTML=`
+    <input type="text" id="mp-name" placeholder="Meal name" style="width:100%;padding:10px;margin-bottom:8px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);outline:none">
+    <select id="mp-type" style="width:100%;padding:10px;margin-bottom:8px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text)">
+      ${['Breakfast','Lunch','Dinner','Snack'].map(o=>`<option>${o}</option>`).join('')}
+    </select>
+    <div style="display:flex;gap:6px;margin-bottom:8px">
+      <input type="number" id="mp-cal" placeholder="Calories" style="flex:1;padding:8px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none">
+      <input type="number" id="mp-protein" placeholder="Protein g" style="flex:1;padding:8px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none">
+      <input type="number" id="mp-carbs" placeholder="Carbs g" style="flex:1;padding:8px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none">
+      <input type="number" id="mp-fat" placeholder="Fat g" style="flex:1;padding:8px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none">
+    </div>
+    <div id="mp-ingredients" style="display:flex;flex-direction:column;gap:6px;max-height:140px;overflow-y:auto"></div>
+    <button class="view-log-btn" style="margin-top:8px" onclick="addMealPlanIngredientRow()">+ Add Ingredient</button>
+    <textarea id="mp-instructions" placeholder="Instructions (optional)" rows="2" style="width:100%;margin-top:8px;padding:10px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);outline:none;resize:none"></textarea>`;
+  renderMealPlanIngredientRows();
+  const yesBtn=document.getElementById('confirm-yes-btn');
+  yesBtn.textContent='Save Meal Plan';
+  yesBtn.onclick=async ()=>{
+    const name=document.getElementById('mp-name').value.trim();
+    if(!name) { toast('Enter a meal name'); return; }
+    const ingredients=S.mpIngredients.filter(r=>r.name.trim()).map(r=>({name:r.name.trim(), qty:r.qty.trim()}));
+    const data={
+      name, mealType:document.getElementById('mp-type').value,
+      protein_g:Number(document.getElementById('mp-protein').value)||0,
+      carbs_g:Number(document.getElementById('mp-carbs').value)||0,
+      fat_g:Number(document.getElementById('mp-fat').value)||0,
+      ingredients, instructions:document.getElementById('mp-instructions').value.trim(), source:'manual',
+    };
+    const calories=Number(document.getElementById('mp-cal').value)||0;
+    closeModal('modal-confirm');
+    yesBtn.textContent='Yes';
+    await req('POST','/metrics',{pillar_id:PILLARS.diet.id, log_type:'meal_plan', value:calories, unit:'kcal', data});
+    if(ingredients.length) {
+      const items=await fetchGroceryList();
+      const existingNames=new Set(items.map(it=>String(it.name).toLowerCase()));
+      let added=0;
+      ingredients.forEach(ing=>{ const key=ing.name.toLowerCase(); if(!existingNames.has(key)) { items.push({name:ing.name, qty:ing.qty, done:false, source:'meal_plan'}); existingNames.add(key); added++; } });
+      if(added) await saveGroceryItems(items);
+    }
+    toast('Meal plan created ✓');
+    switchMealHubTab('mealplans');
+  };
 }
 
 // ── Meal log flow: capture → AI scan → review → log ──
@@ -4576,7 +4750,7 @@ function renderMealReview() {
   document.getElementById('meal-log-body').innerHTML=`
     ${d.image?`<div style="text-align:center;margin:14px 0"><img src="${d.image}" style="width:160px;height:160px;object-fit:cover;border-radius:12px;border:1px solid rgba(196,184,168,.15)"></div>`:''}
     <div class="field"><label>MEAL NAME</label><input type="text" id="ml-name" value="${d.name||''}" placeholder="e.g. Chicken & Rice Bowl"></div>
-    <div class="section-sub" style="margin-top:14px">${d.image?'NUTRITIONAL OVERVIEW (AI ESTIMATE)':'NUTRITIONAL OVERVIEW'}</div>
+    <div class="section-sub" style="margin-top:14px">${d.image?'NUTRITIONAL OVERVIEW (AI ESTIMATE)':d.ingredients?'FROM YOUR MEAL PLAN':'NUTRITIONAL OVERVIEW'}</div>
     <div class="metric-row">
       <div class="metric-card"><div class="metric-label">Calories</div><input type="number" id="ml-cal" value="${d.calories||0}" style="width:100%;background:transparent;border:none;color:var(--diet);font-family:'Syne',sans-serif;font-size:20px;font-weight:800;outline:none"></div>
       <div class="metric-card"><div class="metric-label">Protein (g)</div><input type="number" id="ml-protein" value="${d.protein_g||0}" style="width:100%;background:transparent;border:none;color:var(--text);font-size:16px;outline:none"></div>
@@ -4586,6 +4760,7 @@ function renderMealReview() {
       <div class="metric-card"><div class="metric-label">Fat (g)</div><input type="number" id="ml-fat" value="${d.fat_g||0}" style="width:100%;background:transparent;border:none;color:var(--text);font-size:16px;outline:none"></div>
     </div>
     ${d.note?`<div class="section-sub" style="margin-top:10px;color:var(--muted)">${d.note}</div>`:''}
+    ${d.ingredients?.length?`<div style="font-size:12px;color:var(--stone);margin-top:10px">Logging this will remove ${d.ingredients.length} ingredient${d.ingredients.length===1?'':'s'} from your Grocery List.</div>`:''}
     <button class="btn-p filled" style="margin-top:18px" onclick="confirmLogMeal()">Log This Meal</button>
     <button class="btn-p" style="margin-top:8px;border-color:transparent;color:var(--stone)" onclick="saveMealTemplate()">Save as Meal</button>`;
 }
@@ -4604,7 +4779,11 @@ async function confirmLogMeal() {
   const m=readMealForm();
   const p=PILLARS.diet;
   const taskId=S.pendingTaskId; S.pendingTaskId=null;
+  const ingredients=mealLogDraft?.ingredients||null;
   const result=await req('POST','/metrics',{pillar_id:p.id, log_type:'meal', value:m.calories, unit:'kcal', task_id:taskId||undefined, data:{name:m.name, protein_g:m.protein_g, carbs_g:m.carbs_g, fat_g:m.fat_g, meal_type:mealLogMealType}});
+  // The "logging it clears what you used" half of the plan <-> grocery sync -- only fires
+  // when this meal came from a plan (readMealForm() alone can't carry ingredients).
+  if(ingredients?.length) await removeIngredientsFromGroceryList(ingredients);
   showMealLoggedCelebration({...m, xp:result?.xp_gained||0});
 }
 
@@ -4635,7 +4814,7 @@ function showMealLoggedCelebration(m) {
 // ════════════════════════════════════════
 // FITNESS PILLAR — real workout tracking
 // ════════════════════════════════════════
-let workoutPlansCache={}, activeWorkout=null;
+let workoutPlansCache={}, activeWorkout=null, mealPlansCache={};
 
 async function loadFitnessMap() {
   const container=document.getElementById('pillar-tab-map');

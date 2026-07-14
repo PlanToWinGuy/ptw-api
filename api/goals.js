@@ -48,6 +48,19 @@ Also include a "workoutPlans" array — 2 concrete starter workout plans matchin
 ]
 2-3 plans, 4-6 exercises each, sets/reps/weight appropriate to their stated experience level and equipment.`;
 
+// Appended to SYSTEM only for Diet -- same reasoning as FITNESS_ADDENDUM: real starter meal
+// plans (recipe-grained, matching the workoutPlans granularity of "one plan = one session")
+// in the same call, plus a real per-ingredient list so the Grocery List can genuinely sync
+// to what the plan requires instead of staying a disconnected manual checklist.
+const DIET_ADDENDUM = `
+Also include a "mealPlans" array — 3 concrete meal plans matching their restrictions/cooking habits/meal structure from the questionnaire:
+"mealPlans": [
+  {"name": "<e.g. High-Protein Overnight Oats>", "mealType": "<Breakfast|Lunch|Dinner|Snack>", "calories": <number>, "protein_g": <number>, "carbs_g": <number>, "fat_g": <number>,
+   "ingredients": [{"name": "<ingredient>", "qty": "<e.g. '200g' or '2'>"}],
+   "instructions": "<short 2-4 step prep, or 'Order from a healthy option matching these macros' if they rarely cook>"}
+]
+3 plans covering different meal types, respecting any dietary restrictions/dislikes exactly (never include a restricted or disliked ingredient). If they rarely cook, keep instructions store-bought/takeaway-oriented rather than recipe-heavy.`;
+
 const GOAL_TYPES = new Set(['habit', 'project', 'skill', 'mindset']);
 
 // Static complementary-pillar map for the Synergy card -- deterministic, no AI call.
@@ -100,6 +113,23 @@ async function buildStrategyCards(user, g, unlockedPillarIds) {
         // Raw number (not just the formatted body above) so the Fitness Map's Today's
         // Workout card can compare it against actual logged workouts this week.
         weeklyTarget: answers.weekly_days ? Number(answers.weekly_days) : null,
+      });
+    }
+  }
+
+  if (pillarName === 'diet') {
+    const [{ count: planCount }] = await sql`SELECT COUNT(*)::int AS count FROM metric_logs WHERE user_id = ${user.id} AND pillar_id = ${g.pillar_id} AND log_type = 'meal_plan'`;
+    const answersRows = await sql`SELECT answers FROM pillar_answers WHERE user_id = ${user.id} AND pillar_id = ${g.pillar_id} ORDER BY created_at DESC LIMIT 1`;
+    const answers = answersRows[0]?.answers || {};
+    if (planCount || answers.restrictions) {
+      const restrictions = Array.isArray(answers.restrictions) ? answers.restrictions.filter(r => r && r !== 'No Restrictions') : [];
+      cards.push({
+        type: 'meals',
+        title: 'Your Meal Plan',
+        body: [
+          restrictions.length ? restrictions.join(', ') : null,
+          planCount ? `${planCount} starter meal plan${planCount === 1 ? '' : 's'} ready in your Meal Hub` : null,
+        ].filter(Boolean).join(' · ') || `${planCount} starter meal plans ready in your Meal Hub`,
       });
     }
   }
@@ -228,12 +258,12 @@ async function generateGoal(req, res, user) {
 
   if (key) {
     try {
-      // 4000 (5000 for Fitness, which also has to fit 2-3 full workoutPlans on top of the
-      // normal phases/milestones/alts in the same response) -- 2400 was too tight for a
-      // detailed multi-phase plan and silently truncated mid-JSON on at least one real
-      // account, which JSON.parse then threw on, falling all the way back to the generic
-      // 1-milestone default plan with zero visibility into why.
-      const maxTokens = pillar_name.toLowerCase() === 'fitness' ? 5000 : 4000;
+      // 4000 (5000 for Fitness/Diet, which also have to fit their real starter plans array
+      // on top of the normal phases/milestones/alts in the same response) -- 2400 was too
+      // tight for a detailed multi-phase plan and silently truncated mid-JSON on at least
+      // one real account, which JSON.parse then threw on, falling all the way back to the
+      // generic 1-milestone default plan with zero visibility into why.
+      const maxTokens = ['fitness', 'diet'].includes(pillar_name.toLowerCase()) ? 5000 : 4000;
       const r = await fetch(ANTHROPIC_URL, {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
@@ -245,6 +275,7 @@ async function generateGoal(req, res, user) {
             SYSTEM,
             PILLAR_PRINCIPLES[pillar_name.toLowerCase()],
             pillar_name.toLowerCase() === 'fitness' ? FITNESS_ADDENDUM : null,
+            pillar_name.toLowerCase() === 'diet' ? DIET_ADDENDUM : null,
           ].filter(Boolean).join('\n\n'),
           messages: [{ role: 'user', content: [
             `Pillar: ${pillar_name}`,
@@ -290,6 +321,12 @@ async function generateGoal(req, res, user) {
     RETURNING id
   `;
   const goal_id = goalRows[0].id;
+
+  // The Review Blueprint highlights whichever real, concrete action the user will actually
+  // do first -- a scheduled sub-task if one exists, else the daily anchor habit/routine.
+  // Ties the plan back to the Valueprint/mapper framing ("this whole plan traces back to
+  // one real action") without a second AI call -- it's just the first thing already in `plan`.
+  let firstStep = plan.dailyAnchor ? { type: 'routine', name: plan.dailyAnchor } : null;
 
   if (goal_type === 'habit' || goal_type === 'mindset') {
     // The daily anchor is a routine, not a one-off task -- materializes every day via
@@ -342,12 +379,18 @@ async function generateGoal(req, res, user) {
       const dailyBudgetMinutes = Number(questionnaire_answers?.daily_time_budget) || 60;
       const scheduled = scheduleSubTasks(oneOffActions, { startDate: today, clockStart, dailyBudgetMinutes, subtaskMinutes });
 
-      for (const action of scheduled) {
+      for (let i = 0; i < scheduled.length; i++) {
+        const action = scheduled[i];
         const toolHint = inferToolHint(pillarKey, action.text);
-        await sql`
+        const insertedRows = await sql`
           INSERT INTO tasks (user_id, goal_id, pillar_id, parent_task_id, name, kind, phase_label, due_date, estimated_duration_minutes, start_time, end_time, tool_hint)
           VALUES (${user.id}, ${goal_id}, ${pillar_id}, ${parent_task_id}, ${action.text}, 'simple', ${action.phaseLabel}, ${action.dueDate}, ${subtaskMinutes}, ${action.startTime}, ${action.endTime}, ${toolHint})
+          RETURNING id
         `;
+        // The very first scheduled sub-task, in real chronological order -- this is what
+        // the Review Blueprint highlights as "your first step," a concrete tie back to the
+        // Valueprint/mapper framing that this whole plan traces back to a single real action.
+        if (i === 0) firstStep = { type: 'task', taskId: insertedRows[0].id, name: action.text };
       }
     }
   }
@@ -364,7 +407,46 @@ async function generateGoal(req, res, user) {
     }
   }
 
-  res.status(200).json({ data: { id: goal_id, pillar: pillar_name, type: goal_type, timelineType: timeline_type, endDate: end_date, ...plan } });
+  // Diet gets real meal plan templates stored as metric_logs (same pattern as Fitness's
+  // workoutPlans), and their ingredients merge straight into the Grocery List -- "planning
+  // a meal stocks your list; logging it later clears what you actually used" (the removal
+  // half happens client-side in confirmLogMeal() when a meal is logged against a plan).
+  if (pillar_name.toLowerCase() === 'diet' && Array.isArray(plan.mealPlans)) {
+    const allIngredients = [];
+    for (const mp of plan.mealPlans) {
+      await sql`
+        INSERT INTO metric_logs (user_id, pillar_id, log_type, value, unit, data)
+        VALUES (${user.id}, ${pillar_id}, 'meal_plan', ${mp.calories || null}, 'kcal',
+                ${JSON.stringify({ name: mp.name, mealType: mp.mealType || null, protein_g: mp.protein_g || 0, carbs_g: mp.carbs_g || 0, fat_g: mp.fat_g || 0, ingredients: mp.ingredients || [], instructions: mp.instructions || '', source: 'goal' })}::jsonb)
+      `;
+      (mp.ingredients || []).forEach(ing => { if (ing?.name) allIngredients.push(ing); });
+    }
+    if (allIngredients.length) await mergeIntoGroceryList(sql, user.id, pillar_id, allIngredients);
+  }
+
+  res.status(200).json({ data: { id: goal_id, pillar: pillar_name, type: goal_type, timelineType: timeline_type, endDate: end_date, firstStep, ...plan } });
+}
+
+// Grocery List is a single metric_logs row (log_type='grocery_list', data.items=[...]) --
+// same "one flexible row" pattern as everything else in this table, so no new schema/table
+// is needed for a per-user list. Dedupes by lowercased name so re-adding the same
+// ingredient from a second meal plan doesn't create a duplicate line item.
+async function mergeIntoGroceryList(sql, userId, pillarId, ingredients) {
+  const rows = await sql`SELECT * FROM metric_logs WHERE user_id = ${userId} AND log_type = 'grocery_list' LIMIT 1`;
+  const existing = rows[0];
+  const items = existing?.data?.items || [];
+  const existingNames = new Set(items.map(i => String(i.name || '').toLowerCase()));
+  for (const ing of ingredients) {
+    const nameLower = String(ing.name).toLowerCase();
+    if (existingNames.has(nameLower)) continue;
+    items.push({ name: ing.name, qty: ing.qty || '', done: false, source: 'meal_plan' });
+    existingNames.add(nameLower);
+  }
+  if (existing) {
+    await sql`UPDATE metric_logs SET data = ${JSON.stringify({ items })}::jsonb WHERE id = ${existing.id}`;
+  } else {
+    await sql`INSERT INTO metric_logs (user_id, pillar_id, log_type, data) VALUES (${userId}, ${pillarId}, 'grocery_list', ${JSON.stringify({ items })}::jsonb)`;
+  }
 }
 
 // GET /api/goals lists goals; POST /api/goals/generate (rewritten to ?action=generate) creates one.
