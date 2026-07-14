@@ -2770,11 +2770,45 @@ async function submitPillarQuestionnaire(pillarKey) {
     const check = await req('POST','/goals/feasibility-check',{pillar_name:p.label, questionnaire_answers:answers, target_end_date:targetEndDate});
     if(check?.verdict==='reject') { toast(check.message||"That deadline isn't realistic for this goal — try a later date."); return; }
     if(check?.verdict==='warn') {
-      openConfirm('Ambitious Deadline', check.message||'This is achievable but demanding.', ()=>generatePillarPlan(pillarKey, answers, timelineType, targetEndDate));
+      openConfirm('Ambitious Deadline', check.message||'This is achievable but demanding.', ()=>proceedPastClarification(pillarKey, answers, timelineType, targetEndDate));
       return;
     }
   }
+  await proceedPastClarification(pillarKey, answers, timelineType, targetEndDate);
+}
+
+// One quick AI pass before generation: most filled-out questionnaires are specific enough
+// and this returns needsClarification=false silently, so most users see zero extra friction.
+// Only a genuinely ambiguous submission (vague free-text goal, contradictory answers) gets
+// 1-2 real follow-up questions here -- the actual plan is still shown on Review Blueprint
+// for explicit Accept/Back either way, this just makes the first draft better-targeted.
+async function proceedPastClarification(pillarKey, answers, timelineType, targetEndDate) {
+  const p = PILLARS[pillarKey];
+  const clarify = await req('POST','/goals/clarify',{pillar_name:p.label, questionnaire_answers:answers});
+  if(clarify?.needsClarification && clarify.questions?.length) {
+    openGoalClarification(pillarKey, answers, timelineType, targetEndDate, clarify.questions);
+    return;
+  }
   await generatePillarPlan(pillarKey, answers, timelineType, targetEndDate);
+}
+
+function openGoalClarification(pillarKey, answers, timelineType, targetEndDate, questions) {
+  const p = PILLARS[pillarKey];
+  S.pendingClarify = { pillarKey, answers, timelineType, targetEndDate, questions };
+  document.getElementById('pillar-quest-body').innerHTML = `
+    <div class="section-title" style="margin-top:14px">Just a couple quick questions</div>
+    <div class="section-sub">This'll help build a plan that actually fits you.</div>
+    ${questions.map((q,i)=>`
+      <div class="field" style="margin-top:14px"><label>${q}</label>
+        <textarea id="clarify-answer-${i}" rows="2" style="width:100%;padding:10px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);outline:none;resize:none"></textarea>
+      </div>`).join('')}
+    <button class="btn-p filled" style="margin-top:16px;background:${p.color};border-color:${p.color}" onclick="submitGoalClarification()">Continue</button>`;
+}
+
+async function submitGoalClarification() {
+  const { pillarKey, answers, timelineType, targetEndDate, questions } = S.pendingClarify;
+  const clarifications = questions.map((q,i)=>({ question:q, answer:document.getElementById('clarify-answer-'+i)?.value||'' }));
+  await generatePillarPlan(pillarKey, { ...answers, clarifications }, timelineType, targetEndDate);
 }
 
 async function generatePillarPlan(pillarKey, answers, timelineType, targetEndDate) {
@@ -7222,25 +7256,120 @@ function refinePillarGoal(pillarKey) {
 }
 
 // ─── PILLAR TROPHIES TAB ───
-async function loadPillarTrophies(pillarKey) {
+// 4.7.D Trophies -- universal across all 6 pillars via /api/badges, /api/streaks,
+// /api/accomplishments (?pillar=key). Badges/streaks are computed live from real log/goal
+// data (no invented stats); default tab is Badges per spec.
+function loadPillarTrophies(pillarKey) {
   const container=document.getElementById('pillar-tab-trophies');
   const p=PILLARS[pillarKey];
-  const trophies=[
-    {icon:'🏅',name:'First Step',desc:'Completed your first task',earned:true},
-    {icon:'🔥',name:'7-Day Streak',desc:'7 days in a row',earned:true},
-    {icon:'💪',name:'Iron Will',desc:'Complete 10 tasks in one day',earned:false},
-    {icon:'⚡',name:'XP Machine',desc:'Earn 500 XP in one week',earned:false},
-    {icon:'🎯',name:'Sniper',desc:'Hit 95%+ completion for a week',earned:false},
-    {icon:'👑',name:'Phase Master',desc:'Complete a full phase',earned:false},
-  ];
-  container.innerHTML=`<div class="section-title">Trophies — ${p.label}</div>`+
-    trophies.map(t=>`<div class="trophy-card ${t.earned?'':'trophy-locked'}">
-      <div class="trophy-icon">${t.icon}</div>
-      <div class="trophy-info">
-        <div class="trophy-name">${t.name}${t.earned?' ✓':' 🔒'}</div>
-        <div class="trophy-desc">${t.desc}</div>
-      </div>
-    </div>`).join('');
+  container.innerHTML = `
+    <div style="display:flex;gap:8px;padding:10px 0 14px">
+      <button class="pg-btn sel" id="tt-tab-badges" style="background:${p.color};flex:1" onclick="switchTrophiesTab('${pillarKey}','badges')">Badges</button>
+      <button class="pg-btn" id="tt-tab-streaks" style="background:var(--bg4);flex:1" onclick="switchTrophiesTab('${pillarKey}','streaks')">Streaks</button>
+      <button class="pg-btn" id="tt-tab-accomplishments" style="background:var(--bg4);flex:1" onclick="switchTrophiesTab('${pillarKey}','accomplishments')">Accomplishments</button>
+    </div>
+    <div id="trophies-tab-body"></div>`;
+  switchTrophiesTab(pillarKey, 'badges');
+}
+
+function switchTrophiesTab(pillarKey, tab) {
+  const p=PILLARS[pillarKey];
+  ['badges','streaks','accomplishments'].forEach(t=>{
+    const btn=document.getElementById('tt-tab-'+t);
+    btn.classList.toggle('sel', t===tab);
+    btn.style.background = t===tab ? p.color : 'var(--bg4)';
+  });
+  if(tab==='badges') renderBadgesTab(pillarKey);
+  else if(tab==='streaks') renderStreaksTab(pillarKey);
+  else renderAccomplishmentsTab(pillarKey);
+}
+
+async function renderBadgesTab(pillarKey) {
+  const body=document.getElementById('trophies-tab-body');
+  body.innerHTML='<div class="spinner"></div>';
+  const data=await req('GET','/badges?pillar='+pillarKey);
+  const qs=data?.quick_stats||{};
+  const badges=data?.badges||[];
+  S.trophyBadges={};
+  badges.forEach(b=>{ S.trophyBadges[b.badge_id]=b; });
+
+  body.innerHTML = `
+    <div class="rm-goal-card" style="margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--stone);margin-bottom:6px"><span>Rarest Badge Earned</span><span style="color:var(--text);font-weight:600">${qs.rarest_badge_earned||'—'}</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--stone);margin-bottom:6px"><span>Badges Collected</span><span style="color:var(--text);font-weight:600">${qs.badges_collected||0} / ${qs.total_badges_available||0}</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--stone)"><span>Latest Badge</span><span style="color:var(--text);font-weight:600">${qs.latest_badge_earned||'—'}</span></div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding-bottom:20px">
+      ${badges.map(b=>`
+        <div class="rm-goal-card" style="text-align:center;padding:16px 6px;cursor:pointer;${b.is_earned?'':'opacity:.4'}" onclick="openBadgeDetail('${b.badge_id}')">
+          <div style="font-size:30px;${b.is_earned?'':'filter:grayscale(1)'}">${b.icon}</div>
+          <div style="font-size:11px;color:var(--text);margin-top:6px">${b.is_earned?b.name:'???'}</div>
+        </div>`).join('')}
+    </div>`;
+}
+
+function openBadgeDetail(badgeId) {
+  const b=S.trophyBadges[badgeId];
+  if(!b) return;
+  openConfirm(b.is_earned?b.name:'Locked Badge', '', ()=>{});
+  const yesBtn=document.getElementById('confirm-yes-btn');
+  yesBtn.textContent='Close';
+  yesBtn.onclick=()=>closeModal('modal-confirm');
+  document.getElementById('confirm-body').innerHTML = `
+    <div style="text-align:center;padding:6px 0 14px">
+      <div style="font-size:48px;margin-bottom:10px;${b.is_earned?'':'filter:grayscale(1);opacity:.4'}">${b.icon}</div>
+      <div style="font-size:13px;color:var(--stone);margin-bottom:8px">${b.description}</div>
+      ${b.is_earned ? `<div style="font-size:12px;color:var(--text);font-weight:600">Earned ${new Date(b.date_earned).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>` : `<div style="font-size:12px;color:var(--stone)">🔒 Not yet earned</div>`}
+    </div>`;
+}
+
+async function renderStreaksTab(pillarKey) {
+  const body=document.getElementById('trophies-tab-body');
+  body.innerHTML='<div class="spinner"></div>';
+  const data=await req('GET','/streaks?pillar='+pillarKey);
+  const lc=data?.longest_current_streak, le=data?.longest_ever_streak;
+  const active=data?.active_streaks||[], past=data?.past_streaks||[];
+  const fmtDate=d=>new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+  body.innerHTML = `
+    <div class="rm-goal-card" style="margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--stone);margin-bottom:6px"><span>Longest Current</span><span style="color:var(--text);font-weight:600">${lc?`${lc.name}: ${lc.length} 🔥`:'—'}</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--stone)"><span>Longest Ever</span><span style="color:var(--text);font-weight:600">${le?`${le.name}: ${le.length}`:'—'}</span></div>
+    </div>
+    <div class="section-title">Active Streaks</div>
+    ${active.length ? active.map(s=>`
+      <div class="rm-goal-card" style="margin-bottom:8px">
+        <div style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text)">${s.name}</div>
+        <div style="font-size:11px;color:var(--stone);margin:4px 0">Started: ${fmtDate(s.start_date)} — Ongoing</div>
+        <div style="font-size:12px;color:var(--fitness)">Current Length: ${s.current_length}</div>
+      </div>`).join('') : `<div class="empty"><div class="empty-text">No active streaks right now.</div></div>`}
+    <div class="section-title" style="margin-top:16px">Past Streaks</div>
+    ${past.length ? past.map(s=>`
+      <div class="rm-goal-card" style="margin-bottom:8px">
+        <div style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text)">${s.name}</div>
+        <div style="font-size:11px;color:var(--stone);margin:4px 0">${fmtDate(s.start_date)} - ${fmtDate(s.end_date)}</div>
+        <div style="font-size:12px;color:var(--stone)">Final Length: ${s.final_length}</div>
+      </div>`).join('') : `<div class="empty"><div class="empty-text">No past streaks yet.</div></div>`}`;
+}
+
+async function renderAccomplishmentsTab(pillarKey) {
+  const body=document.getElementById('trophies-tab-body');
+  body.innerHTML='<div class="spinner"></div>';
+  const data=await req('GET','/accomplishments?pillar='+pillarKey);
+  const list=Array.isArray(data)?data:[];
+  S.trophyAccomplishments={};
+  list.forEach(a=>{ S.trophyAccomplishments[a.type+'_'+a.id]=a; });
+  body.innerHTML = list.length ? list.map(a=>`
+    <div class="rm-goal-card" style="margin-bottom:10px;cursor:pointer" onclick="openAccomplishmentDetail('${a.type}',${a.id})">
+      <div style="font-size:11px;color:var(--stone);letter-spacing:.4px">${a.type==='Main Goal'?'🎯 MAIN GOAL':'❓ SIDE QUEST'}</div>
+      <div style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text);margin:4px 0">${a.name}</div>
+      <div style="font-size:11px;color:var(--stone)">Completed: ${new Date(a.date_completed).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>
+      <div style="font-size:12px;color:var(--fitness);margin-top:4px">${a.rewards.lifescore_boost!=null?`LifeScore Boost: +${a.rewards.lifescore_boost} | `:''}XP Earned: ${a.rewards.xp_earned}</div>
+    </div>`).join('') : `<div class="empty"><div class="empty-icon">🏆</div><div class="empty-text">No completed goals or side quests yet.</div></div>`;
+}
+
+function openAccomplishmentDetail(type, id) {
+  if(type==='Main Goal') openProjectDetail(id, 'pillar');
+  else openSideQuestDetail(id);
 }
 
 // ════════════════════════════════════════

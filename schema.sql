@@ -305,3 +305,10 @@ ALTER TABLE goals
   ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true,
   ADD COLUMN IF NOT EXISTS timeline_type TEXT NOT NULL DEFAULT 'dynamic',
   ADD COLUMN IF NOT EXISTS end_date DATE;
+
+-- Real timestamp for "when was this Side Quest completed" -- is_completed alone couldn't
+-- answer that (only created_at existed), which the Trophies page's Accomplishments tab
+-- needs for a real date_completed rather than falling back to created_at (when it was
+-- suggested, not when it was actually finished).
+ALTER TABLE side_quests
+  ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;

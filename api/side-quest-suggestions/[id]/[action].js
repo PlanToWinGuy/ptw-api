@@ -22,7 +22,7 @@ export default async function handler(req, res) {
   }
 
   if (action === 'complete') {
-    const rows = await sql`UPDATE side_quests SET is_completed = true, is_active = false WHERE id = ${id} AND user_id = ${user.id} RETURNING *`;
+    const rows = await sql`UPDATE side_quests SET is_completed = true, is_active = false, completed_at = now() WHERE id = ${id} AND user_id = ${user.id} RETURNING *`;
     if (!rows.length) return res.status(404).json({ message: 'Quest not found' });
     await sql`UPDATE users SET xp = xp + ${rows[0].xp} WHERE id = ${user.id}`;
     await createNotification(sql, user.id, {
