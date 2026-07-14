@@ -1,6 +1,7 @@
 import { sql } from '../../../lib/db.js';
 import { cors } from '../../../lib/cors.js';
 import { getUserFromRequest } from '../../../lib/auth.js';
+import { createNotification } from '../../../lib/notifications.js';
 
 const PROJECT_COMPLETE_XP = 500; // a fixed milestone bonus, not scaled to the project's own
                                   // size/duration -- same precedent as the earlier Work Hub
@@ -32,6 +33,12 @@ export default async function handler(req, res) {
 
   await sql`UPDATE tasks SET status = 'Completed', xp_gained = ${PROJECT_COMPLETE_XP}, updated_at = now() WHERE id = ${id}`;
   const userRows = await sql`UPDATE users SET xp = xp + ${PROJECT_COMPLETE_XP} WHERE id = ${user.id} RETURNING xp`;
+
+  await createNotification(sql, user.id, {
+    iconType: 'trophy',
+    message: `Achievement Unlocked: '${project.name}' completed!`,
+    deepLinkTarget: { page: 'ProjectDetail', params: { projectId: id } },
+  });
 
   res.status(200).json({
     message: 'Project completed successfully!',

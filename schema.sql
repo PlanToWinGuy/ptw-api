@@ -228,3 +228,14 @@ CREATE TABLE IF NOT EXISTS vision_board_images (
 ALTER TABLE tasks
   ADD COLUMN IF NOT EXISTS icon TEXT,
   ADD COLUMN IF NOT EXISTS color TEXT;
+
+-- Notifications (4.18.A) -- in-app history only, inserted at real event points
+-- (task/project/side-quest completion). No push delivery yet.
+CREATE TABLE IF NOT EXISTS notifications (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  icon_type TEXT NOT NULL,        -- 'trophy' | 'reminder' | 'ai_insight' | 'task'
+  message TEXT NOT NULL,
+  deep_link_target JSONB,         -- {page, params} or null
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
