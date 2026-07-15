@@ -709,15 +709,20 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
 
   <!-- Swipe-progress hints (see setupHomeSwipeHint) -- first-time users have no way of
        knowing Home has 3 hidden swipe destinations, so as a swipe is actually in
-       progress (not after it completes), a glow pulls in from that edge with the
-       destination's name, real-time proportional to how far the finger has dragged. -->
-  <div class="swipe-hint" id="swipe-hint-right" style="position:absolute;top:0;right:0;bottom:0;width:130px;pointer-events:none;opacity:0;background:linear-gradient(to left, rgba(91,164,220,.4), transparent);display:flex;align-items:center;justify-content:flex-end;padding-right:18px;z-index:50">
+       progress (not after it completes), a glow pulls in with the destination's name,
+       real-time proportional to how far the finger has dragged. Standard swipe-carousel
+       physicality: dragging right pulls the NEXT screen in from the left (like flipping
+       a page to the right reveals what's underneath from its left edge), so each hint
+       sits on the edge OPPOSITE its trigger direction, not the same side you're
+       dragging toward. Ids are named for the trigger direction (matches
+       setupHomeSwipeHint's hints object), not the edge they're drawn on. -->
+  <div class="swipe-hint" id="swipe-hint-right" style="position:absolute;top:0;left:0;bottom:0;width:130px;pointer-events:none;opacity:0;background:linear-gradient(to right, rgba(91,164,220,.4), transparent);display:flex;align-items:center;justify-content:flex-start;padding-left:18px;z-index:50">
     <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:13px;color:#fff;letter-spacing:1px;writing-mode:vertical-rl">PROFILE</div>
   </div>
-  <div class="swipe-hint" id="swipe-hint-down" style="position:absolute;left:0;right:0;bottom:0;height:130px;pointer-events:none;opacity:0;background:linear-gradient(to top, rgba(91,164,220,.4), transparent);display:flex;align-items:flex-end;justify-content:center;padding-bottom:18px;z-index:50">
+  <div class="swipe-hint" id="swipe-hint-down" style="position:absolute;left:0;right:0;top:0;height:130px;pointer-events:none;opacity:0;background:linear-gradient(to bottom, rgba(91,164,220,.4), transparent);display:flex;align-items:flex-start;justify-content:center;padding-top:18px;z-index:50">
     <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:13px;color:#fff;letter-spacing:1px">DAILY OVERVIEW</div>
   </div>
-  <div class="swipe-hint" id="swipe-hint-up" style="position:absolute;left:0;right:0;top:0;height:130px;pointer-events:none;opacity:0;background:linear-gradient(to bottom, rgba(91,164,220,.4), transparent);display:flex;align-items:flex-start;justify-content:center;padding-top:18px;z-index:50">
+  <div class="swipe-hint" id="swipe-hint-up" style="position:absolute;left:0;right:0;bottom:0;height:130px;pointer-events:none;opacity:0;background:linear-gradient(to top, rgba(91,164,220,.4), transparent);display:flex;align-items:flex-end;justify-content:center;padding-bottom:18px;z-index:50">
     <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:13px;color:#fff;letter-spacing:1px">TO-DO &amp; ROUTINES</div>
   </div>
 </div>
