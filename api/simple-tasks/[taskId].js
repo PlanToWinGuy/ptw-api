@@ -2,6 +2,7 @@ import { sql } from '../../lib/db.js';
 import { cors } from '../../lib/cors.js';
 import { getUserFromRequest } from '../../lib/auth.js';
 import { serializeTask } from '../simple-tasks.js';
+import { findOpenSlot, slotSearchWindowForPriority } from '../../lib/scheduling.js';
 
 const VALID_PRIORITIES = ['Low', 'Medium', 'High', 'Urgent'];
 
@@ -29,10 +30,26 @@ export default async function handler(req, res) {
 
     if (!VALID_PRIORITIES.includes(priority)) return res.status(422).json({ message: 'Priority must be one of Low, Medium, High, Urgent.' });
 
+    // Same real auto-slotting as creation (see simple-tasks.js) -- if an edit leaves the
+    // task without a time (e.g. the date was cleared, or it never had one), it still
+    // needs to land somewhere real on the calendar rather than going back to floating.
+    let finalDueDate = due_date, finalStartTime = start_time;
+    if (!start_time) {
+      const today = new Date().toISOString().split('T')[0];
+      const { searchDays } = slotSearchWindowForPriority(priority);
+      const slot = await findOpenSlot(sql, user.id, {
+        earliestDate: due_date || today,
+        searchDays: due_date ? 1 : searchDays,
+        durationMinutes: Number(dur) || 30,
+      });
+      finalDueDate = slot.date;
+      finalStartTime = slot.startTime;
+    }
+
     const updated = await sql`
       UPDATE tasks SET
         name = ${name}, pillar_id = ${pillar_id}, estimated_duration_minutes = ${dur},
-        priority = ${priority}, due_date = ${due_date || null}, start_time = ${start_time || null},
+        priority = ${priority}, due_date = ${finalDueDate || null}, start_time = ${finalStartTime || null},
         notes = ${description}, icon = ${icon}, color = ${color}, updated_at = now()
       WHERE id = ${id}
       RETURNING *

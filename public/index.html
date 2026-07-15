@@ -9,7 +9,10 @@
 <meta name="apple-mobile-web-app-title" content="Plan To Win">
 <link rel="icon" href="https://plantowin.app/favicon-32.png" sizes="32x32">
 <link rel="icon" href="https://plantowin.app/favicon-16.png" sizes="16x16">
+<link rel="icon" href="https://plantowin.app/icon-192.png" sizes="192x192">
+<link rel="icon" href="https://plantowin.app/icon-512.png" sizes="512x512">
 <link rel="apple-touch-icon" href="https://plantowin.app/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.json">
 <title>Plan To Win</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -61,6 +64,9 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
 }
 .splash-sub em{color:var(--cement);font-style:normal;font-weight:600}
 .splash-sub em .thin{font-weight:400}
+.splash-tagline{text-align:center;margin-top:16px}
+.splash-tagline-lead{font-size:14px;color:var(--stone);letter-spacing:.3px}
+.splash-tagline-brand{font-family:'Syne',sans-serif;font-size:24px;font-weight:800;color:var(--text);letter-spacing:.3px;margin-top:2px}
 .splash-btn{
   margin-top:56px;padding:16px 52px;border-radius:50px;
   background:transparent;border:1.5px solid var(--cement);
@@ -163,7 +169,7 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
 
 /* CTA Circle */
 #cta-ring{
-  width:210px;height:210px;border-radius:50%;
+  width:224px;height:224px;border-radius:50%;
   background:var(--bg3);border:2.5px solid var(--blue);
   display:flex;flex-direction:column;align-items:center;justify-content:center;
   cursor:pointer;position:relative;transition:transform .15s;
@@ -183,12 +189,20 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
   border:none;cursor:pointer;color:var(--cement);font-size:13px;display:flex;align-items:center;justify-content:center;
 }
 
-.cta-sub{display:flex;align-items:center;gap:14px;margin-top:14px}
+.cta-sub{display:flex;align-items:center;gap:14px;margin:14px -12px 0;width:calc(100% + 24px)}
 .grid-btn{
   width:40px;height:40px;border-radius:10px;background:var(--bg3);
   border:none;cursor:pointer;color:var(--cement);display:flex;align-items:center;justify-content:center;
 }
 .next-txt{font-size:13px;color:var(--stone);text-align:center;flex:1}
+.shuffle-fab{
+  position:absolute;right:18px;bottom:calc(18px + var(--sb));z-index:20;
+  width:52px;height:52px;border-radius:50%;background:var(--blue);
+  border:none;cursor:pointer;color:#fff;font-size:22px;
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 4px 16px rgba(91,164,220,.4);
+}
+.shuffle-fab:active{transform:scale(.94)}
 .plus-fab{
   width:40px;height:40px;border-radius:50%;background:var(--blue);
   border:none;cursor:pointer;color:#fff;font-size:22px;font-weight:300;
@@ -209,9 +223,9 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
 }
 @keyframes appPop{from{opacity:0;transform:scale(.6) translateY(10px)}to{opacity:1;transform:scale(1) translateY(0)}}
 .pillar-app-icon{
-  width:52px;height:52px;border-radius:14px;
-  display:flex;align-items:center;justify-content:center;
-  font-size:22px;position:relative;
+  width:56px;height:64px;border-radius:14px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  font-size:20px;position:relative;
   box-shadow:0 4px 12px rgba(0,0,0,.3);
 }
 .pillar-app-icon::after{
@@ -220,6 +234,7 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
   transition:border-color .2s;
 }
 .pillar-app-btn:active .pillar-app-icon::after{border-color:rgba(196,184,168,.3)}
+.pillar-app-icon-name{font-size:9px;font-weight:700;color:rgba(255,255,255,.92);letter-spacing:.2px}
 .pillar-app-label{font-size:10px;color:var(--stone);font-weight:500;letter-spacing:.3px}
 .pillar-app-reason{font-size:9px;color:var(--muted);text-align:center;line-height:1.3;margin-top:1px}
 
@@ -275,12 +290,13 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
 .metric-icon{font-size:16px;margin-bottom:4px}
 .metric-val{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--text)}
 .metric-label{font-size:11px;color:var(--muted);margin-top:2px}
-/* Profile page's own 2x3 performance grid -- larger than the standard 4-card pillar-map
-   metric rows so it actually fills the page instead of leaving a mostly-empty screen. */
-.metric-card-lg{padding:24px 14px}
-.metric-card-lg .metric-icon{font-size:28px;margin-bottom:10px}
-.metric-card-lg .metric-val{font-size:32px}
-.metric-card-lg .metric-label{font-size:12.5px;margin-top:6px}
+/* Profile page's own 2x3 performance grid -- a bit larger than the standard 4-card
+   pillar-map metric rows, but tuned back down from an earlier pass that made these too
+   dominant relative to the Phase/LifeScore cards above them. */
+.metric-card-lg{padding:15px 12px}
+.metric-card-lg .metric-icon{font-size:19px;margin-bottom:6px}
+.metric-card-lg .metric-val{font-size:22px}
+.metric-card-lg .metric-label{font-size:10.5px;margin-top:3px}
 .metric-delta{font-size:11px;font-weight:600;margin-top:3px}
 .delta-pos{color:var(--finances)} .delta-neg{color:var(--relations)}
 
@@ -468,8 +484,11 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
         <text x="100" y="146" text-anchor="middle" font-family="'Inter',sans-serif" font-weight="600" font-size="11" letter-spacing="3" fill="rgba(245,242,236,.55)">PLAN TO WIN</text>
       </svg>
     </div>
-    <div class="splash-title">Plan To Win</div>
-    <div class="splash-sub">Failing to plan is planning to fail.<br><em><span class="thin">Let's</span> Plan To Win.</em></div>
+    <div class="splash-sub">Failing to plan is planning to fail.</div>
+    <div class="splash-tagline">
+      <div class="splash-tagline-lead">Let's</div>
+      <div class="splash-tagline-brand">Plan To Win.</div>
+    </div>
     <button class="splash-btn" onclick="showScreen('auth-options')">Get Started</button>
   </div>
 </div>
@@ -1109,6 +1128,7 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
   <div id="daily-pillar-filter" style="display:flex;gap:8px;padding:0 18px 10px;overflow-x:auto"></div>
   <div id="daily-stats-bar" style="display:flex;justify-content:space-around;padding:10px 18px;font-size:11px;color:var(--stone);border-bottom:1px solid rgba(196,184,168,.07)"></div>
   <div class="scroll-body" style="padding:0 18px" id="daily-body"></div>
+  <button class="shuffle-fab" onclick="openShuffleDay()" title="Shuffle Day">🔀</button>
 </div>
 
 <div class="modal-overlay" id="modal-reschedule" onclick="closeModal('modal-reschedule',event)">
@@ -1230,36 +1250,36 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
     <button class="icon-btn ghost" onclick="openSettings()" title="Settings">⚙️</button>
   </div>
   <div class="scroll-body" style="padding:0 18px">
-    <div style="text-align:center;margin:6px 0 18px">
+    <div style="text-align:center;margin:4px 0 14px">
       <div style="position:relative;display:inline-block">
-        <div id="profile-avatar" style="width:84px;height:84px;border-radius:50%;background:var(--bg3);border:2px solid var(--blue);display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-size:30px;font-weight:800;color:var(--blue)">?</div>
-        <button class="icon-btn ghost" style="position:absolute;bottom:-2px;right:-2px;width:26px;height:26px;min-width:0;background:var(--bg2);border-radius:50%;font-size:12px" onclick="openVisionBoard()" title="Vision Board">🖼️</button>
+        <div id="profile-avatar" style="width:76px;height:76px;border-radius:50%;background:var(--bg3);border:2px solid var(--blue);display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-size:27px;font-weight:800;color:var(--blue)">?</div>
+        <button class="icon-btn ghost" style="position:absolute;bottom:-2px;right:-2px;width:24px;height:24px;min-width:0;background:var(--bg2);border-radius:50%;font-size:11px" onclick="openVisionBoard()" title="Vision Board">🖼️</button>
       </div>
-      <div id="profile-name" style="font-family:'Syne',sans-serif;font-size:18px;font-weight:700;color:var(--text);margin-top:10px">—</div>
+      <div id="profile-name" style="font-family:'Syne',sans-serif;font-size:17px;font-weight:700;color:var(--text);margin-top:8px">—</div>
     </div>
 
-    <div style="display:flex;gap:12px;margin-bottom:14px;align-items:stretch">
+    <div style="display:flex;gap:12px;margin-bottom:12px;align-items:stretch">
       <div class="rm-goal-card" style="cursor:pointer;margin-bottom:0;flex:1;min-width:0" onclick="openPhaseDetail()">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <div id="profile-phase" style="font-family:'Syne',sans-serif;font-weight:700;font-size:13px;color:var(--text)">—</div>
+          <div id="profile-phase" style="font-family:'Syne',sans-serif;font-weight:700;font-size:14px;color:var(--text)">—</div>
           <span style="font-size:13px;color:var(--stone)">›</span>
         </div>
         <div style="height:6px;background:var(--bg4);border-radius:4px;overflow:hidden;margin-bottom:6px"><div id="profile-phase-fill" style="height:100%;background:var(--blue);width:0%"></div></div>
-        <div id="profile-phase-sub" style="font-size:10px;color:var(--stone);line-height:1.4">—</div>
-        <div id="profile-phase-duration" style="font-size:10px;color:var(--muted);margin-top:2px">—</div>
+        <div id="profile-phase-sub" style="font-size:10.5px;color:var(--stone);line-height:1.4">—</div>
+        <div id="profile-phase-duration" style="font-size:10.5px;color:var(--muted);margin-top:2px">—</div>
       </div>
 
       <div class="ls-card" style="background:var(--blue);cursor:pointer;margin-bottom:0;flex:1;min-width:0;display:flex;flex-direction:column" onclick="openLifeScoreDetail()">
         <div class="ls-label">LIFE SCORE</div>
-        <div class="ls-value" id="profile-lifescore" style="font-size:26px">—</div>
-        <div class="ls-sub" id="profile-xp-total" style="font-size:10px">Total XP: —</div>
+        <div class="ls-value" id="profile-lifescore" style="font-size:30px">—</div>
+        <div class="ls-sub" id="profile-xp-total" style="font-size:10.5px">Total XP: —</div>
         <div style="height:5px;background:rgba(255,255,255,.3);border-radius:4px;overflow:hidden;margin-top:8px"><div id="profile-ls-fill" style="height:100%;background:#fff;width:0%"></div></div>
         <div style="font-size:8.5px;color:rgba(255,255,255,.75);margin-top:6px;line-height:1.35">Motivational score from your logged habits — not a medical prediction.</div>
       </div>
     </div>
-    <div id="profile-ls-breakdown-inline" style="font-size:10.5px;color:var(--muted);text-align:center;margin-bottom:14px">—</div>
+    <div id="profile-ls-breakdown-inline" style="font-size:10.5px;color:var(--muted);text-align:center;margin-bottom:10px">—</div>
 
-    <div id="profile-pillar-filter" style="display:flex;gap:8px;margin-bottom:14px;overflow-x:auto"></div>
+    <div id="profile-pillar-filter" style="display:flex;gap:8px;margin-bottom:10px;overflow-x:auto"></div>
 
     <div id="profile-metrics-grid"></div>
   </div>
@@ -1837,11 +1857,35 @@ async function req(method, path, body) {
 // ════════════════════════════════════════
 // SCREEN MANAGEMENT
 // ════════════════════════════════════════
+// Every screen change becomes a real browser history entry, so the hardware/gesture
+// back button pops through the app's own screens (via popstate below) instead of
+// leaving the PWA entirely -- there was no history.pushState anywhere before this, so
+// "back" had nothing of ours to go back to and fell through to actually exiting.
+let suppressHistoryPush=false;
 function showScreen(name) {
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   const el = document.getElementById('screen-'+name) || document.getElementById(name);
   if(el) el.classList.add('active');
+  if(!suppressHistoryPush) {
+    const screenId = el ? el.id.replace(/^screen-/,'') : name;
+    if(history.state?.screen !== screenId) history.pushState({screen:screenId}, '', location.pathname);
+  }
 }
+
+window.addEventListener('popstate', (e)=>{
+  suppressHistoryPush=true;
+  if(e.state?.screen) {
+    showScreen(e.state.screen);
+  } else {
+    // Popped past our own stack (the true root) -- go Home rather than letting the
+    // browser navigate away or close the app, and re-plant a state so the next back
+    // press has somewhere real to land instead of repeating this fallback forever.
+    const fallback = S.token ? 'home' : 'splash';
+    showScreen(fallback);
+    history.pushState({screen:fallback}, '', location.pathname);
+  }
+  suppressHistoryPush=false;
+});
 
 // ════════════════════════════════════════
 // AUTH
@@ -2498,8 +2542,8 @@ function renderPillarApps() {
     btn.innerHTML=`
       <div class="pillar-app-icon" style="background:${p.color}">
         <span style="filter:drop-shadow(0 1px 2px rgba(0,0,0,.3))">${p.emoji}</span>
-      </div>
-      <div class="pillar-app-label">${p.label}</div>`;
+        <span class="pillar-app-icon-name">${p.label}</span>
+      </div>`;
     btn.onclick=()=>showPillarScreen(key);
     container.appendChild(btn);
   });
@@ -2513,8 +2557,8 @@ function renderPillarApps() {
     addBtn.innerHTML=`
       <div class="pillar-app-icon" style="background:var(--bg3);border:1.5px dashed rgba(196,184,168,.3)">
         <span>+</span>
-      </div>
-      <div class="pillar-app-label">Activate</div>`;
+        <span class="pillar-app-icon-name">Activate</span>
+      </div>`;
     addBtn.onclick=()=>openPillarSelect();
     container.appendChild(addBtn);
   }
@@ -3344,13 +3388,16 @@ async function loadWeekOverview() {
   // Horizontal scroll instead of a vertical stack -- each day's card has unconstrained
   // height (so a genuinely full day isn't clipped) but a fixed width, and the user scrolls
   // sideways between days instead of one long vertical list of increasingly full cards.
-  body.innerHTML=`<div style="display:flex;gap:12px;overflow-x:auto;padding-bottom:8px;-webkit-overflow-scrolling:touch">` +
+  // Full-height cards -- height:100% on both the row and each card (rather than sizing
+  // to content) so a light day's card still visually reaches the bottom of the screen
+  // instead of looking like a small stub sitting at the top.
+  body.innerHTML=`<div style="display:flex;gap:12px;overflow-x:auto;height:100%;-webkit-overflow-scrolling:touch">` +
     dates.map((d,i)=>{
       const dayTasks=results[i]?.data||[];
       const isToday=d.toDateString()===todayStr;
       const dayName=d.toLocaleDateString('en-US',{weekday:'short'});
       const dateStr=d.toISOString().split('T')[0];
-      return `<div class="rm-goal-card" style="min-width:260px;max-width:260px;flex-shrink:0;cursor:pointer;${isToday?'border:1.5px solid var(--blue)':''}" onclick="jumpToDay('${dateStr}')">
+      return `<div class="rm-goal-card" style="min-width:260px;max-width:260px;flex-shrink:0;height:100%;box-sizing:border-box;overflow-y:auto;cursor:pointer;${isToday?'border:1.5px solid var(--blue)':''}" onclick="jumpToDay('${dateStr}')">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:${dayTasks.length?'12px':'0'}">
           <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:${isToday?'var(--blue)':'var(--text)'}">${dayName} ${d.getDate()}</div>
           ${isToday?'<span style="font-size:10px;color:var(--blue);background:rgba(91,164,220,.15);padding:2px 8px;border-radius:10px">TODAY</span>':''}
@@ -3453,7 +3500,9 @@ function renderDailyStats(tasks) {
 
 function renderDailyTaskList(tasks) {
   const body=document.getElementById('daily-body');
-  if(!tasks.length) { body.innerHTML=`<div class="empty"><div class="empty-icon">🗓</div><div class="empty-text">Nothing planned for this day yet.</div></div><button class="btn-p filled" style="background:var(--blue);border-color:var(--blue);margin:16px 0 20px" onclick="openShuffleDay()">🔀 Shuffle Day</button>`; return; }
+  // Shuffle Day now lives as the screen's own corner FAB (see #screen-daily), not an
+  // inline button here -- always in the same reachable spot regardless of list length.
+  if(!tasks.length) { body.innerHTML=`<div class="empty"><div class="empty-icon">🗓</div><div class="empty-text">Nothing planned for this day yet.</div></div>`; return; }
   const groups={Morning:[],Afternoon:[],Evening:[],Unscheduled:[]};
   tasks.forEach(t=>{ groups[t.time_block||'Unscheduled'].push(t); });
   let html='';
@@ -3461,7 +3510,7 @@ function renderDailyTaskList(tasks) {
     if(!groups[g].length) return;
     html+=`<div class="section-sub" style="margin-top:14px">${g.toUpperCase()}</div>`+groups[g].map(dailyTaskCard).join('');
   });
-  html+=`<button class="btn-p filled" style="background:var(--blue);border-color:var(--blue);margin:16px 0 20px" onclick="openShuffleDay()">🔀 Shuffle Day</button>`;
+  html+=`<div style="height:70px"></div>`;
   body.innerHTML=html;
 }
 
@@ -8063,10 +8112,15 @@ window.addEventListener('message',e=>{
 });
 
 (function init(){
+  // Baseline history entry for the initially-visible screen (whatever the HTML's default
+  // "active" screen is) -- so the very first back press has a real state to compare
+  // against instead of an empty one.
+  const initialScreen=document.querySelector('.screen.active')?.id.replace(/^screen-/,'')||'splash';
+  history.replaceState({screen:initialScreen},'',location.pathname);
   const vpId=new URLSearchParams(location.search).get('vp_id');
   if(vpId) {
     localStorage.setItem('ptw_pending_vp_id',vpId);
-    history.replaceState(null,'',location.pathname);
+    history.replaceState({screen:initialScreen},'',location.pathname);
   }
   if(S.token) {
     enterApp();

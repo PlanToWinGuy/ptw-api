@@ -1,6 +1,7 @@
 import { sql, PILLARS } from '../lib/db.js';
 import { cors } from '../lib/cors.js';
 import { getUserFromRequest } from '../lib/auth.js';
+import { findOpenSlot, slotSearchWindowForPriority } from '../lib/scheduling.js';
 
 const VALID_PRIORITIES = ['Low', 'Medium', 'High', 'Urgent'];
 
@@ -65,9 +66,26 @@ export default async function handler(req, res) {
     if (!VALID_PRIORITIES.includes(priority)) errors.priority = ['Priority must be one of Low, Medium, High, Urgent.'];
     if (Object.keys(errors).length) return res.status(422).json({ message: 'Validation failed', errors });
 
+    // Every task shows up at a real time on Daily Overview -- a task added with only a
+    // priority (no explicit time) gets auto-slotted into the actual schedule instead of
+    // floating undated forever. Urgent lands today; Low can land anywhere in the next
+    // week; the search walks each candidate day's already-booked tasks for a real gap.
+    let finalDueDate = due_date, finalStartTime = start_time;
+    if (!start_time) {
+      const today = new Date().toISOString().split('T')[0];
+      const { searchDays } = slotSearchWindowForPriority(priority);
+      const slot = await findOpenSlot(sql, user.id, {
+        earliestDate: due_date || today,
+        searchDays: due_date ? 1 : searchDays,
+        durationMinutes: Number(dur) || 30,
+      });
+      finalDueDate = slot.date;
+      finalStartTime = slot.startTime;
+    }
+
     const rows = await sql`
       INSERT INTO tasks (user_id, name, pillar_id, estimated_duration_minutes, priority, due_date, start_time, notes, icon, color, kind)
-      VALUES (${user.id}, ${name}, ${pillar_id}, ${dur}, ${priority}, ${due_date}, ${start_time}, ${description}, ${icon}, ${color}, ${kind})
+      VALUES (${user.id}, ${name}, ${pillar_id}, ${dur}, ${priority}, ${finalDueDate}, ${finalStartTime}, ${description}, ${icon}, ${color}, ${kind})
       RETURNING *
     `;
     return res.status(200).json(serializeTask(rows[0]));
