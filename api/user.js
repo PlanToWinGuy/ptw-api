@@ -29,13 +29,17 @@ export default async function handler(req, res) {
     if (Number(year_pct) >= 70) phase = 4;
   }
 
-  // LifeScore: real per-pillar XP (task xp_gained + the flat 25/log rate api/metrics.js
-  // actually awards) on top of the onboarding baseline set at profile-creation time.
+  // LifeScore: real per-pillar XP on top of the onboarding baseline set at profile-creation
+  // time. Task-completion XP (tasks.xp_gained) and ad-hoc log XP (metric_logs.xp_gained,
+  // now a real per-type amount from lib/lifescore.js's Base Task XP table, not a flat
+  // rate) are summed separately -- task-linked logs are excluded from the second query
+  // since completeTask() already wrote the same XP onto both the task row and its
+  // metric_log row, and double-summing both would count one real action twice.
   const taskXpRows = await sql`SELECT pillar_id, COALESCE(SUM(xp_gained), 0) AS xp FROM tasks WHERE user_id = ${user.id} GROUP BY pillar_id`;
-  const logXpRows = await sql`SELECT pillar_id, COUNT(*) AS cnt FROM metric_logs WHERE user_id = ${user.id} AND log_type !~ '_template$' GROUP BY pillar_id`;
+  const logXpRows = await sql`SELECT pillar_id, COALESCE(SUM(xp_gained), 0) AS xp FROM metric_logs WHERE user_id = ${user.id} AND task_id IS NULL AND log_type !~ '_template$' GROUP BY pillar_id`;
   const pillarXpByKey = {};
   taskXpRows.forEach(r => { const k = (PILLARS[r.pillar_id] || '').toLowerCase(); if (k) pillarXpByKey[k] = (pillarXpByKey[k] || 0) + Number(r.xp); });
-  logXpRows.forEach(r => { const k = (PILLARS[r.pillar_id] || '').toLowerCase(); if (k) pillarXpByKey[k] = (pillarXpByKey[k] || 0) + Number(r.cnt) * 25; });
+  logXpRows.forEach(r => { const k = (PILLARS[r.pillar_id] || '').toLowerCase(); if (k) pillarXpByKey[k] = (pillarXpByKey[k] || 0) + Number(r.xp); });
   const { lifeScore, breakdown } = calculateLifeScore(user.life_score, pillarXpByKey);
   const pillar_states = buildPillarStates(pillarState, user.recommended_pillar);
 

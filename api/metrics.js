@@ -2,6 +2,7 @@ import { sql } from '../lib/db.js';
 import { cors } from '../lib/cors.js';
 import { getUserFromRequest } from '../lib/auth.js';
 import { completeTask } from '../lib/tasks.js';
+import { BASE_TASK_XP } from '../lib/lifescore.js';
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const SCAN_SYSTEM = `You identify food in a photo and estimate its nutrition. Return ONLY JSON, no markdown fences:
@@ -167,11 +168,14 @@ export default async function handler(req, res) {
       const result = await completeTask(sql, user, task_id, 100);
       xp_gained = result?.xp_gained || 0;
     } else if (!log_type.endsWith('_template') && log_type !== 'essential_app_launch') {
-      // Flat XP per ad-hoc log entry (never scaled by the metric's own value -- e.g.
-      // tying XP to calorie count would reward eating more, which Doc3 rules out).
-      // essential_app_launch is tracking-only (which app someone reached for during
-      // free time) -- rewarding XP for opening an app would be gameable for no reason.
-      xp_gained = 25;
+      // Section 3.0 Base Task XP per ad-hoc log entry, differentiated by what it actually
+      // is (never scaled by the metric's own value -- e.g. tying XP to calorie count would
+      // reward eating more, which Doc3 rules out). No linked task/goal here, so no
+      // Task/Goal Difficulty Multiplier applies -- those need real duration/difficulty
+      // context an ad-hoc log doesn't have. essential_app_launch is tracking-only (which
+      // app someone reached for during free time) -- rewarding XP for opening an app would
+      // be gameable for no reason.
+      xp_gained = BASE_TASK_XP[log_type] || BASE_TASK_XP.default;
       await sql`UPDATE users SET xp = xp + ${xp_gained} WHERE id = ${user.id}`;
     }
 

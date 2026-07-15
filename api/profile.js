@@ -16,7 +16,7 @@ export default async function handler(req, res) {
 
   if (action === 'profile-creation') {
     const { username, dob, gender, height, weight, fitness_level, diet, sleep_quality, stress_level } = req.body || {};
-    const baseline = calculateBaseline({ height, weight, fitness_level, sleep_quality, stress_level });
+    const { baseline, initialBonusYears, remainingFitnessBonusYears } = calculateBaseline({ dob, height, weight, fitness_level, sleep_quality, stress_level });
     await sql`
       UPDATE users SET
         username = COALESCE(${username}, username),
@@ -31,7 +31,7 @@ export default async function handler(req, res) {
         life_score = ${baseline}
       WHERE id = ${user.id}
     `;
-    return res.status(200).json({ message: 'Profile saved' });
+    return res.status(200).json({ message: 'Profile saved', lifescore_baseline: baseline, initial_bonus_years: initialBonusYears, remaining_fitness_bonus_years: remainingFitnessBonusYears });
   }
 
   if (action === 'valueprint') {

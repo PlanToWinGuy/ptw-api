@@ -30,12 +30,13 @@ export default async function handler(req, res) {
     || (fitnessLevel != null && fitnessLevel !== user.fitness_level);
   const newBaseline = healthFieldsChanged
     ? calculateBaseline({
+        dob: dateOfBirth ?? user.dob,
         height: height ?? user.height,
         weight: weight ?? user.weight,
         fitness_level: fitnessLevel ?? user.fitness_level,
         sleep_quality: user.sleep_quality,
         stress_level: user.stress_level,
-      })
+      }).baseline
     : Number(user.life_score);
 
   const rows = await sql`
@@ -54,10 +55,10 @@ export default async function handler(req, res) {
   const updated = rows[0];
 
   const taskXpRows = await sql`SELECT pillar_id, COALESCE(SUM(xp_gained), 0) AS xp FROM tasks WHERE user_id = ${user.id} GROUP BY pillar_id`;
-  const logXpRows = await sql`SELECT pillar_id, COUNT(*) AS cnt FROM metric_logs WHERE user_id = ${user.id} AND log_type !~ '_template$' GROUP BY pillar_id`;
+  const logXpRows = await sql`SELECT pillar_id, COALESCE(SUM(xp_gained), 0) AS xp FROM metric_logs WHERE user_id = ${user.id} AND task_id IS NULL AND log_type !~ '_template$' GROUP BY pillar_id`;
   const pillarXpByKey = {};
   taskXpRows.forEach(r => { const k = (PILLARS[r.pillar_id] || '').toLowerCase(); if (k) pillarXpByKey[k] = (pillarXpByKey[k] || 0) + Number(r.xp); });
-  logXpRows.forEach(r => { const k = (PILLARS[r.pillar_id] || '').toLowerCase(); if (k) pillarXpByKey[k] = (pillarXpByKey[k] || 0) + Number(r.cnt) * 25; });
+  logXpRows.forEach(r => { const k = (PILLARS[r.pillar_id] || '').toLowerCase(); if (k) pillarXpByKey[k] = (pillarXpByKey[k] || 0) + Number(r.xp); });
   const { lifeScore } = calculateLifeScore(updated.life_score, pillarXpByKey);
 
   res.status(200).json({
