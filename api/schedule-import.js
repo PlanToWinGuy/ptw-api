@@ -1,8 +1,18 @@
 import { sql } from '../lib/db.js';
 import { cors } from '../lib/cors.js';
 import { getUserFromRequest } from '../lib/auth.js';
-import { PDFParse } from 'pdf-parse';
 import mammoth from 'mammoth';
+
+// pdf-parse's underlying pdfjs-dist references DOMMatrix/ImageData/Path2D at module-load
+// time to wire up its (optional, canvas-only) rendering path -- even though we only ever
+// need text extraction. Without a real browser or the optional @napi-rs/canvas native
+// binary present (which isn't reliably installable for Vercel's Linux runtime from a
+// Windows-generated lockfile), referencing those globals throws a bare ReferenceError
+// and crashes the whole module import. Minimal stand-in classes are enough to satisfy
+// the reference; nothing here ever actually calls into them since we never render.
+if (typeof globalThis.DOMMatrix === 'undefined') globalThis.DOMMatrix = class DOMMatrix {};
+if (typeof globalThis.ImageData === 'undefined') globalThis.ImageData = class ImageData {};
+if (typeof globalThis.Path2D === 'undefined') globalThis.Path2D = class Path2D {};
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const VALID_DAYS = new Set(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']);
@@ -17,6 +27,7 @@ Only include commitments that are actually present in the text -- never invent o
 
 async function extractText(buffer, mediaType) {
   if (mediaType.includes('pdf')) {
+    const { PDFParse } = await import('pdf-parse');
     const parser = new PDFParse({ data: buffer });
     try {
       const result = await parser.getText();
