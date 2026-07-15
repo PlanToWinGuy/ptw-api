@@ -77,6 +77,20 @@ Also include a "budgetPlan" object:
 }
 categoryAllocations must sum to monthlyBudget. Base monthlyBudget on whatever income/spending signals are available in their answers, else a reasonable general estimate. If income is variable/freelance, bias Savings higher for a buffer. If their goal is debt-related, prioritize Debt allocation and always include debtPayoffPlan; otherwise debtPayoffPlan is null.`;
 
+// Transactions are logged against exactly these 4 categories (see FINANCE_CATEGORIES in the
+// frontend) -- the AI sometimes elaborates a category name in its own text ("Savings (Income
+// Buffer)"), which would silently break the exact-string match the Budgets tab's vs-actual
+// breakdown depends on. Normalized on the way in rather than trusting the AI's exact wording.
+const FINANCE_CATEGORY_ORDER = ['Needs', 'Wants', 'Savings', 'Debt'];
+function normalizeFinanceCategory(raw) {
+  const s = String(raw || '').toLowerCase();
+  if (s.includes('debt')) return 'Debt';
+  if (s.includes('need')) return 'Needs';
+  if (s.includes('want')) return 'Wants';
+  if (s.includes('sav')) return 'Savings';
+  return FINANCE_CATEGORY_ORDER.includes(raw) ? raw : 'Wants';
+}
+
 const GOAL_TYPES = new Set(['habit', 'project', 'skill', 'mindset']);
 
 // Static complementary-pillar map for the Synergy card -- deterministic, no AI call.
@@ -487,7 +501,18 @@ async function generateGoal(req, res, user) {
     }
 
     if (Array.isArray(bp.categoryAllocations) && bp.categoryAllocations.length) {
-      const allocData = { allocations: bp.categoryAllocations, debtPayoffPlan: bp.debtPayoffPlan || null };
+      // Normalize against the fixed 4-category model transactions actually use (Needs/Wants/
+      // Savings/Debt) -- the AI sometimes elaborates a category name (e.g. "Savings (Income
+      // Buffer)"), which would silently break the exact-string match against real transaction
+      // categories in the vs-actual breakdown. Same "validate free-form AI output against a
+      // known set" precedent as feasibility-check.js's verdict whitelist.
+      const normalized = {};
+      for (const a of bp.categoryAllocations) {
+        const key = normalizeFinanceCategory(a.category);
+        normalized[key] = (normalized[key] || 0) + (Number(a.amount) || 0);
+      }
+      const orderedAllocations = FINANCE_CATEGORY_ORDER.filter(c => normalized[c] != null).map(c => ({ category: c, amount: normalized[c] }));
+      const allocData = { allocations: orderedAllocations, debtPayoffPlan: bp.debtPayoffPlan || null };
       const existingAlloc = await sql`SELECT id FROM metric_logs WHERE user_id = ${user.id} AND log_type = 'category_allocations' LIMIT 1`;
       if (existingAlloc.length) {
         await sql`UPDATE metric_logs SET data = ${JSON.stringify(allocData)}::jsonb WHERE id = ${existingAlloc[0].id}`;
