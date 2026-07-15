@@ -1,7 +1,7 @@
 import { sql, PILLARS, pillarIdFromName } from '../lib/db.js';
 import { cors } from '../lib/cors.js';
 import { getUserFromRequest } from '../lib/auth.js';
-import { timeOfDayToClock, addMinutesToClock, addDays, inferToolHint, isRecurringAction, parseTimelineDays, scheduleSubTasks } from '../lib/scheduling.js';
+import { timeOfDayToClock, addMinutesToClock, addDays, inferToolHint, isRecurringAction, parseTimelineDays, scheduleSubTasks, findOpenSlot } from '../lib/scheduling.js';
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 
@@ -452,17 +452,27 @@ async function generateGoal(req, res, user) {
       const parent_task_id = parentRows[0].id;
 
       // Bin-pack sub-tasks into sequential days, each capped at the questionnaire's daily
-      // time budget, with real start_time/end_time within that day's block -- the literal
-      // "2-hour block of the 6-hour project, from a certain time to another" scheduling.
+      // time budget -- this only avoids collisions within THIS goal's own sub-tasks, since
+      // it's a pure in-memory calculation with no idea what's already on the calendar from
+      // other active goals/pillars, routines, or fixed commitments. Once a user has more
+      // than one active goal, two different pillars' plans landing on the same clockStart
+      // (e.g. both defaulting to "Morning") silently collide at the exact same time --
+      // confirmed live in testing. Each bin-packed day is re-resolved through
+      // findOpenSlot right before insert, which does check all of that, preserving the
+      // day-grouping/budget intent above while guaranteeing the actual inserted time is
+      // real and conflict-free (searchDays:3 lets it spill into the next day or two
+      // rather than stacking on top of something if that original day is genuinely full).
       const dailyBudgetMinutes = Number(questionnaire_answers?.daily_time_budget) || 60;
       const scheduled = scheduleSubTasks(oneOffActions, { startDate: today, clockStart, dailyBudgetMinutes, subtaskMinutes });
 
       for (let i = 0; i < scheduled.length; i++) {
         const action = scheduled[i];
         const toolHint = inferToolHint(pillarKey, action.text);
+        const slot = await findOpenSlot(sql, user.id, { earliestDate: action.dueDate, searchDays: 3, durationMinutes: subtaskMinutes });
+        const slotEndTime = addMinutesToClock(slot.startTime, subtaskMinutes);
         const insertedRows = await sql`
           INSERT INTO tasks (user_id, goal_id, pillar_id, parent_task_id, name, kind, phase_label, due_date, estimated_duration_minutes, start_time, end_time, tool_hint)
-          VALUES (${user.id}, ${goal_id}, ${pillar_id}, ${parent_task_id}, ${action.text}, 'simple', ${action.phaseLabel}, ${action.dueDate}, ${subtaskMinutes}, ${action.startTime}, ${action.endTime}, ${toolHint})
+          VALUES (${user.id}, ${goal_id}, ${pillar_id}, ${parent_task_id}, ${action.text}, 'simple', ${action.phaseLabel}, ${slot.date}, ${subtaskMinutes}, ${slot.startTime}, ${slotEndTime}, ${toolHint})
           RETURNING id
         `;
         // The very first scheduled sub-task, in real chronological order -- this is what
