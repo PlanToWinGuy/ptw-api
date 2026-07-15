@@ -233,11 +233,21 @@ function valueprintContext(valueprint_data, pillar_name) {
   const gapEntry = Array.isArray(valueprint_data.gap)
     ? valueprint_data.gap.find(g => (g?.pillar || '').toLowerCase() === pillar_name.toLowerCase())
     : null;
+  // firstMoves are the reading's own concrete if-then suggestion for THIS pillar --
+  // when one exists, it's a strong signal for the daily anchor or an early phase action.
+  const moveEntry = Array.isArray(valueprint_data.firstMoves)
+    ? valueprint_data.firstMoves.find(m => (m?.pillar || '').toLowerCase() === pillar_name.toLowerCase())
+    : null;
+  const values = Array.isArray(valueprint_data.code)
+    ? valueprint_data.code.map(c => c?.value).filter(Boolean).join(', ')
+    : null;
   const lines = [
     valueprint_data.archetype ? `Archetype: ${valueprint_data.archetype}` : null,
     valueprint_data.oneLiner ? `Who they're becoming: ${valueprint_data.oneLiner}` : null,
+    values ? `Their core values: ${values}` : null,
     valueprint_data.edge ? `Their growth edge: ${valueprint_data.edge}` : null,
     gapEntry ? `${pillar_name} alignment right now: ${gapEntry.alignmentPct}% — ${gapEntry.note || ''}` : null,
+    moveEntry ? `Their own suggested first move for ${pillar_name}: ${moveEntry.ifthen}` : null,
   ].filter(Boolean);
   return lines.length ? 'From their Valueprint (Map of You reading):\n' + lines.join('\n') : null;
 }

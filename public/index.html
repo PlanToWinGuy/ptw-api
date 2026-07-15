@@ -1961,6 +1961,9 @@ async function checkPendingValueprint() {
       oneLiner: profile?.reveal?.oneLiner||null,
       gap: profile?.reveal?.gap||null,
       edge: profile?.reveal?.edge||null,
+      code: profile?.reveal?.code||null,
+      horizon: profile?.reveal?.horizon||null,
+      firstMoves: profile?.reveal?.firstMoves||null,
     });
   } catch(e) { console.error('checkPendingValueprint failed', e); }
 }
@@ -6400,8 +6403,22 @@ async function loadPersonalMap() {
         <button class="pt-btn start" onclick="${nextAction}">${nextBtnLabel}</button>
       </div>
     </div>
+    ${valueprintTeaserCard()}
     <button class="view-log-btn" style="margin-top:14px" onclick="openPersonalHub()">View Full Personal Hub</button>`;
   container.innerHTML=html;
+}
+
+// Surfaces the Valueprint right on the Personal Map tab (not just buried in the Hub's
+// Identity subtab) -- the whole point is that this reading should be easy to pull back
+// up, not a one-time onboarding step you never see again.
+function valueprintTeaserCard() {
+  const vp=S.userData?.valueprint_data;
+  if(!vp) return `<div class="sq-card" style="margin-top:14px;background:var(--personal)15;border:1px solid var(--personal)55" onclick="openValueprint()">
+    <div class="sq-info"><div class="sq-name">🧭 Take Your Valueprint</div><div class="sq-meta">Discover your archetype and growth edge</div></div>
+  </div>`;
+  return `<div class="sq-card" style="margin-top:14px;background:var(--personal)15;border:1px solid var(--personal)55" onclick="openPersonalHub();switchPersonalHubTab('identity')">
+    <div class="sq-info"><div class="sq-name">🧭 ${vp.archetype||'Your Valueprint'}</div><div class="sq-meta">${vp.oneLiner||'View your full reading'}</div></div>
+  </div>`;
 }
 
 function openPersonalHub() { showScreen('personal-hub'); switchPersonalHubTab('focus'); }
@@ -6513,22 +6530,51 @@ const IDENTITY_PROMPTS=[
 function renderPersonalIdentityBody() {
   const body=document.getElementById('personal-hub-body');
   const vp=S.userData?.valueprint_data;
+  const codeHtml = (vp?.code||[]).length ? `
+      <div class="sq-meta" style="margin-top:10px"><b>Your core values:</b></div>
+      ${vp.code.map(c=>`<div class="sq-meta" style="margin-top:4px">• <b>${c.value}</b> — ${c.line}</div>`).join('')}` : '';
+  const horizonHtml = vp?.horizon ? `<div class="sq-meta" style="margin-top:10px"><b>Where this leads:</b> ${vp.horizon}</div>` : '';
   const vpCard = vp ? `
     <div class="sq-card" style="flex-direction:column;align-items:stretch;background:var(--personal)15;border:1px solid var(--personal)55">
       <div class="sq-name">Your Valueprint</div>
       ${vp.archetype?`<div class="sq-meta" style="margin-top:8px"><b>Archetype:</b> ${vp.archetype}</div>`:''}
       ${vp.oneLiner?`<div class="sq-meta" style="margin-top:4px;font-style:italic">"${vp.oneLiner}"</div>`:''}
-      ${vp.edge?`<div class="sq-meta" style="margin-top:4px"><b>Growth edge:</b> ${vp.edge}</div>`:''}
+      ${codeHtml}
+      ${vp.edge?`<div class="sq-meta" style="margin-top:10px"><b>Growth edge:</b> ${vp.edge}</div>`:''}
+      ${horizonHtml}
       <button class="btn-p" style="margin-top:12px" onclick="openValueprint()">View Full Results / Retake →</button>
     </div>`
     : `<div class="empty"><div class="empty-icon">🧭</div><div class="empty-text">You haven't taken your Valueprint yet — it's how PTW gets to know who you're becoming.</div></div>
        <button class="btn-p filled" style="background:var(--personal);border-color:var(--personal);margin:12px 0" onclick="openValueprint()">Take Your Valueprint →</button>`;
 
-  body.innerHTML = vpCard + `
+  // First Moves: the reading's own concrete if-then suggestions, one per pillar it
+  // touched -- each becomes a real task with one tap instead of staying a reflection
+  // that's never acted on. The exact tie the founder asked for between the Mapper and
+  // the rest of the app's real task system.
+  const movesHtml = (vp?.firstMoves||[]).length ? `
+    <div class="section-sub" style="margin-top:18px">YOUR FIRST MOVES</div>
+    ${vp.firstMoves.map((m,i)=>`
+    <div class="sq-card">
+      <div class="sq-info"><div class="sq-name">${m.ifthen}</div><div class="sq-meta">${m.pillar}</div></div>
+      <button class="pt-btn start" onclick="addFirstMoveAsTask(${i})">+ Task</button>
+    </div>`).join('')}` : '';
+
+  body.innerHTML = vpCard + movesHtml + `
     <div class="section-sub" style="margin-top:18px">IDENTITY REFLECTION</div>
     ${IDENTITY_PROMPTS.map(pr=>`<div class="sq-card" onclick="openJournalEntry('${pr.replace(/'/g,"\\'")}')">
       <div class="sq-info"><div class="sq-name">${pr}</div></div>
     </div>`).join('')}`;
+}
+
+async function addFirstMoveAsTask(idx) {
+  const move=(S.userData?.valueprint_data?.firstMoves||[])[idx];
+  if(!move) return;
+  const pillarKey=Object.keys(PILLARS).find(k=>k===String(move.pillar||'').toLowerCase()) || 'personal';
+  const p=PILLARS[pillarKey];
+  const today=new Date().toISOString().split('T')[0];
+  const data=await req('POST','/simple-tasks',{name:move.ifthen, pillar_id:p.id, estimatedDurationMinutes:15, kind:'simple', due_date:today});
+  if(!data || data.errors) { toast('Could not add that task — try again'); return; }
+  toast(`Added to your ${p.label} tasks ✓`);
 }
 
 function focusCard(f, sessions) {
