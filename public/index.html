@@ -1722,8 +1722,11 @@ const S = {
 async function req(method, path, body) {
   const h = {'Content-Type':'application/json','Accept':'application/json'};
   if (S.token) h['Authorization'] = 'Bearer ' + S.token;
-  // AI generation (goals, meal scans) genuinely takes longer than a normal API call.
-  const timeout = path.includes('/goals') || path.includes('/metrics') || path.includes('/ai/chat') ? 45000 : 12000;
+  // AI generation (goals, meal scans, side quests, essential-app suggestions) genuinely
+  // takes longer than a normal API call -- side-quests/custom + refine were left off this
+  // list when their own max_tokens got raised for a truncation fix, so a real (slower but
+  // successful) generation now silently aborted client-side at 12s with no visible error.
+  const timeout = path.includes('/goals') || path.includes('/metrics') || path.includes('/ai/chat') || path.includes('/side-quests') || path.includes('/essential-apps') ? 45000 : 12000;
   try {
     const r = await fetch(API + path, {method, headers:h, body:body?JSON.stringify(body):undefined, signal:AbortSignal.timeout(timeout)});
     if (r.status===401) { doLogout(); return null; }
@@ -1732,7 +1735,10 @@ async function req(method, path, body) {
     return json;
   } catch(e) {
     console.error('API fetch error', method, path, ':', e.name, e.message);
-    // CORS failure from file:// shows as TypeError: Failed to fetch
+    // CORS failure from file:// shows as TypeError: Failed to fetch. A silent null return
+    // here used to look like "nothing happens" with zero feedback -- always surface a
+    // toast so a timeout/network failure is visibly distinguishable from a real no-op.
+    toast(e.name==='TimeoutError' ? 'That took too long — try again' : 'Connection error — try again');
     return null;
   }
 }
@@ -3404,14 +3410,19 @@ function dailyTaskCard(t) {
     </div>`;
   }
 
-  const goalLabel = t.routineId ? 'Routine' : t.taskType==='ProjectTask' ? 'Main Goal' : t.isAntiGoal ? 'Anti-Goal' : t.taskType==='Logging' ? 'Habit' : (t.priority?t.priority+' Priority':'Quick Task');
+  // A routine-derived task tagged with a tool_hint (e.g. a daily workout) is a real
+  // single action tied to this pillar's own tool, not a generic multi-step routine --
+  // label and route it the same way any other tool_hint task already is, instead of
+  // always showing "Routine" and opening the bare step-checklist.
+  const routineLabel = t.routineId ? (t.toolHint ? (TOOL_HINT_LABEL[t.toolHint]||'Routine') : 'Routine') : null;
+  const goalLabel = t.routineId ? routineLabel : t.taskType==='ProjectTask' ? 'Main Goal' : t.isAntiGoal ? 'Anti-Goal' : t.taskType==='Logging' ? 'Habit' : (t.priority?t.priority+' Priority':'Quick Task');
   const isProject=t.taskType==='ProjectTask';
-  const openCall = t.routineId ? `openActiveRoutineFromCard(${t.routineId},${t.taskId})`
+  const openCall = t.routineId ? `openDailyRoutineTask(${t.routineId},${t.taskId},${t.toolHint?`'${t.toolHint}'`:'null'},'${(t.name||'').replace(/'/g,"\\'")}')`
     : isProject ? `openProjectDetail(${t.taskId},'daily')`
     : (t.isAntiGoal && t.antiGoalType==='progressive' && t.status!=='Completed') ? `openLogAntiGoal(${t.taskId})`
     : (t.taskType==='Logging' && t.status!=='Completed') ? `openDailyLoggingTask(${t.taskId})` : '';
   return `<div class="sq-card"${openCall?` onclick="${openCall}"`:''}${isFirstStepHighlight?` style="border:1.5px solid ${p.color}"`:''}>
-    <div class="sq-icon" style="background:${p.color}22;color:${p.color}">${t.routineId?'🔁':(t.isAntiGoal?'🎯':p.emoji)}</div>
+    <div class="sq-icon" style="background:${p.color}22;color:${p.color}">${t.routineId?(t.toolHint?p.icon:'🔁'):(t.isAntiGoal?'🎯':p.emoji)}</div>
     <div class="sq-info">
       ${isFirstStepHighlight?`<div style="font-size:10px;color:${p.color};font-weight:700;letter-spacing:.4px;margin-bottom:2px">🎯 YOUR FIRST STEP</div>`:''}
       <div class="sq-name">${t.startTime?formatTimeOfDay(t.startTime)+' — ':''}${t.name}</div>
@@ -3469,6 +3480,14 @@ function openDailyLoggingTask(taskId) {
   if(openTaskByToolHint(t)) return;
   const pk=getPillarKey(t.pillar);
   (LOGGING_TASK_OPEN[pk]||(()=>showPillarScreen(pk)))();
+}
+
+// Same tool_hint-first dispatch as openRoutineFromLibrary(), for the Daily Overview
+// card's tap target -- a goal-generated recurring task (workout, meal, etc.) opens its
+// real tool instead of the generic routine checklist.
+function openDailyRoutineTask(routineId, taskId, toolHint, name) {
+  if(toolHint && TOOL_HINT_OPEN[toolHint]) { TOOL_HINT_OPEN[toolHint]({name}); return; }
+  openActiveRoutineFromCard(routineId, taskId);
 }
 
 async function openActiveRoutineFromCard(routineId, taskId) {
@@ -3615,11 +3634,22 @@ function renderRoutinesList(routines) {
   body.innerHTML=html;
 }
 
+// A routine created from a goal plan (goalId/toolHint set -- see api/goals.js) is a
+// single recurring action tied to a real pillar, not a generic multi-step morning/evening
+// routine -- tag it with that pillar's own color/icon instead of a flat blue 🔁 for every
+// routine regardless of origin.
+const TOOL_HINT_LABEL = { workout:'Workout', meal:'Meal', session:'Session', transaction:'Transaction', connection:'Connection', work_session:'Work Session', journal:'Journal' };
+
 function routineCard(r) {
+  const pk = r.goalId ? getPillarKey(r.category) : null;
+  const p = pk ? PILLARS[pk] : null;
+  const accentColor = p ? p.color : 'var(--blue)';
+  const icon = p && r.toolHint ? p.icon : (r.icon||'🔁');
+  const typeLabel = r.toolHint ? (TOOL_HINT_LABEL[r.toolHint]||'Routine') : null;
   return `<div class="sq-card" onclick="openRoutineFromLibrary(${r.routineId})">
-    <div class="sq-icon" style="background:var(--blue)22;color:var(--blue)">${r.icon||'🔁'}</div>
+    <div class="sq-icon" style="background:${accentColor}22;color:${accentColor}">${icon}</div>
     <div class="sq-info">
-      <div class="sq-name">${r.name}${r.isActive?'':' (inactive)'}</div>
+      <div class="sq-name">${r.name}${r.isActive?'':' (inactive)'}${typeLabel?` <span class="xp-tag" style="color:${accentColor};background:${accentColor}1f">${typeLabel}</span>`:''}</div>
       <div class="sq-meta">${r.totalDurationMinutes} min${r.schedule?.time?' · '+formatTimeOfDay(r.schedule.time):''}</div>
       <div class="sq-meta">Includes: ${r.summary||'—'}</div>
     </div>
@@ -3729,9 +3759,13 @@ async function deleteRoutine(id) {
 let routineTimerInterval=null, routineStepSecondsLeft=0, routineActiveStepIdx=-1, routineChecked=[];
 
 async function openRoutineFromLibrary(routineId) {
+  const r=routinesCache[routineId];
+  // A goal-generated routine (single recurring action, e.g. a daily workout) has a real
+  // tool it should open instead of the generic step-checklist -- same TOOL_HINT_OPEN
+  // dispatch every other tool_hint-tagged task already uses.
+  if(r?.toolHint && TOOL_HINT_OPEN[r.toolHint]) { TOOL_HINT_OPEN[r.toolHint]({name:r.name}); return; }
   const today=new Date().toISOString().split('T')[0];
   const proj=await req('POST','/user-projects',{date:today}); // also lazily materializes today's routine tasks
-  const r=routinesCache[routineId];
   const match=(proj?.data||[]).find(t=>t.routineId===routineId);
   openActiveRoutine(routineId, match?.taskId||null);
 }
@@ -7400,7 +7434,7 @@ async function renderCreateSideQuestBody() {
 
   html+=`
     <div class="section-sub" style="margin-top:20px">CREATE YOUR OWN</div>
-    <div class="field"><textarea id="csq-prompt" rows="3" placeholder='e.g. "Help me build a habit of stretching every morning"' style="width:100%;padding:12px 14px;background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:10px;color:var(--text);font-size:14px;font-family:'Inter',sans-serif;outline:none;resize:none"></textarea></div>
+    <div class="field"><textarea id="csq-prompt" rows="3" placeholder='e.g. "Help me build a habit of stretching every morning"' style="width:100%;padding:12px 14px;background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:10px;color:var(--text);font-size:14px;font-family:'Inter',sans-serif;outline:none;resize:none" onkeydown="if(event.key==='Enter' && !event.shiftKey){event.preventDefault();submitCustomQuest();}"></textarea></div>
     <div id="csq-baseline-block" style="display:none;margin-bottom:10px">
       <div class="sq-meta" id="csq-baseline-question" style="margin-bottom:8px"></div>
       <input type="number" id="csq-baseline-input" placeholder="Enter a number" style="width:100%;padding:12px 14px;background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:10px;color:var(--text);font-size:14px;margin-bottom:8px">

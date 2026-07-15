@@ -19,6 +19,11 @@ function serialize(r) {
     steps,
     totalDurationMinutes: steps.reduce((s, st) => s + (Number(st.durationMinutes) || 0), 0),
     summary: steps.map(st => st.name).join(', '),
+    // goalId/toolHint were being created correctly (see api/goals.js) but silently
+    // dropped here, so a goal-generated recurring action (e.g. a daily workout) had no
+    // way to be tagged by pillar or routed into its real tool once it reached the client.
+    goalId: r.goal_id,
+    toolHint: r.tool_hint,
   };
 }
 
