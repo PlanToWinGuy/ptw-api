@@ -41,18 +41,24 @@ export default async function handler(req, res) {
 
   if (key) {
     try {
+      // 1400 was too tight for a 2-3 project / up to ~24-subtask plan and could silently
+      // truncate mid-JSON, which JSON.parse then threw on -- same failure mode goals.js
+      // hit and fixed the same way (see its own maxTokens comment).
       const r = await fetch(ANTHROPIC_URL, {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
         body: JSON.stringify({
           model: 'claude-sonnet-4-6',
-          max_tokens: 1400,
+          max_tokens: 4000,
           temperature: 0.5,
           system: SYSTEM,
           messages: [{ role: 'user', content: `Pillar: ${pillar}\nPrompt: ${prompt}` + (baseline ? `\nCurrent baseline: ${baseline}` : '') }],
         }),
       });
       const data = await r.json();
+      if (data.stop_reason === 'max_tokens') {
+        console.error('side-quests.custom: response truncated at max_tokens', { pillar, user_id: user.id });
+      }
       const text = (data.content || []).map(b => (b.type === 'text' ? b.text : '')).join('\n');
       parsed = JSON.parse(text.trim().replace(/^```json\n?/, '').replace(/```$/, ''));
     } catch (e) {

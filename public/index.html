@@ -399,6 +399,8 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
 .chat-quick-btn{padding:11px 14px;border-radius:12px;border:1.5px solid rgba(91,164,220,.35);background:rgba(91,164,220,.1);color:var(--blue);font-size:13px;font-weight:600;cursor:pointer;text-align:left;font-family:'Inter',sans-serif}
 .chat-quick-btn:active{background:rgba(91,164,220,.2)}
 .pillar-select-card{background:var(--bg3);border:1.5px solid rgba(196,184,168,.12);border-radius:14px;padding:14px;text-align:left;cursor:pointer;transition:border-color .15s}
+.pillar-select-icon{font-size:26px;text-align:center;margin-bottom:8px}
+.pillar-select-label-box{border:1.5px solid rgba(196,184,168,.15);border-radius:10px;padding:8px 6px;text-align:center;margin-bottom:8px;transition:border-color .15s}
 .chip{padding:6px 12px;border-radius:20px;border:1.5px solid rgba(196,184,168,.15);background:var(--bg3);color:var(--stone);font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap}
 .chip.sel{border-color:var(--relations);background:rgba(255,255,255,.06);color:var(--text)}
 .xp-tag{font-size:10px;font-weight:800;color:#FFD166;background:rgba(255,209,102,.12);border-radius:6px;padding:2px 6px;display:inline-block}
@@ -1142,7 +1144,7 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
   <div class="pillar-top-bar">
     <button class="icon-btn ghost" onclick="showScreen('home')">←</button>
     <h2 style="font-size:15px">To-Do & Routines</h2>
-    <button class="icon-btn" style="background:var(--blue)" onclick="openCreateRoutine()">+</button>
+    <button class="icon-btn" style="background:var(--blue)" onclick="todoRoutinesFabClick()">+</button>
   </div>
   <div style="display:flex;gap:8px;padding:0 18px 10px">
     <button class="pg-btn sel" id="tr-tab-todo" style="background:var(--blue);flex:1;font-size:11px" onclick="switchTodoRoutinesTab('todo')">To-Do List</button>
@@ -1220,20 +1222,22 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
       <div id="profile-name" style="font-family:'Syne',sans-serif;font-size:18px;font-weight:700;color:var(--text)">—</div>
     </div>
 
-    <div class="rm-goal-card" style="cursor:pointer;margin-bottom:12px" onclick="openPhaseDetail()">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <div id="profile-phase" style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text)">—</div>
-        <span style="font-size:13px;color:var(--stone)">›</span>
+    <div style="display:flex;gap:12px;margin-bottom:14px;align-items:stretch">
+      <div class="rm-goal-card" style="cursor:pointer;margin-bottom:0;flex:1;min-width:0" onclick="openPhaseDetail()">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div id="profile-phase" style="font-family:'Syne',sans-serif;font-weight:700;font-size:13px;color:var(--text)">—</div>
+          <span style="font-size:13px;color:var(--stone)">›</span>
+        </div>
+        <div style="height:6px;background:var(--bg4);border-radius:4px;overflow:hidden;margin-bottom:6px"><div id="profile-phase-fill" style="height:100%;background:var(--blue);width:0%"></div></div>
+        <div id="profile-phase-sub" style="font-size:10px;color:var(--stone);line-height:1.4">—</div>
+        <div id="profile-phase-duration" style="font-size:10px;color:var(--muted);margin-top:2px">—</div>
       </div>
-      <div style="height:6px;background:var(--bg4);border-radius:4px;overflow:hidden;margin-bottom:6px"><div id="profile-phase-fill" style="height:100%;background:var(--blue);width:0%"></div></div>
-      <div id="profile-phase-sub" style="font-size:11px;color:var(--stone)">—</div>
-      <div id="profile-phase-duration" style="font-size:11px;color:var(--muted);margin-top:2px">—</div>
-    </div>
 
-    <div class="ls-card" style="background:var(--blue);cursor:pointer" onclick="openLifeScoreDetail()">
-      <div class="ls-label">LIFE SCORE</div>
-      <div class="ls-value" id="profile-lifescore">—</div>
-      <div class="ls-sub" id="profile-xp-total">Total XP: —</div>
+      <div class="ls-card" style="background:var(--blue);cursor:pointer;margin-bottom:0;flex:1;min-width:0" onclick="openLifeScoreDetail()">
+        <div class="ls-label">LIFE SCORE</div>
+        <div class="ls-value" id="profile-lifescore" style="font-size:26px">—</div>
+        <div class="ls-sub" id="profile-xp-total" style="font-size:10px">Total XP: —</div>
+      </div>
     </div>
     <div style="height:6px;background:var(--bg4);border-radius:4px;overflow:hidden;margin:8px 0"><div id="profile-ls-fill" style="height:100%;background:var(--blue);width:0%"></div></div>
     <div id="profile-ls-breakdown-inline" style="font-size:10.5px;color:var(--muted);text-align:center;margin-bottom:4px">—</div>
@@ -2023,6 +2027,20 @@ function openSettings(focusPillarKey) {
   openSettingsHub();
 }
 
+function submitPromoCode() {
+  const input=document.getElementById('settings-promo-input');
+  const val=(input?.value||'').trim().toLowerCase();
+  if(!val) return;
+  input.value='';
+  if(val==='letsgolocomoto') {
+    S.promoUnlockAll=true;
+    toast('Promo unlocked — all pillars available ⚡');
+    openPillarSelect();
+  } else {
+    toast('Invalid code');
+  }
+}
+
 function renderSettingsBody() {
   const body=document.getElementById('settings-body');
   let html = `<div class="section-sub" style="margin-top:14px">ACCOUNT</div>`
@@ -2049,6 +2067,13 @@ function renderSettingsBody() {
     + settingsRow('❓','Help & Support / FAQ',"openStaticPage('help')")
     + settingsRow('📄','Terms of Service',"openStaticPage('terms')")
     + settingsRow('🛡️','Privacy Policy',"openStaticPage('privacy')");
+
+  // A real in-app replacement for manually flipping can_activate_next_pillar in devtools --
+  // the pillar-gate is a frontend display decision only (the backend never enforces it on
+  // goal generation), so entering the right code just tells the Pillar Select screen to
+  // show every locked pillar instead of the "keep building consistency" gate message.
+  html += `<div class="section-sub" style="margin-top:20px">PROMO CODE</div>
+    <div class="field"><input type="text" id="settings-promo-input" placeholder="Enter a promo code" autocapitalize="off" onkeydown="if(event.key==='Enter') submitPromoCode()"></div>`;
 
   html += `<button class="btn-p filled" style="background:#C46882;border-color:#C46882;margin:20px 0 6px" onclick="confirmLogout()">Log Out</button>`;
   html += `<div style="text-align:center;font-size:11px;color:var(--stone);margin-bottom:24px">Version 1.0.0 (Build 1)</div>`;
@@ -2709,8 +2734,9 @@ function renderPillarSelectGrid() {
   const locked = Object.keys(PILLARS).filter(k=>!S.unlocked.includes(k));
 
   // First pillar is always free (2.4.1). Beyond that, the next pillar only opens up
-  // once the user's proven 80%/3wk or 95%/1wk consistency on their active pillar(s).
-  const gated = S.unlocked.length>0 && !S.userData?.can_activate_next_pillar;
+  // once the user's proven 80%/3wk or 95%/1wk consistency on their active pillar(s) --
+  // or the Settings promo code bypasses this same display gate for testing.
+  const gated = S.unlocked.length>0 && !S.userData?.can_activate_next_pillar && !S.promoUnlockAll;
   if(gated) {
     confirmBtn.style.display='none';
     const prog=S.userData?.phase_progress||{};
@@ -2732,8 +2758,10 @@ function renderPillarSelectGrid() {
     const sel = key===S.selectedActivationPillar;
     const bullets = PILLAR_BULLETS[key]||[];
     return `<button type="button" class="pillar-select-card" style="border-color:${sel?p.color:'rgba(196,184,168,.12)'}" onclick="selectActivationPillar('${key}')">
-      <div style="font-size:20px;margin-bottom:6px">${p.icon}</div>
-      <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:14px;color:${p.color};margin-bottom:6px">${p.label}</div>
+      <div class="pillar-select-icon" style="color:${p.color}">${p.icon}</div>
+      <div class="pillar-select-label-box" style="border-color:${sel?p.color:'rgba(196,184,168,.15)'}">
+        <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:13px;color:${p.color}">${p.label}</div>
+      </div>
       ${bullets.map(b=>`<div style="font-size:11px;color:var(--muted);line-height:1.4">- ${b}</div>`).join('')}
     </button>`;
   }).join('');
@@ -3536,6 +3564,13 @@ let routinesCache={};
 
 function openTodoRoutines() { showScreen('todo-routines'); switchTodoRoutinesTab('todo'); }
 
+// The header + button used to always open Create Routine no matter which tab you were
+// on -- tapping it from the To-Do List silently created a routine instead of a task.
+function todoRoutinesFabClick() {
+  if(S.todoRoutinesTab==='routines') openCreateRoutine();
+  else openAddTask();
+}
+
 async function switchTodoRoutinesTab(tab) {
   S.todoRoutinesTab=tab;
   ['todo','routines'].forEach(t=>{
@@ -4022,8 +4057,8 @@ async function loadProfileMetrics() {
     {icon:'✅',val:(data?.completion_rate_percent??0)+'%',label:'Completion Rate'},
     {icon:'⏭️',val:data?.skipped_tasks??0,label:'Missed Tasks'},
   ];
-  grid.innerHTML = `<div class="metric-row" style="grid-template-columns:1fr 1fr 1fr">${cards.map(c=>`
-    <div class="metric-card"><div class="metric-icon">${c.icon}</div><div class="metric-val" style="font-size:16px">${c.val}</div><div class="metric-label">${c.label}</div></div>
+  grid.innerHTML = `<div class="metric-row" style="grid-template-columns:1fr 1fr">${cards.map(c=>`
+    <div class="metric-card"><div class="metric-icon">${c.icon}</div><div class="metric-val" style="font-size:18px">${c.val}</div><div class="metric-label">${c.label}</div></div>
   `).join('')}</div>`;
 }
 

@@ -25,18 +25,23 @@ export default async function handler(req, res) {
 
   if (key) {
     try {
+      // Same truncation fix as custom.js -- 1400 was too tight for a full revised
+      // multi-project plan and could silently fall back to the un-refined draft.
       const r = await fetch(ANTHROPIC_URL, {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
         body: JSON.stringify({
           model: 'claude-sonnet-4-6',
-          max_tokens: 1400,
+          max_tokens: 4000,
           temperature: 0.5,
           system: SYSTEM,
           messages: [{ role: 'user', content: `Original prompt: ${draft.original_prompt}\nCurrent plan: ${JSON.stringify(draft.draft_data)}\nRefinement instruction: ${refinement_prompt}` }],
         }),
       });
       const data = await r.json();
+      if (data.stop_reason === 'max_tokens') {
+        console.error('side-quests.refine: response truncated at max_tokens', { id, user_id: user.id });
+      }
       const text = (data.content || []).map(b => (b.type === 'text' ? b.text : '')).join('\n');
       const revised = JSON.parse(text.trim().replace(/^```json\n?/, '').replace(/```$/, ''));
       if (revised?.title) parsed = revised;
