@@ -4400,13 +4400,19 @@ async function loadPillarMap(pillarKey) {
 async function loadDietMap() {
   const container=document.getElementById('pillar-tab-map');
   const p=PILLARS.diet;
-  const [data, plansData]=await Promise.all([
+  const [data, plansData, targetsData]=await Promise.all([
     req('GET','/metrics?pillar_id='+p.id+'&days=30'),
     req('GET','/metrics?pillar_id='+p.id+'&log_type=meal_plan'),
+    req('GET','/metrics?pillar_id='+p.id+'&log_type=diet_targets'),
   ]);
   const logs=data?.logs||[];
   const today=new Date().toISOString().split('T')[0];
   const dateOf=l=>(l.logged_at||'').split('T')[0];
+
+  // Real personalized targets from goal generation (estimated TDEE + goal direction, see
+  // api/goals.js's DIET_ADDENDUM) -- falls back to a generic adult default only if no Diet
+  // goal has ever been generated yet, instead of a permanent hardcoded placeholder.
+  const targets=targetsData?.logs?.[0]?.data || {calories:2300, protein_g:150, carbs_g:230, fat_g:70};
 
   const todayMeals=logs.filter(l=>l.log_type==='meal' && dateOf(l)===today);
   const todayWater=logs.filter(l=>l.log_type==='water' && dateOf(l)===today);
@@ -4414,8 +4420,6 @@ async function loadDietMap() {
   const protein=todayMeals.reduce((s,l)=>s+(Number(l.data?.protein_g)||0),0);
   const carbs=todayMeals.reduce((s,l)=>s+(Number(l.data?.carbs_g)||0),0);
   const fat=todayMeals.reduce((s,l)=>s+(Number(l.data?.fat_g)||0),0);
-  const macroSum=protein+carbs+fat;
-  const macroPct=macroSum?{p:Math.round(protein/macroSum*100),c:Math.round(carbs/macroSum*100),f:Math.round(fat/macroSum*100)}:{p:0,c:0,f:0};
   const water=todayWater.reduce((s,l)=>s+(Number(l.value)||0),0);
 
   const mealDates=new Set(logs.filter(l=>l.log_type==='meal').map(dateOf));
@@ -4450,10 +4454,14 @@ async function loadDietMap() {
         </div>`}
     </div>
     <div class="metric-row" style="margin-top:14px">
-      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">📈</div><div class="metric-val" style="color:#fff">${calories}</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Daily Calories</div><div class="metric-delta" style="color:rgba(255,255,255,.7)">/ 2300</div></div>
-      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">🔥</div><div class="metric-val" style="color:#fff;font-size:16px">P:${macroPct.p} C:${macroPct.c} F:${macroPct.f}</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Macro Targets</div></div>
+      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">📈</div><div class="metric-val" style="color:#fff">${calories}</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Daily Calories</div><div class="metric-delta" style="color:rgba(255,255,255,.7)">/ ${targets.calories}</div></div>
+      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">🔥</div><div class="metric-val" style="color:#fff;font-size:14px">${Math.round(protein)}/${targets.protein_g}g</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Protein</div></div>
+      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">🌾</div><div class="metric-val" style="color:#fff;font-size:14px">${Math.round(carbs)}/${targets.carbs_g}g</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Carbs</div></div>
+      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">🥑</div><div class="metric-val" style="color:#fff;font-size:14px">${Math.round(fat)}/${targets.fat_g}g</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Fat</div></div>
+    </div>
+    <div class="metric-row" style="margin-top:10px">
       <div class="metric-card" style="background:${p.color}"><div class="metric-icon">🔥</div><div class="metric-val" style="color:#fff">${streak}</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Meal Streak</div></div>
-      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">📈</div><div class="metric-val" style="color:#fff;font-size:16px">${water.toFixed(1)} / 3.0 L</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Hydration</div></div>
+      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">💧</div><div class="metric-val" style="color:#fff;font-size:16px">${water.toFixed(1)} / 3.0 L</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Hydration</div></div>
     </div>
     <button class="view-log-btn" style="margin-top:14px" onclick="openMealHub()">View Full Meal Hub</button>`;
   container.innerHTML=html;

@@ -53,7 +53,9 @@ Also include a "workoutPlans" array — 2 concrete starter workout plans matchin
 // in the same call, plus a real per-ingredient list so the Grocery List can genuinely sync
 // to what the plan requires instead of staying a disconnected manual checklist.
 const DIET_ADDENDUM = `
-Also include a "mealPlans" array — 3 concrete meal plans matching their restrictions/cooking habits/meal structure from the questionnaire:
+Also include a "dailyTargets" object and a "mealPlans" array.
+"dailyTargets": {"calories": <number>, "protein_g": <number>, "carbs_g": <number>, "fat_g": <number>}
+Estimate a real TDEE from whatever profile signals are available (age/weight/sex/activity level if present, else reasonable adults-in-general defaults) and adjust for their stated goal direction (deficit for weight loss, surplus for muscle gain, maintenance otherwise) per the Diet principles above -- this becomes their actual daily target, not a placeholder.
 "mealPlans": [
   {"name": "<e.g. High-Protein Overnight Oats>", "mealType": "<Breakfast|Lunch|Dinner|Snack>", "calories": <number>, "protein_g": <number>, "carbs_g": <number>, "fat_g": <number>,
    "ingredients": [{"name": "<ingredient>", "qty": "<e.g. '200g' or '2'>"}],
@@ -422,6 +424,20 @@ async function generateGoal(req, res, user) {
       (mp.ingredients || []).forEach(ing => { if (ing?.name) allIngredients.push(ing); });
     }
     if (allIngredients.length) await mergeIntoGroceryList(sql, user.id, pillar_id, allIngredients);
+
+    // Real daily calorie/macro targets (estimated TDEE + goal-direction adjustment, see
+    // DIET_ADDENDUM) replace the frontend's old hardcoded 2300kcal placeholder -- a single
+    // row, same "one flexible row per user" pattern as the Grocery List, upserted so
+    // retaking the assessment updates the target instead of leaving a stale one behind.
+    if (plan.dailyTargets && Number(plan.dailyTargets.calories) > 0) {
+      const targetsData = { calories: Number(plan.dailyTargets.calories) || 0, protein_g: Number(plan.dailyTargets.protein_g) || 0, carbs_g: Number(plan.dailyTargets.carbs_g) || 0, fat_g: Number(plan.dailyTargets.fat_g) || 0 };
+      const existingTargets = await sql`SELECT id FROM metric_logs WHERE user_id = ${user.id} AND log_type = 'diet_targets' LIMIT 1`;
+      if (existingTargets.length) {
+        await sql`UPDATE metric_logs SET data = ${JSON.stringify(targetsData)}::jsonb, value = ${targetsData.calories} WHERE id = ${existingTargets[0].id}`;
+      } else {
+        await sql`INSERT INTO metric_logs (user_id, pillar_id, log_type, value, unit, data) VALUES (${user.id}, ${pillar_id}, 'diet_targets', ${targetsData.calories}, 'kcal', ${JSON.stringify(targetsData)}::jsonb)`;
+      }
+    }
   }
 
   res.status(200).json({ data: { id: goal_id, pillar: pillar_name, type: goal_type, timelineType: timeline_type, endDate: end_date, firstStep, ...plan } });
