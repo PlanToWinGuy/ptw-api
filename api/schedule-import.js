@@ -27,6 +27,19 @@ Only include commitments that are actually present in the text -- never invent o
 
 async function extractText(buffer, mediaType) {
   if (mediaType.includes('pdf')) {
+    // pdfjs-dist normally spins up its parser in a real Web Worker; in Node it falls back
+    // to dynamically importing its own worker script by path instead -- a path Vercel's
+    // bundler can't see (it's resolved from a runtime string, not a static import) so it's
+    // never included in the deployed function, and the import fails at request time.
+    // pdfjs-dist checks `globalThis.pdfjsWorker` FIRST and skips the dynamic import
+    // entirely if it's already set, which is exactly the mechanism bundlers like webpack
+    // use to inline the worker -- so statically importing the worker module ourselves
+    // (which Vercel's tracer *can* see, since it's a literal import path) and wiring it up
+    // the same way sidesteps the missing-file problem entirely.
+    if (!globalThis.pdfjsWorker) {
+      const workerModule = await import('pdfjs-dist/legacy/build/pdf.worker.mjs');
+      globalThis.pdfjsWorker = { WorkerMessageHandler: workerModule.WorkerMessageHandler };
+    }
     const { PDFParse } = await import('pdf-parse');
     const parser = new PDFParse({ data: buffer });
     try {
