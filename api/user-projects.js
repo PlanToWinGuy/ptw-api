@@ -53,28 +53,38 @@ export default async function handler(req, res) {
   // to-do modal with the date cleared, or created by AI chat without a date) -- it stays
   // visible every day until it's given a real date, completed, or deleted, instead of being
   // permanently invisible because NULL never equals an exact targetDate match.
-  // parent_task_id IS NULL excludes a Project's own sub-tasks -- now that sub-tasks get
-  // real due_date/start_time too (see api/goals.js), they'd otherwise start showing up as
-  // their own independent top-level cards here instead of only through the parent
-  // Project's card + detail page.
+  // A Project's own sub-tasks used to be excluded entirely -- the only thing Daily
+  // Overview ever showed for an active goal was one generic "Main Goal" placeholder card,
+  // with the actual day's real action buried inside the Project Detail page. That meant a
+  // goal's tasks never showed up as real, individually-loggable Daily Overview items the
+  // way the rest of this app's tool_hint routing is built around. Now a sub-task due today
+  // shows up as its own real card (tappable into its exact tool, same as any other
+  // tool_hint task); the generic parent Project card is suppressed for that day so the
+  // same project doesn't appear twice, and only reappears on days with no specific
+  // sub-task due (e.g. between phases).
   const rows = await sql`
     SELECT * FROM tasks
-    WHERE user_id = ${user.id} AND status != 'Skipped' AND parent_task_id IS NULL
+    WHERE user_id = ${user.id} AND status != 'Skipped'
       AND (
-        (kind = 'project' AND due_date <= ${targetDate})
-        OR (kind != 'project' AND due_date = ${targetDate})
-        OR (kind != 'project' AND due_date IS NULL)
+        (kind = 'project' AND parent_task_id IS NULL AND due_date <= ${targetDate})
+        OR (kind != 'project' AND parent_task_id IS NULL AND due_date = ${targetDate})
+        OR (kind != 'project' AND parent_task_id IS NULL AND due_date IS NULL)
+        OR (parent_task_id IS NOT NULL AND due_date = ${targetDate})
       )
     ORDER BY start_time ASC NULLS LAST, created_at ASC
   `;
+  const parentsRepresentedToday = new Set(rows.filter(t => t.parent_task_id).map(t => t.parent_task_id));
+  const visibleRows = rows.filter(t => !(t.kind === 'project' && parentsRepresentedToday.has(t.id)));
 
-  const data = rows.map(t => {
+  const data = visibleRows.map(t => {
     const durationMin = t.estimated_duration_minutes || 20;
     return {
       taskId: t.id,
       routineId: t.routine_id || null,
       name: t.name,
-      description: (t.routine_id ? 'Routine' : t.kind === 'project' ? 'Main Goal' : t.goal_id ? 'Main Goal' : 'Quick Task') + ' | ' + durationMin + ' min',
+      description: (t.routine_id ? 'Routine' : t.kind === 'project' ? 'Main Goal' : t.goal_id ? (t.phase_label || 'Plan Action') : 'Quick Task') + ' | ' + durationMin + ' min',
+      goalId: t.goal_id || null,
+      phaseLabel: t.phase_label || null,
       startTime: t.start_time,
       endTime: t.end_time,
       durationMinutes: durationMin,
@@ -97,7 +107,7 @@ export default async function handler(req, res) {
   const total_tasks = data.length;
   const completed = data.filter(d => d.status === 'Completed').length;
   const completion_percent = total_tasks ? Math.round((completed / total_tasks) * 100) : 0;
-  const totalMinutes = rows.reduce((s, t) => s + (t.estimated_duration_minutes || 0), 0);
+  const totalMinutes = visibleRows.reduce((s, t) => s + (t.estimated_duration_minutes || 0), 0);
 
   // Real daily XP + streak, for the Wind-Down recap (no new endpoint needed --
   // 4.5.5's "Daily Summary" numbers just ride along on this same response).

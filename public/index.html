@@ -15,6 +15,7 @@
 <link rel="manifest" href="/manifest.json">
 <title>Plan To Win</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;overflow:hidden;background:#0E0C0A}
@@ -501,7 +502,7 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
     <div class="auth-logo-sm"><svg width="56" height="56" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"><circle cx="100" cy="100" r="96" fill="#0A0908" stroke="rgba(245,242,236,.18)" stroke-width="3"/><g transform="translate(34,79) scale(2)"><text x="0" y="17" font-family="Syne,sans-serif" font-weight="800" font-size="20" fill="#F2EDE6">PT</text><polyline points="39,2 43.5,19 48.5,7 53.5,19 58,2" fill="none" stroke="#F2EDE6" stroke-width="3.6" stroke-linejoin="miter" stroke-linecap="butt"/><polyline points="48.5,7 53.5,19 58,2" fill="none" stroke="#5BA4DC" stroke-width="3.6" stroke-linejoin="miter" stroke-linecap="butt"/></g></svg></div>
     <div class="auth-title">Welcome</div>
     <div class="auth-sub">Your life, levelled up</div>
-    <button class="social-btn" onclick="toast('Google sign-in coming soon')">
+    <button class="social-btn" id="google-signin-btn" onclick="continueWithGoogle()">
       <svg viewBox="0 0 24 24" fill="none"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
       Continue with Google
     </button>
@@ -1357,6 +1358,18 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
 </div>
 
 <!-- ══════════════════════════════════
+     IMPORT A SCHEDULE (school/work/sports schedule -> fixed commitments)
+══════════════════════════════════ -->
+<div id="screen-schedule-import" class="screen">
+  <div class="pillar-top-bar">
+    <button class="icon-btn ghost" onclick="openSettingsHub()">←</button>
+    <h2 style="font-size:15px">Import a Schedule</h2>
+    <span style="width:36px"></span>
+  </div>
+  <div class="scroll-body" style="padding:0 18px" id="schedule-import-body"></div>
+</div>
+
+<!-- ══════════════════════════════════
      PILLAR PREFERENCES (4.19.E-J) — one generic screen, config-driven per pillar
 ══════════════════════════════════ -->
 <div id="screen-pillar-preferences" class="screen">
@@ -1947,6 +1960,45 @@ async function doSignup() {
   }
 }
 
+// ════════════════════════════════════════
+// GOOGLE SIGN-IN
+// Requires a real Google Cloud OAuth Client ID (Web application type, authorized
+// JavaScript origin = this app's real domain) -- this placeholder must be swapped for
+// one before this actually works. Verification happens server-side (see api/auth.js's
+// 'google' action); this file only ever handles the ID token, never a secret.
+// ════════════════════════════════════════
+const GOOGLE_CLIENT_ID = 'REPLACE_WITH_REAL_GOOGLE_CLIENT_ID.apps.googleusercontent.com';
+let googleSignInReady=false;
+
+function initGoogleSignIn() {
+  if(!window.google?.accounts?.id) { setTimeout(initGoogleSignIn, 300); return; }
+  if(GOOGLE_CLIENT_ID.startsWith('REPLACE_WITH')) return; // not configured yet -- button still shows a clear toast on tap
+  google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: handleGoogleCredential, auto_select: false });
+  googleSignInReady=true;
+}
+
+function continueWithGoogle() {
+  if(GOOGLE_CLIENT_ID.startsWith('REPLACE_WITH')) { toast('Google sign-in needs a Google Client ID configured first'); return; }
+  if(!googleSignInReady) { toast('Still loading Google sign-in — try again in a moment'); return; }
+  google.accounts.id.prompt();
+}
+
+async function handleGoogleCredential(response) {
+  const data = await req('POST','/auth/google',{ id_token: response.credential });
+  const token = data?.access_token;
+  if(!token) { toast(data?.message||'Google sign-in failed — try again'); return; }
+  S.token=token;
+  localStorage.setItem('ptw_token',S.token);
+  if(data.is_new_user) {
+    S.user={name:data.name||'', email:data.email||''};
+    localStorage.setItem('ptw_user',JSON.stringify(S.user));
+    showScreen('onboarding');
+  } else {
+    await loadUserData();
+    enterApp();
+  }
+}
+
 async function doOnboarding() {
   const username=document.getElementById('ob-username').value.trim();
   const dob=document.getElementById('ob-dob').value;
@@ -2122,7 +2174,8 @@ function renderSettingsBody() {
   html += `<div class="section-sub" style="margin-top:20px">APP PREFERENCES</div>`
     + settingsRow('🔔','Notification Settings',"openNotificationSettings()")
     + settingsRow('📏','Measurement Units',"openMeasurementUnits()")
-    + settingsRow('☀️','Daily Briefings',"openDailyBriefingsSettings()");
+    + settingsRow('☀️','Daily Briefings',"openDailyBriefingsSettings()")
+    + settingsRow('📅','Import a Schedule',"openScheduleImport()",'Upload a class, work, or practice schedule');
 
   // One section per pillar the user has actually unlocked -- no premium paywall/lock
   // icon here (unlike the original spec's model) since this app gates pillars by
@@ -2328,6 +2381,118 @@ async function saveMeasurementUnits() {
   await req('PUT','/preferences/units',data);
   toast('Units saved ✓');
   openSettingsHub();
+}
+
+// ─── IMPORT A SCHEDULE (school/work/sports schedule -> fixed commitments) ───
+// A real external obligation (class schedule, work shifts, practice times) parsed from
+// an uploaded PDF/Word doc into fixed_commitments -- findOpenSlot() already treats these
+// as busy time for every future auto-scheduled task, so this is the actual mechanism
+// behind "upload your schedule and your plans work around it."
+let scheduleImportFile=null, scheduleImportParsedBlocks=[], scheduleImportPillar='work';
+
+async function openScheduleImport() {
+  showScreen('schedule-import');
+  scheduleImportFile=null;
+  scheduleImportParsedBlocks=[];
+  await renderScheduleImportBody();
+}
+
+async function renderScheduleImportBody() {
+  const existing=await req('GET','/schedule-import')||[];
+  const body=document.getElementById('schedule-import-body');
+  const pillarOptions=Object.keys(PILLARS).map(k=>`<option value="${k}" ${scheduleImportPillar===k?'selected':''}>${PILLARS[k].label}</option>`).join('');
+  body.innerHTML = `
+    <div style="font-size:13px;color:var(--stone);margin:14px 0;line-height:1.5">Upload a PDF or Word document of a schedule you already have — a class schedule, work shift schedule, sports practice schedule, etc. We'll read it and treat those times as fixed: your plans and any auto-scheduled tasks will work around them.</div>
+    <div class="field"><label>WHICH PILLAR IS THIS FOR?</label>
+      <select id="si-pillar" onchange="scheduleImportPillar=this.value">${pillarOptions}</select>
+    </div>
+    <div style="text-align:center;margin:14px 0;padding:24px;border:1.5px dashed rgba(196,184,168,.25);border-radius:14px;cursor:pointer" onclick="document.getElementById('si-file-input').click()">
+      <div style="font-size:32px;margin-bottom:8px">📄</div>
+      <div style="font-size:13px;color:var(--stone)" id="si-file-label">Tap to choose a PDF or Word (.docx) file</div>
+    </div>
+    <input type="file" id="si-file-input" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style="display:none" onchange="onScheduleFilePicked(event)">
+    <button class="btn-p filled" id="si-parse-btn" style="display:none" onclick="parseScheduleFile()">Read This Schedule</button>
+    <div id="si-parsed-blocks"></div>
+    ${existing.length?`<div class="section-sub" style="margin-top:20px">YOUR FIXED COMMITMENTS</div>${existing.map(fixedCommitmentRow).join('')}`:''}
+  `;
+}
+
+function fixedCommitmentRow(c) {
+  const pk=getPillarKey(c.pillar_id);
+  const p=PILLARS[pk]||PILLARS.work;
+  const days=(c.schedule_days||[]).length?c.schedule_days.map(d=>d.slice(0,3)).join(', '):'Every day';
+  return `<div class="sq-card">
+    <div class="sq-icon" style="background:${p.color}22;color:${p.color}">${p.icon}</div>
+    <div class="sq-info"><div class="sq-name">${c.name}</div><div class="sq-meta">${days} · ${formatTimeOfDay(String(c.start_time).slice(0,5))}–${formatTimeOfDay(String(c.end_time).slice(0,5))}</div></div>
+    <button class="icon-btn ghost" onclick="deleteFixedCommitment(${c.id})">×</button>
+  </div>`;
+}
+
+async function deleteFixedCommitment(id) {
+  await req('DELETE','/schedule-import?id='+id);
+  toast('Removed');
+  await renderScheduleImportBody();
+}
+
+function onScheduleFilePicked(e) {
+  const file=e.target.files[0];
+  if(!file) return;
+  scheduleImportFile=file;
+  document.getElementById('si-file-label').textContent=file.name;
+  document.getElementById('si-parse-btn').style.display='block';
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=()=>resolve(reader.result.split(',')[1]);
+    reader.onerror=reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function parseScheduleFile() {
+  if(!scheduleImportFile) return;
+  const btn=document.getElementById('si-parse-btn');
+  btn.textContent='Reading…'; btn.disabled=true;
+  const base64=await fileToBase64(scheduleImportFile);
+  const data=await req('POST','/schedule-import?action=parse',{file_base64:base64, media_type:scheduleImportFile.type||'application/pdf', filename:scheduleImportFile.name});
+  btn.textContent='Read This Schedule'; btn.disabled=false;
+  if(!data || data.message) { toast(data?.message||'Could not read that file'); return; }
+  scheduleImportParsedBlocks=data.blocks||[];
+  if(!scheduleImportParsedBlocks.length) { toast('No real recurring schedule found in that file'); return; }
+  renderParsedScheduleBlocks();
+}
+
+function renderParsedScheduleBlocks() {
+  const el=document.getElementById('si-parsed-blocks');
+  if(!scheduleImportParsedBlocks.length) { el.innerHTML=''; return; }
+  el.innerHTML = `
+    <div class="section-sub" style="margin-top:16px">REVIEW BEFORE ADDING</div>
+    ${scheduleImportParsedBlocks.map((b,i)=>`
+      <div class="sq-card" style="flex-direction:column;align-items:stretch">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <input type="text" value="${b.name}" oninput="scheduleImportParsedBlocks[${i}].name=this.value" style="background:transparent;border:none;color:var(--text);font-weight:700;font-size:14px;flex:1;outline:none">
+          <button class="icon-btn ghost" style="width:26px;height:26px" onclick="removeParsedBlock(${i})">×</button>
+        </div>
+        <div class="sq-meta">${(b.days||[]).join(', ')||'Every day'} · ${formatTimeOfDay(b.startTime)}–${formatTimeOfDay(b.endTime)}</div>
+      </div>`).join('')}
+    <button class="btn-p filled" style="background:var(--blue);border-color:var(--blue);margin-top:12px" onclick="confirmScheduleImport()">Add ${scheduleImportParsedBlocks.length} to My Schedule</button>
+  `;
+}
+
+function removeParsedBlock(i) {
+  scheduleImportParsedBlocks.splice(i,1);
+  renderParsedScheduleBlocks();
+}
+
+async function confirmScheduleImport() {
+  const pillarId=PILLARS[scheduleImportPillar]?.id;
+  const data=await req('POST','/schedule-import?action=confirm',{pillar_id:pillarId, blocks:scheduleImportParsedBlocks, filename:scheduleImportFile?.name});
+  if(!data || !data.commitments) { toast(data?.message||'Could not save'); return; }
+  toast(data.message||'Schedule added ✓');
+  scheduleImportFile=null; scheduleImportParsedBlocks=[];
+  await renderScheduleImportBody();
 }
 
 // ─── PILLAR PREFERENCES (4.19.E-J) ───
@@ -3489,13 +3654,23 @@ function applyDailyFilter() {
   renderDailyTaskList(filtered);
 }
 
+// "1.3 hrs" reads worse than a real clock duration -- "1 hr 15 mins" (or just "45 mins"
+// under an hour) matches how every other time range in this app is already written.
+function formatHrsMins(totalMinutes) {
+  const mins=Math.round(totalMinutes);
+  const h=Math.floor(mins/60), m=mins%60;
+  if(!h) return `${m} min${m===1?'':'s'}`;
+  if(!m) return `${h} hr${h===1?'':'s'}`;
+  return `${h} hr${h===1?'':'s'} ${m} min${m===1?'':'s'}`;
+}
+
 function renderDailyStats(tasks) {
   const el=document.getElementById('daily-stats-bar');
   const total=tasks.length;
   const completed=tasks.filter(t=>t.status==='Completed').length;
   const pct=total?Math.round(completed/total*100):0;
   const totalMin=tasks.reduce((s,t)=>s+(t.durationMinutes||0),0);
-  el.innerHTML = `<span>Tasks: ${total}</span><span>Complete: ${pct}%</span><span>Time: ${(totalMin/60).toFixed(1)} hrs</span>`;
+  el.innerHTML = `<span>Tasks: ${total}</span><span>Complete: ${pct}%</span><span>Time: ${formatHrsMins(totalMin)}</span>`;
 }
 
 function renderDailyTaskList(tasks) {
@@ -3544,12 +3719,21 @@ function dailyTaskCard(t) {
   // label and route it the same way any other tool_hint task already is, instead of
   // always showing "Routine" and opening the bare step-checklist.
   const routineLabel = t.routineId ? (t.toolHint ? (TOOL_HINT_LABEL[t.toolHint]||'Routine') : 'Routine') : null;
-  const goalLabel = t.routineId ? routineLabel : t.taskType==='ProjectTask' ? 'Main Goal' : t.isAntiGoal ? 'Anti-Goal' : t.taskType==='Logging' ? 'Habit' : (t.priority?t.priority+' Priority':'Quick Task');
+  // A goal-linked one-off sub-task (from a Project, not a routine/habit) used to always
+  // read as a generic "Quick Task" -- now shows its real phase label when the plan gave
+  // it one, so it's visibly still part of "your Fitness plan" etc, not indistinguishable
+  // from an unrelated ad-hoc to-do.
+  const goalLabel = t.routineId ? routineLabel : t.taskType==='ProjectTask' ? 'Main Goal' : t.isAntiGoal ? 'Anti-Goal' : t.taskType==='Logging' ? 'Habit' : t.goalId ? (t.phaseLabel||'Plan Action') : (t.priority?t.priority+' Priority':'Quick Task');
   const isProject=t.taskType==='ProjectTask';
+  // Any task tagged with a real tool_hint (goal-generated sub-tasks now get one via
+  // inferToolHint(), same as habits/routines already did) opens its exact tool on tap --
+  // the same "everything you need for this task in one place" routing, not just for
+  // Logging-kind and routine-kind tasks anymore.
   const openCall = t.routineId ? `openDailyRoutineTask(${t.routineId},${t.taskId},${t.toolHint?`'${t.toolHint}'`:'null'},'${(t.name||'').replace(/'/g,"\\'")}')`
     : isProject ? `openProjectDetail(${t.taskId},'daily')`
     : (t.isAntiGoal && t.antiGoalType==='progressive' && t.status!=='Completed') ? `openLogAntiGoal(${t.taskId})`
-    : (t.taskType==='Logging' && t.status!=='Completed') ? `openDailyLoggingTask(${t.taskId})` : '';
+    : (t.taskType==='Logging' && t.status!=='Completed') ? `openDailyLoggingTask(${t.taskId})`
+    : (t.toolHint && t.status!=='Completed') ? `openDailyLoggingTask(${t.taskId})` : '';
   return `<div class="sq-card"${openCall?` onclick="${openCall}"`:''}${isFirstStepHighlight?` style="border:1.5px solid ${p.color}"`:''}>
     <div class="sq-icon" style="background:${p.color}22;color:${p.color}">${t.routineId?(t.toolHint?p.icon:'🔁'):(t.isAntiGoal?'🎯':p.emoji)}</div>
     <div class="sq-info">
@@ -8112,6 +8296,7 @@ window.addEventListener('message',e=>{
 });
 
 (function init(){
+  initGoogleSignIn();
   // Baseline history entry for the initially-visible screen (whatever the HTML's default
   // "active" screen is) -- so the very first back press has a real state to compare
   // against instead of an empty one.

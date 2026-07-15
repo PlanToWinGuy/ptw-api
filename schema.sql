@@ -312,3 +312,28 @@ ALTER TABLE goals
 -- suggested, not when it was actually finished).
 ALTER TABLE side_quests
   ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
+
+-- Google Sign-In: password_hash stays NOT NULL for every account (a Google-created user
+-- gets an unguessable random hash, see api/auth.js's 'google' action) so no existing
+-- query that assumes a password_hash needs special-casing. google_id links an account to
+-- its verified Google identity; a password account can also gain one later if the same
+-- email signs in with Google, rather than creating a duplicate account for one person.
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS google_id TEXT UNIQUE;
+
+-- Fixed Commitments (uploaded school/work/sports schedules) -- real external obligations
+-- parsed from a PDF/DOCX, not something the user logs or earns XP for completing. Kept
+-- as its own table rather than reusing `routines` since these aren't self-initiated
+-- habits: they're busy blocks every auto-scheduling pass (goal generation, findOpenSlot)
+-- must work around, never something to check off or delete via the Routines UI.
+CREATE TABLE IF NOT EXISTS fixed_commitments (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  pillar_id INTEGER REFERENCES pillars(id),
+  name TEXT NOT NULL,
+  schedule_days TEXT[] NOT NULL DEFAULT '{}',  -- e.g. ['Monday','Wednesday','Friday']; empty = every day
+  start_time TIME NOT NULL,
+  end_time TIME NOT NULL,
+  source_filename TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
