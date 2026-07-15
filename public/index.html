@@ -221,6 +221,7 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
 }
 .pillar-app-btn:active .pillar-app-icon::after{border-color:rgba(196,184,168,.3)}
 .pillar-app-label{font-size:10px;color:var(--stone);font-weight:500;letter-spacing:.3px}
+.pillar-app-reason{font-size:9px;color:var(--muted);text-align:center;line-height:1.3;margin-top:1px}
 
 /* ══════════════════════════════════
    PILLAR APP SCREENS
@@ -4319,21 +4320,24 @@ async function openEssentialApps(breakType) {
   else { qs=t?.taskId?('?taskId='+t.taskId):''; document.getElementById('essential-context').textContent = t ? 'For: '+t.name : 'Quick tools to stay in the zone — tap to open.'; }
   const data=await req('GET','/essential-apps'+qs);
   essentialAppsCache=data?.apps||[];
-  renderEssentialApps(data?.habitStack);
+  renderEssentialApps(data?.habitStack, data?.aiSuggested);
 }
 function closeEssentialApps() {
   const breakType=essentialAppsBreakType;
   essentialAppsBreakType=null;
   showScreen(breakType?'break':'home');
 }
-function renderEssentialApps(habitStack) {
+function renderEssentialApps(habitStack, aiSuggested) {
   document.getElementById('essential-hint').innerHTML = habitStack
     ? `<div class="sq-card" style="background:var(--blue)15;border:1px solid var(--blue)55;margin-top:8px"><div class="sq-info"><div class="sq-meta">💡 ${habitStack}</div></div></div>`
+    : aiSuggested
+    ? `<div class="section-sub" style="margin:8px 0 0">PICKED FOR RIGHT NOW</div>`
     : '';
   document.getElementById('essential-grid').innerHTML = essentialAppsCache.map((a,i)=>`
     <button class="pillar-app-btn" style="width:100%" onclick="launchEssentialApp(${i})">
       <div class="pillar-app-icon" style="background:var(--bg3)"><span>${ESSENTIAL_ICONS[a.iconName]||'🔗'}</span></div>
       <div class="pillar-app-label">${a.appName}</div>
+      ${a.reason?`<div class="pillar-app-reason">${a.reason}</div>`:''}
     </button>`).join('');
 }
 function launchEssentialApp(i) {
@@ -4341,8 +4345,27 @@ function launchEssentialApp(i) {
   // Tracking-only, best-effort -- surfaces later as "which app did you reach for during
   // free time" insight (4.14's real motivation for putting this drawer inside breaks).
   req('POST','/essential-apps',{appName:a?.appName, context:essentialAppsBreakType?('break:'+essentialAppsBreakType):(S.currentTask?'task':'home')}).catch(()=>{});
-  if(!a?.urlScheme) { toast('Open your '+(a?.appName||'app')+' app directly for this one'); return; }
+
+  // "Scan Food" replaces the old fake Camera tile -- a PWA can't hand a photo back from a
+  // generic device Camera app, so instead of a dead "open it yourself" toast, this routes
+  // straight into the real photo -> AI macro-estimate flow already built for Diet logging.
+  if(a?.action==='scan_food') { closeEssentialApps(); openMealLog('Snack'); return; }
+
+  if(!a?.urlScheme && !a?.webFallback) { toast('Open your '+(a?.appName||'app')+' app directly for this one'); return; }
+  if(!a?.urlScheme) { window.open(a.webFallback,'_blank'); return; }
+
+  // Try the native app scheme first; most of these are iOS-only and previously just
+  // failed silently with no recovery on Android/desktop. A real app switch blurs this
+  // tab almost immediately -- if that hasn't happened after a beat, the scheme didn't
+  // open anything, so fall back to the web version instead of a dead end.
+  let handled=false;
+  const onBlur=()=>{ handled=true; window.removeEventListener('blur',onBlur); };
+  window.addEventListener('blur', onBlur);
   window.location.href=a.urlScheme;
+  setTimeout(()=>{
+    window.removeEventListener('blur', onBlur);
+    if(!handled && a.webFallback) window.open(a.webFallback,'_blank');
+  }, 1200);
 }
 
 // ════════════════════════════════════════
