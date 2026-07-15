@@ -7441,7 +7441,10 @@ async function loadPillarRoadmap(pillarKey) {
   });
   if(g.dailyAnchor) html += `<div class="rm-strategy" style="background:${p.color};opacity:.85">Daily anchor: ${g.dailyAnchor} <span style="opacity:.8">· 🔁 Every day</span></div>`;
 
-  html += `<button class="view-log-btn" style="margin-top:12px" onclick="refinePillarGoal('${pillarKey}')">+ Refine / Set New Goal</button>
+  html += `<div style="display:flex;gap:8px;margin-top:12px">
+      <button class="view-log-btn" style="flex:1" onclick="openRefineGoalPatch(${g.id},'${pillarKey}')">✎ Refine This Goal</button>
+      <button class="view-log-btn" style="flex:1" onclick="refinePillarGoal('${pillarKey}')">+ Start a New Goal</button>
+    </div>
 
     <div class="section-title" style="margin-top:20px">Your Goal Roadmap</div>
     <div class="rm-goal-sub">${g.goal||g.title||''}</div>`;
@@ -7499,6 +7502,30 @@ function onStrategyCardTap(type, pillarKey, pillarActive) {
 function refinePillarGoal(pillarKey) {
   S.activationRefining = true;
   loadPillarQuestionnaire(pillarKey);
+}
+
+// Small, targeted edit to the CURRENT plan (api/goals/refine-patch.js) instead of the
+// full regeneration above -- "remove pushups, my elbow's sensitive" shouldn't require
+// redoing the whole 90-day plan. Reuses the generic Confirm modal as a free-text prompt.
+function openRefineGoalPatch(goalId, pillarKey) {
+  openConfirm('Refine This Goal', 'What would you like to change? (e.g. "swap pushups for something easier on my elbow")', ()=>{});
+  document.getElementById('confirm-body').innerHTML=`
+    <textarea id="refine-patch-input" rows="3" placeholder="What would you like to change?" style="width:100%;padding:12px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);outline:none;resize:none;font-family:'Inter',sans-serif;font-size:14px"></textarea>`;
+  const yesBtn=document.getElementById('confirm-yes-btn');
+  yesBtn.textContent='Submit';
+  yesBtn.onclick=async ()=>{
+    const request=document.getElementById('refine-patch-input').value.trim();
+    if(!request) { toast('Describe what you\'d like to change'); return; }
+    closeModal('modal-confirm');
+    yesBtn.textContent='Yes';
+    toast('Updating your plan…');
+    const result=await req('POST','/goals/refine-patch',{goal_id:goalId, request});
+    if(!result || result.message && !result.summary) { toast(result?.message||'Could not apply that refinement'); return; }
+    openConfirm('Plan Updated', result.summary||'Your plan has been updated.', ()=>{});
+    document.getElementById('confirm-yes-btn').textContent='Close';
+    document.getElementById('confirm-yes-btn').onclick=()=>closeModal('modal-confirm');
+    loadPillarRoadmap(pillarKey);
+  };
 }
 
 // ─── PILLAR TROPHIES TAB ───

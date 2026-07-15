@@ -3,6 +3,7 @@
     "api/goals.js": { "maxDuration": 45 },
     "api/goals/feasibility-check.js": { "maxDuration": 45 },
     "api/goals/clarify.js": { "maxDuration": 45 },
+    "api/goals/refine-patch.js": { "maxDuration": 45 },
     "api/metrics.js": { "maxDuration": 45 },
     "api/ai/chat.js": { "maxDuration": 45 },
     "api/side-quests/custom.js": { "maxDuration": 45 },
