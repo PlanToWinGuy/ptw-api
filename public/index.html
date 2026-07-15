@@ -372,9 +372,12 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
    whatever screen was already open (usually Home) rather than replacing it, so
    the rest of the app dims underneath instead of going fully dark/dead.
 ══════════════════════════════════ */
-#focus-overlay{position:fixed;inset:0;z-index:300;background:rgba(8,8,10,.55);display:none;align-items:center;justify-content:center}
-#focus-overlay.open{display:flex}
-.focus-ring{width:210px;height:210px;border-radius:50%;background:var(--bg3);border:2.5px solid var(--blue);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:0 24px;text-align:center;pointer-events:none}
+/* Fully opaque -- nothing else on screen should be visible, only the ring itself (see
+   enterFocusMode(), which positions .focus-ring at the exact on-screen coordinates of the
+   real #cta-ring so it doesn't shift position when Focus Mode opens). */
+#focus-overlay{position:fixed;inset:0;z-index:300;background:#000;display:none}
+#focus-overlay.open{display:block}
+.focus-ring{position:absolute;border-radius:50%;background:var(--bg3);border:2.5px solid var(--blue);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:0 24px;text-align:center;pointer-events:none;filter:brightness(.8)}
 .focus-ring #focus-label{font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:var(--text);line-height:1.3}
 .focus-ring #focus-mini-timer{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--blue);margin-top:2px;min-height:16px}
 .focus-ring .focus-exit-hint{font-size:10px;color:var(--stone);letter-spacing:.3px;margin-top:10px}
@@ -616,10 +619,11 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
     <div style="display:flex;gap:8px">
       <button class="icon-btn" onclick="openNotifications()">🔔</button>
       <button class="icon-btn" onclick="openBreak()">☕</button>
-      <button class="icon-btn" onclick="openSettings()" title="Settings">⚙️</button>
     </div>
     <div class="ptw-badge" onclick="openAIChat()"><svg width="27" height="27" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"><g transform="translate(34,79) scale(2)"><text x="0" y="17" font-family="Syne,sans-serif" font-weight="800" font-size="20" fill="#F2EDE6">PT</text><polyline points="39,2 43.5,19 48.5,7 53.5,19 58,2" fill="none" stroke="#F2EDE6" stroke-width="3.6" stroke-linejoin="miter" stroke-linecap="butt"/><polyline points="48.5,7 53.5,19 58,2" fill="none" stroke="#5BA4DC" stroke-width="3.6" stroke-linejoin="miter" stroke-linecap="butt"/></g></svg></div>
-    <button class="icon-btn" onclick="openProfile()" title="Profile">👤</button>
+    <!-- Profile is swipe-only (swipe right from Home) -- this corner is Settings, not a
+         second entry point into Profile. -->
+    <button class="icon-btn" onclick="openSettings()" title="Settings">⚙️</button>
   </div>
 
   <div class="home-body">
@@ -2902,6 +2906,17 @@ let wakeLock=null, ctaLongPressFired=false;
 
 async function enterFocusMode() {
   document.getElementById('focus-label').textContent = document.getElementById('cta-label').textContent || 'Focus';
+  // Position the overlay's ring at the real CTA ring's exact on-screen coordinates (not
+  // flex-centered in the viewport) -- the two containers aren't the same height (.home-body
+  // excludes the top bar), so centering in each independently would visibly shift the ring
+  // the instant Focus Mode opens. Captured fresh every time in case of resize/rotation.
+  const realRing=document.getElementById('cta-ring');
+  const rect=realRing.getBoundingClientRect();
+  const focusRing=document.querySelector('.focus-ring');
+  focusRing.style.top=rect.top+'px';
+  focusRing.style.left=rect.left+'px';
+  focusRing.style.width=rect.width+'px';
+  focusRing.style.height=rect.height+'px';
   document.getElementById('focus-overlay').classList.add('open');
   try { if('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch(e) {}
   updateCtaTimerRing(); // populate the mini timer immediately instead of waiting for the next tick
@@ -3121,10 +3136,20 @@ function jumpToDay(dateStr) {
   switchOverviewMode('day');
 }
 
+// Parsing a bare date string as LOCAL time ("T00:00:00", no Z) then reading it back via
+// .toISOString() (always UTC) silently round-trips to the WRONG calendar date in any
+// timezone ahead of UTC -- e.g. at UTC+7, advancing by +1 local day and reformatting via
+// toISOString lands back on the exact same UTC date string, so "forward" appeared to do
+// nothing. Anchoring the parse, arithmetic, and reformat all in UTC keeps the whole
+// operation timezone-independent.
+function addDaysToDateStr(dateStr, days) {
+  const d=new Date(dateStr+'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate()+days);
+  return d.toISOString().split('T')[0];
+}
+
 function shiftDailyDate(delta) {
-  const d=new Date(S.dailyDate+'T00:00:00');
-  d.setDate(d.getDate()+delta);
-  S.dailyDate=d.toISOString().split('T')[0];
+  S.dailyDate=addDaysToDateStr(S.dailyDate, delta);
   loadDailyOverview();
 }
 
@@ -3143,20 +3168,24 @@ async function loadWeekOverview() {
   body.innerHTML='<div class="spinner"></div>';
   const results=await Promise.all(dates.map(d=>req('POST','/user-projects',{date:d.toISOString().split('T')[0]})));
   const todayStr=new Date().toDateString();
-  body.innerHTML=dates.map((d,i)=>{
-    const dayTasks=results[i]?.data||[];
-    const isToday=d.toDateString()===todayStr;
-    const dayName=d.toLocaleDateString('en-US',{weekday:'short'});
-    const dateStr=d.toISOString().split('T')[0];
-    return `<div class="rm-goal-card" style="margin-bottom:12px;cursor:pointer;${isToday?'border:1.5px solid var(--blue)':''}" onclick="jumpToDay('${dateStr}')">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:${dayTasks.length?'12px':'0'}">
-        <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:${isToday?'var(--blue)':'var(--text)'}">${dayName} ${d.getDate()}</div>
-        ${isToday?'<span style="font-size:10px;color:var(--blue);background:rgba(91,164,220,.15);padding:2px 8px;border-radius:10px">TODAY</span>':''}
-        <span style="margin-left:auto;font-size:11px;color:var(--stone)">${dayTasks.length} task${dayTasks.length!==1?'s':''}</span>
-      </div>
-      ${dayTasks.map(weekTaskChip).join('') || (isToday?'<div style="font-size:12px;color:var(--muted)">Nothing planned</div>':'')}
-    </div>`;
-  }).join('');
+  // Horizontal scroll instead of a vertical stack -- each day's card has unconstrained
+  // height (so a genuinely full day isn't clipped) but a fixed width, and the user scrolls
+  // sideways between days instead of one long vertical list of increasingly full cards.
+  body.innerHTML=`<div style="display:flex;gap:12px;overflow-x:auto;padding-bottom:8px;-webkit-overflow-scrolling:touch">` +
+    dates.map((d,i)=>{
+      const dayTasks=results[i]?.data||[];
+      const isToday=d.toDateString()===todayStr;
+      const dayName=d.toLocaleDateString('en-US',{weekday:'short'});
+      const dateStr=d.toISOString().split('T')[0];
+      return `<div class="rm-goal-card" style="min-width:260px;max-width:260px;flex-shrink:0;cursor:pointer;${isToday?'border:1.5px solid var(--blue)':''}" onclick="jumpToDay('${dateStr}')">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:${dayTasks.length?'12px':'0'}">
+          <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:${isToday?'var(--blue)':'var(--text)'}">${dayName} ${d.getDate()}</div>
+          ${isToday?'<span style="font-size:10px;color:var(--blue);background:rgba(91,164,220,.15);padding:2px 8px;border-radius:10px">TODAY</span>':''}
+          <span style="margin-left:auto;font-size:11px;color:var(--stone)">${dayTasks.length} task${dayTasks.length!==1?'s':''}</span>
+        </div>
+        ${dayTasks.map(weekTaskChip).join('') || (isToday?'<div style="font-size:12px;color:var(--muted)">Nothing planned</div>':'')}
+      </div>`;
+    }).join('') + `</div>`;
 }
 
 function shiftMonthAnchor(delta) {
@@ -4437,8 +4466,20 @@ async function loadDietMap() {
   const mealsOfThisTypeToday=todayMeals.filter(m=>(m.data?.meal_type||'').toLowerCase()===nextMealType.toLowerCase()).length;
   const todaysPlan = matchingPlans.length ? matchingPlans[mealsOfThisTypeToday % matchingPlans.length] : null;
 
+  // Layout order matches every other pillar's Map tab (metrics first, then the pillar's
+  // own action card, then "View Full Hub") -- fixed per live feedback, same as Fitness Map.
   const html=`
-    <div class="rm-goal-card" style="text-align:center;background:${p.color}">
+    <div class="metric-row">
+      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">📈</div><div class="metric-val" style="color:#fff">${calories}</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Daily Calories</div><div class="metric-delta" style="color:rgba(255,255,255,.7)">/ ${targets.calories}</div></div>
+      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">🔥</div><div class="metric-val" style="color:#fff;font-size:14px">${Math.round(protein)}/${targets.protein_g}g</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Protein</div></div>
+      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">🌾</div><div class="metric-val" style="color:#fff;font-size:14px">${Math.round(carbs)}/${targets.carbs_g}g</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Carbs</div></div>
+      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">🥑</div><div class="metric-val" style="color:#fff;font-size:14px">${Math.round(fat)}/${targets.fat_g}g</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Fat</div></div>
+    </div>
+    <div class="metric-row" style="margin-top:10px">
+      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">🔥</div><div class="metric-val" style="color:#fff">${streak}</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Meal Streak</div></div>
+      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">💧</div><div class="metric-val" style="color:#fff;font-size:16px">${water.toFixed(1)} / 3.0 L</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Hydration</div></div>
+    </div>
+    <div class="rm-goal-card" style="text-align:center;background:${p.color};margin-top:14px">
       ${todaysPlan ? `
         <div style="font-size:11px;color:rgba(255,255,255,.75);letter-spacing:.5px">${nextMealType.toUpperCase()} PLAN</div>
         <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:#fff;margin:6px 0 12px">${todaysPlan.data?.name}</div>
@@ -4452,16 +4493,6 @@ async function loadDietMap() {
           <button class="btn-p filled" style="background:#fff;color:${p.color};border-color:#fff" onclick="openMealLog('${nextMealType}')">Log a Meal</button>
           <button class="btn-p" style="border-color:rgba(255,255,255,.5);color:#fff" onclick="openCreateMealPlan()">+ Create Plan</button>
         </div>`}
-    </div>
-    <div class="metric-row" style="margin-top:14px">
-      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">📈</div><div class="metric-val" style="color:#fff">${calories}</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Daily Calories</div><div class="metric-delta" style="color:rgba(255,255,255,.7)">/ ${targets.calories}</div></div>
-      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">🔥</div><div class="metric-val" style="color:#fff;font-size:14px">${Math.round(protein)}/${targets.protein_g}g</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Protein</div></div>
-      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">🌾</div><div class="metric-val" style="color:#fff;font-size:14px">${Math.round(carbs)}/${targets.carbs_g}g</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Carbs</div></div>
-      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">🥑</div><div class="metric-val" style="color:#fff;font-size:14px">${Math.round(fat)}/${targets.fat_g}g</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Fat</div></div>
-    </div>
-    <div class="metric-row" style="margin-top:10px">
-      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">🔥</div><div class="metric-val" style="color:#fff">${streak}</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Meal Streak</div></div>
-      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">💧</div><div class="metric-val" style="color:#fff;font-size:16px">${water.toFixed(1)} / 3.0 L</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Hydration</div></div>
     </div>
     <button class="view-log-btn" style="margin-top:14px" onclick="openMealHub()">View Full Meal Hub</button>`;
   container.innerHTML=html;
@@ -4868,8 +4899,17 @@ async function loadFitnessMap() {
 
   const latestWeight=(weightLogs?.logs||[])[0];
 
+  // Layout order matches every other pillar's Map tab (metrics first, then the pillar's
+  // own action card, then "View Full Hub") -- Pass 4 originally put the action card first,
+  // which broke that shared layout; fixed per live feedback.
   const html=`
-    <div class="rm-goal-card" style="text-align:center;background:${p.color}">
+    <div class="metric-row">
+      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">🏋️</div><div class="metric-val" style="color:#fff">${weeklyVolume.toLocaleString()}</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Weekly Volume (kg)</div></div>
+      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">📅</div><div class="metric-val" style="color:#fff">${workoutsThisWeek}</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Workouts This Week</div></div>
+      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">🔥</div><div class="metric-val" style="color:#fff">${streak}</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Day Streak</div></div>
+      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">✨</div><div class="metric-val" style="color:#fff">${prCount}</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Personal Records</div></div>
+    </div>
+    <div class="rm-goal-card" style="text-align:center;background:${p.color};margin-top:14px">
       ${todaysPlan ? `
         <div style="font-size:11px;color:rgba(255,255,255,.75);letter-spacing:.5px">TODAY'S WORKOUT</div>
         <div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:#fff;margin:6px 0 14px">${todaysPlan.data?.name||'Workout'}</div>
@@ -4883,12 +4923,6 @@ async function loadFitnessMap() {
         <div style="font-size:11px;color:rgba(255,255,255,.75);letter-spacing:.5px">TODAY</div>
         <div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:#fff;margin:6px 0 14px">No plans yet</div>
         <button class="btn-p" style="border-color:rgba(255,255,255,.5);color:#fff" onclick="openWorkoutHub()">Build a Plan</button>`}
-    </div>
-    <div class="metric-row" style="margin-top:14px">
-      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">🏋️</div><div class="metric-val" style="color:#fff">${weeklyVolume.toLocaleString()}</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Weekly Volume (kg)</div></div>
-      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">📅</div><div class="metric-val" style="color:#fff">${workoutsThisWeek}</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Workouts This Week</div></div>
-      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">🔥</div><div class="metric-val" style="color:#fff">${streak}</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Day Streak</div></div>
-      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">✨</div><div class="metric-val" style="color:#fff">${prCount}</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Personal Records</div></div>
     </div>
     <div class="rm-goal-card" style="margin-top:14px;display:flex;justify-content:space-between;align-items:center">
       <div>
