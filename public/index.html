@@ -655,6 +655,12 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
       </div>
     </div>
 
+    <div id="cta-reshuffle-banner" style="display:none;align-items:center;gap:10px;background:var(--bg3);border:1px solid rgba(196,184,168,.15);border-radius:12px;padding:10px 12px;margin:0 20px 10px">
+      <div style="font-size:12px;color:var(--text);flex:1;line-height:1.4">Today's plan has slipped by a few hours — want to reshuffle from now?</div>
+      <button class="btn-p filled" style="padding:8px 12px;font-size:12px;white-space:nowrap" onclick="dismissReshufflePrompt();openShuffleDay()">Reshuffle</button>
+      <button class="icon-btn ghost" style="width:26px;height:26px" onclick="dismissReshufflePrompt()">×</button>
+    </div>
+
     <div class="cta-sub">
       <button class="grid-btn" onclick="openEssentialApps()">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
@@ -2396,8 +2402,16 @@ async function loadUserData() {
 async function loadHomeData() {
   const today=new Date().toISOString().split('T')[0];
   const proj=await req('POST','/user-projects',{date:today});
-  const all=proj?.data||[];
-  S.todaySchedule=all;
+  S.todaySchedule=proj?.data||[];
+  applyCtaState();
+}
+
+// Recomputes which task is "now" purely from the already-cached S.todaySchedule (no
+// network call) -- called on a timer so the ring behaves like a real-time scheduler that
+// advances on its own as the clock passes a task's end time, not just when the screen
+// happens to reload. loadHomeData() itself calls this right after a fresh fetch.
+function applyCtaState() {
+  const all=S.todaySchedule||[];
   const pending=all.filter(t=>t.status==='Pending').sort((a,b)=>(a.startTime||'99').localeCompare(b.startTime||'99'));
 
   // "Current" means actually happening right now (or unscheduled/floating, which has no
@@ -2416,23 +2430,52 @@ async function loadHomeData() {
     document.getElementById('cta-glyph').innerHTML=p.icon;
     document.getElementById('cta-ring').style.borderColor=p.color;
     document.getElementById('cta-ring').classList.add('active');
-    document.getElementById('next-txt').textContent=nextUp?('Next: '+nextUp.name+(nextUp.startTime?' at '+formatTimeOfDay(nextUp.startTime):'')):'';
+    document.getElementById('next-txt').textContent=nextUp?('Next: '+nextUp.name+(nextUp.startTime?' ('+formatTimeOfDay(nextUp.startTime)+')':'')):'';
     S.currentTask=t;
-    updateCtaTimerRing();
   } else {
     S.currentTask=null;
-    updateCtaTimerRing();
     document.getElementById('cta-ring').style.borderColor='var(--blue)';
     document.getElementById('cta-glyph').textContent='∞';
     if(nextUp) {
       // A genuine gap in the schedule right now, but something real is coming up today.
       document.getElementById('cta-label').textContent="Busy doing something else? Log it, or add something to do.";
-      document.getElementById('next-txt').textContent='Next: '+nextUp.name+(nextUp.startTime?' at '+formatTimeOfDay(nextUp.startTime):'');
+      document.getElementById('next-txt').textContent='Next: '+nextUp.name+(nextUp.startTime?' ('+formatTimeOfDay(nextUp.startTime)+')':'');
     } else {
       document.getElementById('cta-label').textContent='Nothing scheduled — log how you spend your time, or add something to do.';
       document.getElementById('next-txt').textContent='';
     }
   }
+  updateCtaTimerRing();
+  checkForHeavilyMissedSchedule(pending, nowStr);
+}
+
+// Real-time re-check every 20s -- task boundaries are minute-granularity, no need for a
+// per-second poll, and this is a pure client-side recompute (no network call) so it's
+// cheap to run continuously while Home is the active screen.
+setInterval(()=>{
+  const homeScreen=document.getElementById('screen-home');
+  if(homeScreen && homeScreen.classList.contains('active') && S.todaySchedule) applyCtaState();
+}, 20000);
+
+// If the whole day's plan has genuinely slipped by hours (not just "this one task is a
+// few minutes late"), the honest move is to surface a real reshuffle offer rather than
+// silently leaving a stale, hours-overdue task sitting in the center ring. One prompt per
+// calendar day (dismiss or act on it), not a recurring nag.
+function checkForHeavilyMissedSchedule(pending, nowStr) {
+  const today=new Date().toISOString().split('T')[0];
+  const dismissedFor=localStorage.getItem('ptw_shuffle_prompt_dismissed_date');
+  if(dismissedFor===today) return;
+  const HEAVY_MISS_MINUTES=120;
+  const worstMissed=pending.find(t=>t.endTime && t.endTime<nowStr &&
+    ((new Date('1970-01-01T'+nowStr) - new Date('1970-01-01T'+t.endTime)) / 60000) >= HEAVY_MISS_MINUTES);
+  const banner=document.getElementById('cta-reshuffle-banner');
+  if(!banner) return;
+  banner.style.display = worstMissed ? 'flex' : 'none';
+}
+
+function dismissReshufflePrompt() {
+  localStorage.setItem('ptw_shuffle_prompt_dismissed_date', new Date().toISOString().split('T')[0]);
+  document.getElementById('cta-reshuffle-banner').style.display='none';
 }
 
 function formatTimeOfDay(t) {
@@ -3059,9 +3102,11 @@ function handleCtaClick() {
   openCurrentTask();
 }
 
-// 2.12.2 Dynamic Timer Ring -- depletes as the current task's scheduled time runs out,
-// color-coded green->yellow->red. Only shows for tasks that actually have a start time;
-// an unscheduled task has nothing real to count down, so no ring is drawn for it.
+// Real-time scheduler ring: shows the current task's actual scheduled time range (e.g.
+// "6:00 AM - 7:00 AM"), not a countdown -- the closest this app can get to a live
+// personal-scheduler display. The progress arc still depletes green->yellow->red as a
+// real-time visual, it just no longer drives the text. Only shows for tasks that
+// actually have a start time; an unscheduled task has no real window to display.
 const CTA_RING_CIRCUMFERENCE=634.6;
 function updateCtaTimerRing() {
   const svg=document.getElementById('cta-timer-svg');
@@ -3086,22 +3131,21 @@ function updateCtaTimerRing() {
     end=new Date(start.getTime()+(t.durationMinutes||20)*60000);
   }
   const totalMs=end-start;
-  if(totalMs<=0) { svg.style.display='none'; label.style.display='none'; if(miniTimer) miniTimer.textContent=''; return; }
+  const timeRangeText=t.endTime?(formatTimeOfDay(t.startTime)+' - '+formatTimeOfDay(t.endTime)):formatTimeOfDay(t.startTime);
+  if(totalMs<=0) { svg.style.display='none'; label.style.display='block'; label.textContent=timeRangeText; if(miniTimer) miniTimer.textContent=timeRangeText; return; }
 
   const arc=document.getElementById('cta-timer-arc');
+  label.textContent=timeRangeText;
   if(now<start) {
     arc.style.strokeDashoffset='0';
     arc.style.stroke='var(--blue)';
-    label.textContent='Starts '+formatTimeOfDay(t.startTime);
   } else if(now>=end) {
     arc.style.strokeDashoffset=String(CTA_RING_CIRCUMFERENCE);
     arc.style.stroke='#C46882';
-    label.textContent='Overdue by '+Math.round((now-end)/60000)+' min';
   } else {
     const frac=(end-now)/totalMs;
     arc.style.strokeDashoffset=String(CTA_RING_CIRCUMFERENCE*(1-frac));
     arc.style.stroke = frac>0.5?'#5A9460':frac>0.2?'#C9A832':'#C46882';
-    label.textContent=Math.ceil((end-now)/60000)+' min left';
   }
   svg.style.display='block';
   label.style.display='block';
