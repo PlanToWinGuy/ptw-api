@@ -67,7 +67,7 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
 .splash-sub em .thin{font-weight:400}
 .splash-tagline{text-align:center;margin-top:16px}
 .splash-tagline-lead{font-size:14px;color:var(--stone);letter-spacing:.3px}
-.splash-tagline-brand{font-family:'Syne',sans-serif;font-size:24px;font-weight:800;color:var(--text);letter-spacing:.3px;margin-top:2px}
+.splash-tagline-brand{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--text);letter-spacing:.3px;margin-top:2px}
 .splash-btn{
   margin-top:56px;padding:16px 52px;border-radius:50px;
   background:transparent;border:1.5px solid var(--cement);
@@ -156,11 +156,18 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
 .icon-btn:active{background:var(--bg4)}
 .icon-btn.ghost{background:transparent}
 .ptw-badge{
-  width:46px;height:46px;border-radius:50%;background:var(--bg2);
+  width:50px;height:50px;border-radius:50%;background:var(--bg2);
   border:1.5px solid var(--blue);display:flex;align-items:center;justify-content:center;
   font-family:'Syne',sans-serif;font-size:8px;font-weight:800;color:var(--blue);text-align:center;line-height:1.2;
   cursor:pointer;
 }
+.vision-board-mini-card{
+  justify-self:center;width:56px;height:56px;border-radius:14px;background:var(--bg3);
+  border:1px solid rgba(196,184,168,.12);display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:3px;cursor:pointer;color:var(--stone);
+  font-size:8px;font-weight:700;letter-spacing:.2px;text-align:center;line-height:1.2;padding:4px;
+}
+.vision-board-mini-card:active{background:var(--bg4)}
 
 /* ══════════════════════════════════
    HOME LAUNCHER
@@ -190,7 +197,7 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
   border:none;cursor:pointer;color:var(--cement);font-size:13px;display:flex;align-items:center;justify-content:center;
 }
 
-.cta-sub{display:flex;align-items:center;gap:14px;margin:14px -12px 0;width:calc(100% + 24px)}
+.cta-sub{display:flex;align-items:center;gap:14px;margin:14px -4px 0;width:calc(100% + 8px)}
 .grid-btn{
   width:40px;height:40px;border-radius:10px;background:var(--bg3);
   border:none;cursor:pointer;color:var(--cement);display:flex;align-items:center;justify-content:center;
@@ -477,10 +484,10 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
       <svg width="150" height="150" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
         <circle cx="100" cy="100" r="96" fill="#0A0908" stroke="rgba(245,242,236,.18)" stroke-width="2"/>
         <!-- Exact mark from plantowin.app's nav logo, scaled up and centered -->
-        <g transform="translate(34,78) scale(2)">
-          <text x="0" y="17" font-family="Syne,sans-serif" font-weight="800" font-size="20" fill="#F2EDE6">PT</text>
-          <polyline points="39,2 43.5,19 48.5,7 53.5,19 58,2" fill="none" stroke="#F2EDE6" stroke-width="3.6" stroke-linejoin="miter" stroke-linecap="butt"/>
-          <polyline points="48.5,7 53.5,19 58,2" fill="none" stroke="#5BA4DC" stroke-width="3.6" stroke-linejoin="miter" stroke-linecap="butt"/>
+        <g transform="translate(29.7,83.2) scale(2)">
+          <text x="0" y="30" font-family="Syne,sans-serif" font-weight="800" font-size="34" fill="#F2EDE6">PT</text>
+          <polyline points="54,15 58.5,32 63.5,20 68.5,32 73,15" fill="none" stroke="#F2EDE6" stroke-width="3.6" stroke-linejoin="miter" stroke-linecap="butt"/>
+          <polyline points="63.5,20 68.5,32 73,15" fill="none" stroke="#5BA4DC" stroke-width="3.6" stroke-linejoin="miter" stroke-linecap="butt"/>
         </g>
         <text x="100" y="146" text-anchor="middle" font-family="'Inter',sans-serif" font-weight="600" font-size="11" letter-spacing="3" fill="rgba(245,242,236,.55)">PLAN TO WIN</text>
       </svg>
@@ -499,7 +506,7 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
 ══════════════════════════════════ -->
 <div id="screen-auth-options" class="screen">
   <div class="auth-wrap">
-    <div class="auth-logo-sm"><svg width="56" height="56" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"><circle cx="100" cy="100" r="96" fill="#0A0908" stroke="rgba(245,242,236,.18)" stroke-width="3"/><g transform="translate(34,79) scale(2)"><text x="0" y="17" font-family="Syne,sans-serif" font-weight="800" font-size="20" fill="#F2EDE6">PT</text><polyline points="39,2 43.5,19 48.5,7 53.5,19 58,2" fill="none" stroke="#F2EDE6" stroke-width="3.6" stroke-linejoin="miter" stroke-linecap="butt"/><polyline points="48.5,7 53.5,19 58,2" fill="none" stroke="#5BA4DC" stroke-width="3.6" stroke-linejoin="miter" stroke-linecap="butt"/></g></svg></div>
+    <div class="auth-logo-sm"><svg width="56" height="56" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"><circle cx="100" cy="100" r="96" fill="#0A0908" stroke="rgba(245,242,236,.18)" stroke-width="3"/><g transform="translate(29.7,83.2) scale(2)"><text x="0" y="30" font-family="Syne,sans-serif" font-weight="800" font-size="34" fill="#F2EDE6">PT</text><polyline points="54,15 58.5,32 63.5,20 68.5,32 73,15" fill="none" stroke="#F2EDE6" stroke-width="3.6" stroke-linejoin="miter" stroke-linecap="butt"/><polyline points="63.5,20 68.5,32 73,15" fill="none" stroke="#5BA4DC" stroke-width="3.6" stroke-linejoin="miter" stroke-linecap="butt"/></g></svg></div>
     <div class="auth-title">Welcome</div>
     <div class="auth-sub">Your life, levelled up</div>
     <button class="social-btn" id="google-signin-btn" onclick="continueWithGoogle()">
@@ -522,7 +529,7 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
 <div id="screen-auth-login" class="screen">
   <div class="auth-wrap">
     <button class="back-btn" onclick="showScreen('auth-options')">← Back</button>
-    <div class="auth-logo-sm"><svg width="56" height="56" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"><circle cx="100" cy="100" r="96" fill="#0A0908" stroke="rgba(245,242,236,.18)" stroke-width="3"/><g transform="translate(34,79) scale(2)"><text x="0" y="17" font-family="Syne,sans-serif" font-weight="800" font-size="20" fill="#F2EDE6">PT</text><polyline points="39,2 43.5,19 48.5,7 53.5,19 58,2" fill="none" stroke="#F2EDE6" stroke-width="3.6" stroke-linejoin="miter" stroke-linecap="butt"/><polyline points="48.5,7 53.5,19 58,2" fill="none" stroke="#5BA4DC" stroke-width="3.6" stroke-linejoin="miter" stroke-linecap="butt"/></g></svg></div>
+    <div class="auth-logo-sm"><svg width="56" height="56" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"><circle cx="100" cy="100" r="96" fill="#0A0908" stroke="rgba(245,242,236,.18)" stroke-width="3"/><g transform="translate(29.7,83.2) scale(2)"><text x="0" y="30" font-family="Syne,sans-serif" font-weight="800" font-size="34" fill="#F2EDE6">PT</text><polyline points="54,15 58.5,32 63.5,20 68.5,32 73,15" fill="none" stroke="#F2EDE6" stroke-width="3.6" stroke-linejoin="miter" stroke-linecap="butt"/><polyline points="63.5,20 68.5,32 73,15" fill="none" stroke="#5BA4DC" stroke-width="3.6" stroke-linejoin="miter" stroke-linecap="butt"/></g></svg></div>
     <div class="auth-title">Log In</div>
     <div class="auth-sub">Welcome back</div>
     <div class="field w100"><input type="email" id="li-email" placeholder="Email" autocomplete="email"></div>
@@ -653,7 +660,7 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
       <button class="icon-btn" onclick="openNotifications()">🔔</button>
       <button class="icon-btn" onclick="openBreak()">☕</button>
     </div>
-    <div class="ptw-badge" onclick="openAIChat()"><svg width="27" height="27" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"><g transform="translate(34,79) scale(2)"><text x="0" y="17" font-family="Syne,sans-serif" font-weight="800" font-size="20" fill="#F2EDE6">PT</text><polyline points="39,2 43.5,19 48.5,7 53.5,19 58,2" fill="none" stroke="#F2EDE6" stroke-width="3.6" stroke-linejoin="miter" stroke-linecap="butt"/><polyline points="48.5,7 53.5,19 58,2" fill="none" stroke="#5BA4DC" stroke-width="3.6" stroke-linejoin="miter" stroke-linecap="butt"/></g></svg></div>
+    <div class="ptw-badge" onclick="openAIChat()"><svg width="34" height="34" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"><g transform="translate(29.7,83.2) scale(2)"><text x="0" y="30" font-family="Syne,sans-serif" font-weight="800" font-size="34" fill="#F2EDE6">PT</text><polyline points="54,15 58.5,32 63.5,20 68.5,32 73,15" fill="none" stroke="#F2EDE6" stroke-width="3.6" stroke-linejoin="miter" stroke-linecap="butt"/><polyline points="63.5,20 68.5,32 73,15" fill="none" stroke="#5BA4DC" stroke-width="3.6" stroke-linejoin="miter" stroke-linecap="butt"/></g></svg></div>
     <!-- Profile is swipe-only (swipe right from Home) -- this corner is Settings, not a
          second entry point into Profile. -->
     <button class="icon-btn" onclick="openSettings()" title="Settings">⚙️</button>
@@ -1209,6 +1216,39 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
 </div>
 
 <!-- ══════════════════════════════════
+     SIMPLE TASK DETAIL -- a real look-then-act page for a To-Do List item, instead of
+     jumping straight into the edit form. From here a task can be started, which makes it
+     the Home CTA ring's current task and kicks off a real countdown for its duration.
+══════════════════════════════════ -->
+<div id="screen-task-detail" class="screen">
+  <div class="pillar-top-bar">
+    <button class="icon-btn ghost" onclick="showScreen('todo-routines')">←</button>
+    <span style="width:36px"></span>
+  </div>
+  <div class="scroll-body" style="padding:0 24px;text-align:center">
+    <div id="td-icon" style="font-size:34px;margin-bottom:10px">📝</div>
+    <div id="td-name" style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--text);margin-bottom:6px">Task Name</div>
+    <div id="td-time" style="font-size:13px;color:var(--stone);margin-bottom:20px">Time: —</div>
+    <div style="height:5px;background:var(--bg4);border-radius:3px;overflow:hidden;margin-bottom:22px">
+      <div id="td-progress-fill" style="height:100%;width:0%;background:var(--blue);transition:width 1s linear"></div>
+    </div>
+    <div style="display:flex;justify-content:center;gap:16px;margin-bottom:26px">
+      <button class="cta-micro" style="width:40px;height:40px;font-size:16px" onclick="openEditTask(S.taskDetailTask)" title="Edit">✏</button>
+      <button class="cta-micro" id="td-playpause-btn" style="width:40px;height:40px;font-size:16px;background:var(--blue);color:#fff" onclick="toggleTaskDetailTimer()" title="Start">▶</button>
+      <button class="cta-micro" style="width:40px;height:40px;font-size:16px" onclick="skipTaskDetailTask()" title="Skip">⏭</button>
+      <button class="cta-micro" style="width:40px;height:40px;font-size:16px" onclick="completeTaskDetailTask()" title="Complete">✓</button>
+    </div>
+    <div class="section-sub" style="text-align:left">NOTES</div>
+    <div id="td-notes" style="background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:14px;padding:14px 16px;text-align:left;margin-top:8px"></div>
+  </div>
+  <div style="display:flex;justify-content:center;padding:16px 0 calc(16px + var(--sb))">
+    <button class="grid-btn" onclick="openEssentialApps()">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+    </button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
      WAKE-UP & WIND-DOWN
 ══════════════════════════════════ -->
 <div id="screen-wake-up" class="screen">
@@ -1251,12 +1291,18 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
     <button class="icon-btn ghost" onclick="openSettings()" title="Settings">⚙️</button>
   </div>
   <div class="scroll-body" style="padding:0 18px">
-    <div style="text-align:center;margin:4px 0 14px">
-      <div style="position:relative;display:inline-block">
-        <div id="profile-avatar" style="width:76px;height:76px;border-radius:50%;background:var(--bg3);border:2px solid var(--blue);display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-size:27px;font-weight:800;color:var(--blue)">?</div>
-        <button class="icon-btn ghost" style="position:absolute;bottom:-2px;right:-2px;width:24px;height:24px;min-width:0;background:var(--bg2);border-radius:50%;font-size:11px" onclick="openVisionBoard()" title="Vision Board">🖼️</button>
+    <div style="margin:4px 0 14px">
+      <div style="display:grid;grid-template-columns:1fr auto 1fr;align-items:center">
+        <div></div>
+        <div id="profile-avatar" style="justify-self:center;width:76px;height:76px;border-radius:50%;background:var(--bg3);border:2px solid var(--blue);display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-size:27px;font-weight:800;color:var(--blue)">?</div>
+        <!-- Its own card, not a badge stuck on the avatar -- centered in the gap between
+             the avatar and the screen edge so it reads as a separate destination. -->
+        <button class="vision-board-mini-card" onclick="openVisionBoard()" title="Vision Board">
+          <span style="font-size:18px">🖼️</span>
+          <span>Vision Board</span>
+        </button>
       </div>
-      <div id="profile-name" style="font-family:'Syne',sans-serif;font-size:17px;font-weight:700;color:var(--text);margin-top:8px">—</div>
+      <div id="profile-name" style="text-align:center;font-family:'Syne',sans-serif;font-size:17px;font-weight:700;color:var(--text);margin-top:8px">—</div>
     </div>
 
     <div style="display:flex;gap:12px;margin-bottom:12px;align-items:stretch">
@@ -1501,7 +1547,11 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
     <h2 style="font-size:15px">PTW Assistant</h2>
     <span style="width:36px"></span>
   </div>
-  <div class="scroll-body" style="padding:0 18px" id="chat-messages"></div>
+  <!-- Messages hug the bottom of the scroll area (flex column + justify-content:flex-end)
+       instead of stacking from the top -- a couple of messages should sit right above the
+       input bar like a real chat, not leave a dead gap below them, and it keeps the newest
+       message anchored near the input as the keyboard opens/closes. -->
+  <div class="scroll-body" style="padding:0 18px;display:flex;flex-direction:column;justify-content:flex-end;min-height:100%" id="chat-messages"></div>
   <div style="display:flex;gap:8px;padding:10px 18px calc(10px + var(--sb));background:var(--bg2);border-top:1px solid rgba(196,184,168,.1)">
     <input type="text" id="chat-input" placeholder="Type your message..." style="flex:1;padding:12px 14px;background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:20px;color:var(--text);font-size:14px;font-family:'Inter',sans-serif;outline:none" onkeydown="if(event.key==='Enter')sendChatMessage()">
     <button class="icon-btn" style="background:var(--blue)" onclick="sendChatMessage()">➢</button>
@@ -1586,16 +1636,21 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
 <!-- ══════════════════════════════════
      ESSENTIAL APPS
 ══════════════════════════════════ -->
-<div id="screen-essential" class="screen">
-  <div class="pillar-top-bar">
-    <button class="icon-btn ghost" onclick="closeEssentialApps()">←</button>
-    <h2>Essential Apps</h2>
-    <span style="width:36px"></span>
-  </div>
-  <div class="scroll-body" style="padding:0 18px">
-    <div class="section-sub" style="margin-top:4px" id="essential-context">Quick tools to stay in the zone — tap to open.</div>
-    <div id="essential-hint"></div>
-    <div id="essential-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:10px"></div>
+<!-- A floating card/window, like tapping open an app folder on a phone's home screen --
+     not a full-page navigation, since Essential Apps is a quick side-trip from whatever
+     you were doing (Home, mid-task, mid-break), not a real destination of its own. Same
+     modal-overlay/.modal bottom-sheet pattern as every other popup in this app. -->
+<div class="modal-overlay" id="modal-essential-apps" onclick="closeModal('modal-essential-apps',event)">
+  <div class="modal" style="display:flex;flex-direction:column;max-height:80vh;padding-bottom:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-shrink:0;margin-bottom:4px">
+      <h3 style="margin-bottom:0">Essential Apps</h3>
+      <button class="modal-close" style="float:none;margin:0" onclick="closeEssentialApps()">×</button>
+    </div>
+    <div class="modal-scroll" style="flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch">
+      <div class="section-sub" style="margin-top:4px" id="essential-context">Quick tools to stay in the zone — tap to open.</div>
+      <div id="essential-hint"></div>
+      <div id="essential-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:10px"></div>
+    </div>
   </div>
 </div>
 
@@ -1632,6 +1687,22 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
     </div>
     <div class="field"><label>DUE DATE (OPTIONAL)</label><input type="date" id="t-due-date"></div>
     <div class="field"><label>DUE TIME (OPTIONAL)</label><input type="time" id="t-due-time"></div>
+    <div class="field" id="task-repeat-field">
+      <label>REPEAT</label>
+      <div style="display:flex;align-items:center;gap:10px">
+        <label class="toggle-switch"><input type="checkbox" id="t-repeat" onchange="toggleTaskRepeat()"><span class="toggle-slider"></span></label>
+        <span style="font-size:12px;color:var(--stone)">Make this a recurring routine instead of a one-off task</span>
+      </div>
+      <div id="task-repeat-days" style="display:none;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:10px" class="pillar-grid">
+        <button type="button" class="pg-btn sel" style="background:var(--bg4);font-size:11px;padding:8px 0" data-day="Sunday" onclick="toggleRepeatDay(this)">Su</button>
+        <button type="button" class="pg-btn sel" style="background:var(--bg4);font-size:11px;padding:8px 0" data-day="Monday" onclick="toggleRepeatDay(this)">Mo</button>
+        <button type="button" class="pg-btn sel" style="background:var(--bg4);font-size:11px;padding:8px 0" data-day="Tuesday" onclick="toggleRepeatDay(this)">Tu</button>
+        <button type="button" class="pg-btn sel" style="background:var(--bg4);font-size:11px;padding:8px 0" data-day="Wednesday" onclick="toggleRepeatDay(this)">We</button>
+        <button type="button" class="pg-btn sel" style="background:var(--bg4);font-size:11px;padding:8px 0" data-day="Thursday" onclick="toggleRepeatDay(this)">Th</button>
+        <button type="button" class="pg-btn sel" style="background:var(--bg4);font-size:11px;padding:8px 0" data-day="Friday" onclick="toggleRepeatDay(this)">Fr</button>
+        <button type="button" class="pg-btn sel" style="background:var(--bg4);font-size:11px;padding:8px 0" data-day="Saturday" onclick="toggleRepeatDay(this)">Sa</button>
+      </div>
+    </div>
     <div class="field"><label>DESCRIPTION / CHECKLIST (OPTIONAL)</label>
       <textarea id="t-desc" rows="3" placeholder="Add details or a checklist…" style="width:100%;padding:12px 14px;background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:10px;color:var(--text);font-size:14px;font-family:'Inter',sans-serif;outline:none;resize:none"></textarea>
     </div>
@@ -1899,6 +1970,23 @@ window.addEventListener('popstate', (e)=>{
   }
   suppressHistoryPush=false;
 });
+
+// #app is sized with 100dvh, which in theory already shrinks for an on-screen keyboard --
+// but that only tracks the LAYOUT viewport on several real mobile browsers (notably
+// Android Chrome without the newer interactive-widget viewport meta support), not the
+// VISUAL viewport the keyboard actually occupies. On those browsers #app stays full-height
+// while the keyboard covers the bottom of it, so a bottom-anchored input row (AI Coach's
+// chat box, for example) ends up rendered underneath the keyboard instead of above it.
+// visualViewport.height is the one measurement that's reliably keyboard-aware everywhere,
+// so it drives #app's real height directly instead of trusting dvh alone.
+if (window.visualViewport) {
+  const appEl = document.getElementById('app');
+  const syncAppHeightToViewport = () => {
+    appEl.style.height = window.visualViewport.height + 'px';
+  };
+  window.visualViewport.addEventListener('resize', syncAppHeightToViewport);
+  syncAppHeightToViewport();
+}
 
 // ════════════════════════════════════════
 // AUTH
@@ -2620,6 +2708,10 @@ async function loadHomeData() {
 // advances on its own as the clock passes a task's end time, not just when the screen
 // happens to reload. loadHomeData() itself calls this right after a fresh fetch.
 function applyCtaState() {
+  // A manually-started task (via Task Detail's Start button) overrides whatever the
+  // schedule would otherwise show -- the user explicitly chose to work on this right now,
+  // so it takes the ring regardless of what time it actually is on the calendar.
+  if(S.manualTaskOverride) { renderManualTaskCta(); return; }
   const all=S.todaySchedule||[];
   const pending=all.filter(t=>t.status==='Pending').sort((a,b)=>(a.startTime||'99').localeCompare(b.startTime||'99'));
 
@@ -2874,6 +2966,9 @@ async function confirmTaskCompletion() {
   const result=await req('POST','/tasks/update-completion',{task_id:S.currentTask.taskId, completion_percentage:pct});
   const xp=result?.data?.xp_gained||0;
   toast('+'+xp+' XP! ⚡'+(result?.data?.remainder_task?' — rest rescheduled':''));
+  // Clears a manual Start override too, if this was one -- otherwise the next tick would
+  // resurrect the ring right back onto a task that was just marked done.
+  if(S.manualTaskOverride?.taskId===S.currentTask.taskId) S.manualTaskOverride=null;
   S.currentTask=null;
   showScreen('home');
   await loadHomeData();
@@ -2905,6 +3000,7 @@ async function skipCurrentTask() {
   closeModal('modal-task-actions');
   const result=await req('POST','/tasks/skip',{task_id:S.currentTask.taskId});
   toast(result?.message||"Skipped — it'll come back around");
+  if(S.manualTaskOverride?.taskId===S.currentTask.taskId) S.manualTaskOverride=null;
   S.currentTask=null;
   await loadHomeData();
 }
@@ -3322,6 +3418,10 @@ function updateCtaTimerRing() {
   const label=document.getElementById('cta-timer-label');
   const miniTimer=document.getElementById('focus-mini-timer');
   const homeScreen=document.getElementById('screen-home');
+  // A manually-started task counts down for real (elapsed vs. its own duration) instead
+  // of showing a scheduled time range -- there is no "start time" to display, since the
+  // whole point is the user started it themselves, right now, regardless of the calendar.
+  if(S.manualTaskOverride) { updateManualTaskCountdown(homeScreen, svg, label, miniTimer); return; }
   if(!homeScreen || !homeScreen.classList.contains('active') || !S.currentTask?.startTime) {
     if(svg) svg.style.display='none';
     if(label) label.style.display='none';
@@ -3361,6 +3461,147 @@ function updateCtaTimerRing() {
   if(miniTimer) miniTimer.textContent=label.textContent;
 }
 setInterval(updateCtaTimerRing, 1000);
+
+// ════════════════════════════════════════
+// MANUAL "START" TASK -- forces a task (usually from Task Detail) into the Home CTA
+// ring right now and runs a real countdown for its own duration, independent of
+// whatever the schedule says should be happening. S.currentTask is kept pointing at it
+// too, so the ring's existing complete/skip/options actions keep working unchanged.
+// ════════════════════════════════════════
+function startManualTask(task) {
+  S.manualTaskOverride = {
+    taskId: task.id, name: task.name, pillar: task.pillar_name||task.pillar_id,
+    durationMinutes: task.estimated_duration_minutes||task.durationMinutes||20,
+    elapsedMs: 0, running: true, lastResumeAt: Date.now(),
+  };
+  applyCtaState();
+  renderTaskDetailTimerUI();
+}
+function pauseManualTask() {
+  const m=S.manualTaskOverride;
+  if(!m || !m.running) return;
+  m.elapsedMs += Date.now()-m.lastResumeAt;
+  m.running=false;
+  renderTaskDetailTimerUI();
+}
+function resumeManualTask() {
+  const m=S.manualTaskOverride;
+  if(!m || m.running) return;
+  m.lastResumeAt=Date.now();
+  m.running=true;
+  renderTaskDetailTimerUI();
+}
+function clearManualTaskOverride() {
+  S.manualTaskOverride=null;
+  S.currentTask=null;
+}
+function renderManualTaskCta() {
+  const m=S.manualTaskOverride;
+  const pk=getPillarKey(m.pillar);
+  const p=PILLARS[pk]||PILLARS.personal;
+  document.getElementById('cta-label').textContent=m.name;
+  document.getElementById('cta-glyph').innerHTML=p.icon;
+  document.getElementById('cta-ring').style.borderColor=p.color;
+  document.getElementById('cta-ring').classList.add('active');
+  document.getElementById('next-txt').textContent='';
+  S.currentTask={taskId:m.taskId, name:m.name, pillar:m.pillar};
+  updateCtaTimerRing();
+}
+function updateManualTaskCountdown(homeScreen, svg, label, miniTimer) {
+  const m=S.manualTaskOverride;
+  const totalMs=m.durationMinutes*60000;
+  const elapsed=m.elapsedMs+(m.running?Date.now()-m.lastResumeAt:0);
+  const remaining=totalMs-elapsed;
+  if(remaining<=0) {
+    toast(m.name+' — time\'s up! ⏰');
+    clearManualTaskOverride();
+    loadHomeData();
+    renderTaskDetailTimerUI();
+    return;
+  }
+  const frac=remaining/totalMs;
+  const onHome=homeScreen && homeScreen.classList.contains('active');
+  if(svg) svg.style.display=onHome?'block':'none';
+  if(label) label.style.display=onHome?'block':'none';
+  if(onHome) {
+    const arc=document.getElementById('cta-timer-arc');
+    arc.style.strokeDashoffset=String(CTA_RING_CIRCUMFERENCE*(1-frac));
+    arc.style.stroke = frac>0.5?'#5A9460':frac>0.2?'#C9A832':'#C46882';
+  }
+  const mm=Math.floor(remaining/60000), ss=Math.floor((remaining%60000)/1000);
+  const timeText=mm+':'+String(ss).padStart(2,'0');
+  if(label) label.textContent=timeText;
+  if(miniTimer) miniTimer.textContent=timeText;
+  renderTaskDetailTimerUI();
+}
+
+// ════════════════════════════════════════
+// SIMPLE TASK DETAIL
+// ════════════════════════════════════════
+function openTaskDetail(task) {
+  S.taskDetailTask=task;
+  const pk=getPillarKey(task.pillar_name||task.pillar_id);
+  const p=PILLARS[pk]||PILLARS.personal;
+  document.getElementById('td-icon').innerHTML=task.icon||p.icon;
+  document.getElementById('td-name').textContent=task.name;
+  document.getElementById('td-time').textContent='Time: '+formatHrsMins(task.estimated_duration_minutes||0);
+  const notes=(task.description||'').split('\n').map(l=>l.trim()).filter(Boolean);
+  document.getElementById('td-notes').innerHTML = notes.length
+    ? '<ul style="margin:0;padding-left:18px;color:var(--text);font-size:13px;line-height:1.8">'+notes.map(n=>`<li>${n}</li>`).join('')+'</ul>'
+    : '<div style="color:var(--muted);font-size:13px">No notes for this task.</div>';
+  showScreen('task-detail');
+  renderTaskDetailTimerUI();
+}
+function renderTaskDetailTimerUI() {
+  const screen=document.getElementById('screen-task-detail');
+  if(!screen || !screen.classList.contains('active')) return;
+  const task=S.taskDetailTask;
+  if(!task) return;
+  const m=S.manualTaskOverride;
+  const isThisTask = m && m.taskId===task.id;
+  const btn=document.getElementById('td-playpause-btn');
+  const fill=document.getElementById('td-progress-fill');
+  if(!isThisTask) {
+    btn.textContent='▶'; btn.title='Start';
+    fill.style.width='0%';
+    return;
+  }
+  const totalMs=m.durationMinutes*60000;
+  const elapsed=m.elapsedMs+(m.running?Date.now()-m.lastResumeAt:0);
+  const pct=Math.min(100, Math.round((elapsed/totalMs)*100));
+  fill.style.width=pct+'%';
+  btn.textContent=m.running?'⏸':'▶';
+  btn.title=m.running?'Pause':'Resume';
+}
+function toggleTaskDetailTimer() {
+  const task=S.taskDetailTask;
+  if(!task) return;
+  const m=S.manualTaskOverride;
+  if(!m || m.taskId!==task.id) { startManualTask(task); toast('Started — now your current task ⏱'); return; }
+  if(m.running) pauseManualTask(); else resumeManualTask();
+}
+async function skipTaskDetailTask() {
+  const task=S.taskDetailTask;
+  if(!task) return;
+  if(S.manualTaskOverride?.taskId===task.id) clearManualTaskOverride();
+  await req('POST','/tasks/skip',{task_id:task.id});
+  toast("Skipped — it'll come back around");
+  S.todoTasksCache=(S.todoTasksCache||[]).filter(t=>t.id!==task.id);
+  showScreen('todo-routines');
+  switchTodoRoutinesTab('todo');
+  loadHomeData();
+}
+async function completeTaskDetailTask() {
+  const task=S.taskDetailTask;
+  if(!task) return;
+  if(S.manualTaskOverride?.taskId===task.id) clearManualTaskOverride();
+  const result=await req('POST','/simple-tasks/'+task.id+'/complete');
+  toast('+'+(result?.xpGained||0)+' XP ⚡');
+  S.todoTasksCache=(S.todoTasksCache||[]).filter(t=>t.id!==task.id);
+  showScreen('todo-routines');
+  switchTodoRoutinesTab('todo');
+  loadHomeData();
+}
 (function setupFocusLongPress(){
   const ring=document.getElementById('cta-ring');
   let pressTimer=null;
@@ -3424,7 +3665,9 @@ function todoTaskCard(t) {
 function openTodoCardTap(e, taskId) {
   if(e.currentTarget.dataset.dragged==='1') return;
   const task=(S.todoTasksCache||[]).find(t=>t.id===taskId);
-  if(task) openEditTask(task);
+  // A tap now opens a real look-then-act detail page (see openTaskDetail) instead of
+  // jumping straight to the edit form -- editing is still one tap away from there.
+  if(task) openTaskDetail(task);
 }
 
 async function quickCompleteTodoTask(id) {
@@ -3553,16 +3796,16 @@ async function loadWeekOverview() {
   // Horizontal scroll instead of a vertical stack -- each day's card has unconstrained
   // height (so a genuinely full day isn't clipped) but a fixed width, and the user scrolls
   // sideways between days instead of one long vertical list of increasingly full cards.
-  // Full-height cards -- height:100% on both the row and each card (rather than sizing
-  // to content) so a light day's card still visually reaches the bottom of the screen
-  // instead of looking like a small stub sitting at the top.
+  // Cards reach most of the way down the screen (min-height) without being forced to
+  // literally fill it -- a light day's card still looks substantial, but doesn't stretch
+  // into an oddly empty box the way a hard height:100% did.
   body.innerHTML=`<div style="display:flex;gap:12px;overflow-x:auto;height:100%;-webkit-overflow-scrolling:touch">` +
     dates.map((d,i)=>{
       const dayTasks=results[i]?.data||[];
       const isToday=d.toDateString()===todayStr;
       const dayName=d.toLocaleDateString('en-US',{weekday:'short'});
       const dateStr=d.toISOString().split('T')[0];
-      return `<div class="rm-goal-card" style="min-width:260px;max-width:260px;flex-shrink:0;height:100%;box-sizing:border-box;overflow-y:auto;cursor:pointer;${isToday?'border:1.5px solid var(--blue)':''}" onclick="jumpToDay('${dateStr}')">
+      return `<div class="rm-goal-card" style="min-width:260px;max-width:260px;flex-shrink:0;min-height:68%;max-height:100%;box-sizing:border-box;overflow-y:auto;cursor:pointer;${isToday?'border:1.5px solid var(--blue)':''}" onclick="jumpToDay('${dateStr}')">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:${dayTasks.length?'12px':'0'}">
           <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:${isToday?'var(--blue)':'var(--text)'}">${dayName} ${d.getDate()}</div>
           ${isToday?'<span style="font-size:10px;color:var(--blue);background:rgba(91,164,220,.15);padding:2px 8px;border-radius:10px">TODAY</span>':''}
@@ -4295,7 +4538,9 @@ function setupSwipeNav(elId, {left, right, up, down}) {
 // back button (Profile previously had no back-to-Home gesture or button at all).
 setupSwipeNav('screen-home', { right: openProfile, down: openDailyOverview, up: openTodoRoutines });
 setupSwipeNav('screen-profile', { left: ()=>showScreen('home') });
-setupSwipeNav('screen-daily', { up: ()=>showScreen('home') });
+// Left = next day/week/month, right = previous -- same delta shiftOverview() already
+// uses for the ‹ › buttons, so swipe and tap stay perfectly consistent in every mode.
+setupSwipeNav('screen-daily', { up: ()=>showScreen('home'), left: ()=>shiftOverview(1), right: ()=>shiftOverview(-1) });
 setupSwipeNav('screen-todo-routines', { down: ()=>showScreen('home') });
 
 // Horizontal swipe between unlocked pillars on a pillar's own screen (3.4) --
@@ -4693,7 +4938,7 @@ let essentialAppsBreakType=null; // set when opened mid-break, so the back butto
 
 async function openEssentialApps(breakType) {
   essentialAppsBreakType=breakType||null;
-  showScreen('essential');
+  document.getElementById('modal-essential-apps').classList.add('open');
   document.getElementById('essential-grid').innerHTML='<div class="spinner"></div>';
   document.getElementById('essential-hint').innerHTML='';
   const t=S.currentTask;
@@ -4704,10 +4949,12 @@ async function openEssentialApps(breakType) {
   essentialAppsCache=data?.apps||[];
   renderEssentialApps(data?.habitStack, data?.aiSuggested);
 }
+// No navigation needed any more -- it's a popup over whatever screen was already open
+// (Home, mid-task, mid-break), so closing it just dismisses the card and leaves that
+// screen exactly as it was, rather than routing back to a hardcoded Home/Break guess.
 function closeEssentialApps() {
-  const breakType=essentialAppsBreakType;
   essentialAppsBreakType=null;
-  showScreen(breakType?'break':'home');
+  document.getElementById('modal-essential-apps').classList.remove('open');
 }
 function renderEssentialApps(habitStack, aiSuggested) {
   document.getElementById('essential-hint').innerHTML = habitStack
@@ -8176,6 +8423,13 @@ function openAddTask() {
   resetTaskModalGrid('task-color-grid','color','',true);
   resetTaskModalGrid('task-priority-grid','priority','Medium',true);
   S.taskPillar='fitness'; S.taskIcon=''; S.taskColor=''; S.taskPriority='Medium';
+  // Repeat is only offered on creation -- converting an existing task into a routine
+  // mid-edit raises questions (what happens to the original task/its history?) that are
+  // out of scope for a simple "make new things repeat" toggle.
+  document.getElementById('task-repeat-field').style.display='';
+  document.getElementById('t-repeat').checked=false;
+  document.getElementById('task-repeat-days').style.display='none';
+  document.querySelectorAll('#task-repeat-days .pg-btn').forEach(b=>b.classList.add('sel'));
   document.getElementById('modal-task').classList.add('open');
   setTimeout(()=>document.getElementById('t-name').focus(),300);
   renderQuestSuggestions();
@@ -8197,8 +8451,14 @@ function openEditTask(task) {
   resetTaskModalGrid('task-color-grid','color',task.color||'',true);
   resetTaskModalGrid('task-priority-grid','priority',task.priority||'Medium',true);
   S.taskPillar=pk; S.taskIcon=task.icon||''; S.taskColor=task.color||''; S.taskPriority=task.priority||'Medium';
+  document.getElementById('task-repeat-field').style.display='none';
   document.getElementById('modal-task').classList.add('open');
 }
+
+function toggleTaskRepeat() {
+  document.getElementById('task-repeat-days').style.display = document.getElementById('t-repeat').checked ? 'grid' : 'none';
+}
+function toggleRepeatDay(btn) { btn.classList.toggle('sel'); }
 
 function selTaskIcon(btn) { document.querySelectorAll('#task-icon-grid .pg-btn').forEach(b=>b.classList.remove('sel')); btn.classList.add('sel'); S.taskIcon=btn.dataset.icon; }
 function selTaskColor(btn) { document.querySelectorAll('#task-color-grid .pg-btn').forEach(b=>b.classList.remove('sel')); btn.classList.add('sel'); S.taskColor=btn.dataset.color; }
@@ -8241,6 +8501,30 @@ async function submitTask() {
   const due_time=document.getElementById('t-due-time').value||null;
   if(!name){toast('Enter a task name');return;}
   const p=PILLARS[S.taskPillar]||PILLARS.personal;
+
+  // Repeat toggle creates a real Routine instead of a one-off task -- same fields
+  // (name/duration/icon/pillar), just reshaped into a routine's single-step + schedule
+  // format so it materializes as a real Daily Overview item on every matching day
+  // instead of once. All 7 days selected (the default) is stored as [] -- the schema's
+  // own "every day" convention (see routines.schedule_days), not a literal weekday list.
+  if(!S.editingTaskId && document.getElementById('t-repeat').checked) {
+    const selectedDays=Array.from(document.querySelectorAll('#task-repeat-days .pg-btn.sel')).map(b=>b.dataset.day);
+    if(!selectedDays.length){toast('Pick at least one day to repeat on');return;}
+    const days = selectedDays.length===7 ? [] : selectedDays;
+    const data=await req('POST','/routines',{
+      name, icon:S.taskIcon||null, category:p.label, isActive:true, notes:description||null,
+      steps:[{name, durationMinutes:dur}], schedule:{days, time:due_time},
+    });
+    if(!data || data.errors){ toast(data?.message||'Could not create routine — try again'); return; }
+    toast('Routine created ✓');
+    closeModal('modal-task');
+    document.getElementById('t-name').value='';
+    loadHomeData();
+    if(S.activePillar) loadPillarMap(S.activePillar);
+    if(document.getElementById('screen-todo-routines').classList.contains('active')) switchTodoRoutinesTab('routines');
+    return;
+  }
+
   const payload={name,pillar_id:p.id,estimatedDurationMinutes:dur,priority,description,icon:S.taskIcon||null,color:S.taskColor||null,due_date,due_time};
   // 🔌 API: POST /api/simple-tasks (or PUT /api/simple-tasks/:id when editing)
   // The live API validates on estimatedDurationMinutes (camelCase) despite returning
