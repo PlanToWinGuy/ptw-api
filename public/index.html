@@ -275,6 +275,12 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
 .metric-icon{font-size:16px;margin-bottom:4px}
 .metric-val{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--text)}
 .metric-label{font-size:11px;color:var(--muted);margin-top:2px}
+/* Profile page's own 2x3 performance grid -- larger than the standard 4-card pillar-map
+   metric rows so it actually fills the page instead of leaving a mostly-empty screen. */
+.metric-card-lg{padding:24px 14px}
+.metric-card-lg .metric-icon{font-size:28px;margin-bottom:10px}
+.metric-card-lg .metric-val{font-size:32px}
+.metric-card-lg .metric-label{font-size:12.5px;margin-top:6px}
 .metric-delta{font-size:11px;font-weight:600;margin-top:3px}
 .delta-pos{color:var(--finances)} .delta-neg{color:var(--relations)}
 
@@ -547,6 +553,7 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
       <div class="step-dot active"></div>
       <div class="step-dot"></div>
     </div>
+    <div class="field w100"><label>USERNAME</label><input type="text" id="ob-username" placeholder="Choose a username" autocapitalize="off"></div>
     <div class="field w100"><label>DATE OF BIRTH</label><input type="date" id="ob-dob"></div>
     <div class="field w100"><label>GENDER</label>
       <select id="ob-gender">
@@ -582,6 +589,9 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
         <option value="High">High</option>
       </select>
     </div>
+    <div class="field w100"><label>WAKE-UP TIME</label><input type="time" id="ob-wake-time" value="07:00"></div>
+    <div class="field w100"><label>WIND-DOWN TIME</label><input type="time" id="ob-wind-time" value="22:00"></div>
+    <div style="font-size:11px;color:var(--stone);margin:-6px 0 4px;line-height:1.4">We'll set up a simple Morning and Wind-Down Routine around these times — you can edit or replace them any time in Routines.</div>
     <button class="btn-p filled" onclick="doOnboarding()">Continue</button>
   </div>
 </div>
@@ -1214,12 +1224,12 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
     <button class="icon-btn ghost" onclick="openSettings()" title="Settings">⚙️</button>
   </div>
   <div class="scroll-body" style="padding:0 18px">
-    <div style="display:flex;align-items:center;gap:14px;margin:4px 0 18px">
-      <div style="position:relative">
-        <div id="profile-avatar" style="width:56px;height:56px;border-radius:50%;background:var(--bg3);border:2px solid var(--blue);display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--blue);flex-shrink:0">?</div>
-        <button class="icon-btn ghost" style="position:absolute;bottom:-4px;right:-4px;width:22px;height:22px;min-width:0;background:var(--bg2);border-radius:50%;font-size:11px" onclick="openVisionBoard()" title="Vision Board">🖼️</button>
+    <div style="text-align:center;margin:6px 0 18px">
+      <div style="position:relative;display:inline-block">
+        <div id="profile-avatar" style="width:84px;height:84px;border-radius:50%;background:var(--bg3);border:2px solid var(--blue);display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-size:30px;font-weight:800;color:var(--blue)">?</div>
+        <button class="icon-btn ghost" style="position:absolute;bottom:-2px;right:-2px;width:26px;height:26px;min-width:0;background:var(--bg2);border-radius:50%;font-size:12px" onclick="openVisionBoard()" title="Vision Board">🖼️</button>
       </div>
-      <div id="profile-name" style="font-family:'Syne',sans-serif;font-size:18px;font-weight:700;color:var(--text)">—</div>
+      <div id="profile-name" style="font-family:'Syne',sans-serif;font-size:18px;font-weight:700;color:var(--text);margin-top:10px">—</div>
     </div>
 
     <div style="display:flex;gap:12px;margin-bottom:14px;align-items:stretch">
@@ -1233,15 +1243,15 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
         <div id="profile-phase-duration" style="font-size:10px;color:var(--muted);margin-top:2px">—</div>
       </div>
 
-      <div class="ls-card" style="background:var(--blue);cursor:pointer;margin-bottom:0;flex:1;min-width:0" onclick="openLifeScoreDetail()">
+      <div class="ls-card" style="background:var(--blue);cursor:pointer;margin-bottom:0;flex:1;min-width:0;display:flex;flex-direction:column" onclick="openLifeScoreDetail()">
         <div class="ls-label">LIFE SCORE</div>
         <div class="ls-value" id="profile-lifescore" style="font-size:26px">—</div>
         <div class="ls-sub" id="profile-xp-total" style="font-size:10px">Total XP: —</div>
+        <div style="height:5px;background:rgba(255,255,255,.3);border-radius:4px;overflow:hidden;margin-top:8px"><div id="profile-ls-fill" style="height:100%;background:#fff;width:0%"></div></div>
+        <div style="font-size:8.5px;color:rgba(255,255,255,.75);margin-top:6px;line-height:1.35">Motivational score from your logged habits — not a medical prediction.</div>
       </div>
     </div>
-    <div style="height:6px;background:var(--bg4);border-radius:4px;overflow:hidden;margin:8px 0"><div id="profile-ls-fill" style="height:100%;background:var(--blue);width:0%"></div></div>
-    <div id="profile-ls-breakdown-inline" style="font-size:10.5px;color:var(--muted);text-align:center;margin-bottom:4px">—</div>
-    <div style="font-size:10.5px;color:var(--muted);text-align:center;margin:0 0 14px;line-height:1.4">(This is a motivational score based on your logged habits and is not a medical prediction.)</div>
+    <div id="profile-ls-breakdown-inline" style="font-size:10.5px;color:var(--muted);text-align:center;margin-bottom:14px">—</div>
 
     <div id="profile-pillar-filter" style="display:flex;gap:8px;margin-bottom:14px;overflow-x:auto"></div>
 
@@ -1684,10 +1694,10 @@ const API = 'https://ptw-api.vercel.app/api';
 // dropped into, the same way an inline emoji character used to.
 const PILLAR_GLYPH = {
   fitness: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-0.15em"><rect x="1" y="9" width="3" height="6" rx="1"/><rect x="20" y="9" width="3" height="6" rx="1"/><rect x="4" y="10" width="3" height="4" rx="1"/><rect x="17" y="10" width="3" height="4" rx="1"/><rect x="7" y="11" width="10" height="2" rx="1"/></svg>',
-  diet: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-0.15em"><ellipse cx="12" cy="11" rx="8" ry="5.5" transform="rotate(-45 12 11)"/><path d="M7 16 L4 19" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>',
+  diet: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-0.15em"><circle cx="9" cy="14" r="6.2"/><circle cx="15" cy="14" r="6.2"/><rect x="11" y="3.5" width="2" height="4.5" rx="1"/></svg>',
   finances: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" style="vertical-align:-0.15em"><circle cx="12" cy="12" r="9.5" stroke="currentColor" stroke-width="1.6"/><text x="12" y="16.5" font-size="12" font-weight="700" text-anchor="middle" fill="currentColor">$</text></svg>',
   relations: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-0.15em"><path d="M12,21.35 L10.55,20.03 C5.4,15.36 2,12.28 2,8.5 C2,5.42 4.42,3 7.5,3 C9.24,3 10.91,3.81 12,5.09 C13.09,3.81 14.76,3 16.5,3 C19.58,3 22,5.42 22,8.5 C22,12.28 18.6,15.36 13.45,20.04 L12,21.35 Z"/></svg>',
-  personal: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-0.15em"><path d="M12,17.27L18.18,21l-1.64-7.03L22,9.24l-7.19-0.61L12,2L9.19,8.63L2,9.24l5.46,4.73L5.82,21z"/></svg>',
+  personal: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-0.15em"><path d="M8.5 3.8c-1.7 0-3 1.2-3.3 2.8-1.4.5-2.4 1.8-2.4 3.4 0 .9.3 1.7.9 2.3-.5.6-.9 1.4-.9 2.3 0 1.7 1.1 3.1 2.7 3.5.1 1.8 1.6 3.2 3.4 3.2 1 0 1.9-.5 2.5-1.2V5c-.6-.7-1.5-1.2-2.9-1.2z"/><path d="M15.5 3.8c1.7 0 3 1.2 3.3 2.8 1.4.5 2.4 1.8 2.4 3.4 0 .9-.3 1.7-.9 2.3.5.6.9 1.4.9 2.3 0 1.7-1.1 3.1-2.7 3.5-.1 1.8-1.6 3.2-3.4 3.2-1 0-1.9-.5-2.5-1.2V5c.6-.7 1.5-1.2 2.9-1.2z"/></svg>',
   work: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-0.15em"><path d="M20,6h-4V4c0-1.11-0.89-2-2-2h-4C8.89,2,8,2.89,8,4v2H4C2.89,6,2.01,6.89,2.01,8L2,19c0,1.11,0.89,2,2,2h16c1.11,0,2-0.89,2-2V8C22,6.89,21.11,6,20,6z M14,6h-4V4h4V6z"/></svg>',
 };
 const PILLARS = {
@@ -1888,6 +1898,7 @@ async function doSignup() {
 }
 
 async function doOnboarding() {
+  const username=document.getElementById('ob-username').value.trim();
   const dob=document.getElementById('ob-dob').value;
   const gender=document.getElementById('ob-gender').value;
   const height=document.getElementById('ob-height').value;
@@ -1895,18 +1906,23 @@ async function doOnboarding() {
   const fitness_level=document.getElementById('ob-fitness').value;
   const sleep_quality=document.getElementById('ob-sleep').value;
   const stress_level=document.getElementById('ob-stress').value;
+  const wake_time=document.getElementById('ob-wake-time').value;
+  const wind_down_time=document.getElementById('ob-wind-time').value;
   if(!dob||!gender){toast('Date of birth and gender required');return;}
   // 🔌 API: POST /api/profile-creation
-  await req('POST','/profile-creation',{
-    username:S.user?.name||'user',
+  const data = await req('POST','/profile-creation',{
+    username: username||(S.user?.name||'user'),
     dob,gender,
     height:parseFloat(height)||null,
     weight:parseFloat(weight)||null,
     fitness_level:fitness_level||null,
     sleep_quality:sleep_quality||null,
     stress_level:stress_level||null,
+    wake_time:wake_time||null,
+    wind_down_time:wind_down_time||null,
     diet:'balanced'
   });
+  if(!data || data.errors) { toast(data?.errors?.username?.[0]||data?.message||'Could not save your profile'); return; }
   showScreen('valueprint');
 }
 
@@ -2091,18 +2107,33 @@ function openProfileEditScreen() {
   showScreen('profile-edit');
   const u=S.userData||{};
   const raw=S.user||{};
+  // Case-insensitive matching: fitness_level/diet are stored lowercase (onboarding's own
+  // select values) but this screen's option text is capitalized -- a strict === here
+  // meant the dropdown always rendered on its blank default regardless of what was saved.
+  const matches=(val,opt)=>String(val||'').toLowerCase()===opt.toLowerCase();
   document.getElementById('profile-edit-body').innerHTML = `
     <div class="field" style="margin-top:14px"><label>FULL NAME</label><input type="text" id="pe-name" value="${raw.name||''}"></div>
     <div class="field"><label>USERNAME</label><input type="text" id="pe-username" value="${u.username||''}"></div>
     <div class="field"><label>DATE OF BIRTH</label><input type="date" id="pe-dob" value="${u.dob?String(u.dob).split('T')[0]:''}"></div>
+    <div class="field"><label>GENDER</label>
+      <select id="pe-gender"><option value="">—</option>${['male','female','other'].map(o=>`<option value="${o}" ${matches(u.gender,o)?'selected':''}>${o[0].toUpperCase()+o.slice(1)}</option>`).join('')}</select>
+    </div>
     <div class="field"><label>HEIGHT (cm)</label><input type="number" id="pe-height" value="${u.height||''}"></div>
     <div class="field"><label>WEIGHT (kg)</label><input type="number" id="pe-weight" value="${u.weight||''}"></div>
     <div class="field"><label>FITNESS LEVEL</label>
-      <select id="pe-fitness"><option value="">—</option>${['Beginner','Intermediate','Advanced'].map(o=>`<option ${u.fitness_level===o?'selected':''}>${o}</option>`).join('')}</select>
+      <select id="pe-fitness"><option value="">—</option>${['Beginner','Intermediate','Advanced'].map(o=>`<option ${matches(u.fitness_level,o)?'selected':''}>${o}</option>`).join('')}</select>
     </div>
     <div class="field"><label>TYPICAL DIET</label>
-      <select id="pe-diet"><option value="">—</option>${['Balanced','Vegetarian','Vegan','Low-Carb','High-Protein'].map(o=>`<option ${u.diet===o?'selected':''}>${o}</option>`).join('')}</select>
-    </div>`;
+      <select id="pe-diet"><option value="">—</option>${['Balanced','Vegetarian','Vegan','Low-Carb','High-Protein'].map(o=>`<option ${matches(u.diet,o)?'selected':''}>${o}</option>`).join('')}</select>
+    </div>
+    <div class="field"><label>SLEEP QUALITY</label>
+      <select id="pe-sleep"><option value="">—</option>${['Good','Average','Poor'].map(o=>`<option ${matches(u.sleep_quality,o)?'selected':''}>${o}</option>`).join('')}</select>
+    </div>
+    <div class="field"><label>STRESS LEVEL</label>
+      <select id="pe-stress"><option value="">—</option>${['Low','Medium','High'].map(o=>`<option ${matches(u.stress_level,o)?'selected':''}>${o}</option>`).join('')}</select>
+    </div>
+    <div class="field"><label>WAKE-UP TIME</label><input type="time" id="pe-wake-time" value="${u.wake_time?String(u.wake_time).slice(0,5):''}"></div>
+    <div class="field"><label>WIND-DOWN TIME</label><input type="time" id="pe-wind-time" value="${u.wind_down_time?String(u.wind_down_time).slice(0,5):''}"></div>`;
 }
 
 async function submitProfileEdit() {
@@ -2111,10 +2142,15 @@ async function submitProfileEdit() {
     fullName: val('pe-name'),
     username: val('pe-username'),
     dateOfBirth: val('pe-dob'),
+    gender: val('pe-gender'),
     height: val('pe-height') ? { value:Number(val('pe-height')), unit:'cm' } : null,
     weight: val('pe-weight') ? { value:Number(val('pe-weight')), unit:'kg' } : null,
     fitnessLevel: val('pe-fitness'),
     typicalDiet: val('pe-diet'),
+    sleepQuality: val('pe-sleep'),
+    stressLevel: val('pe-stress'),
+    wakeTime: val('pe-wake-time'),
+    windDownTime: val('pe-wind-time'),
   };
   const result=await req('PUT','/user/profile',body);
   if(!result || result.errors) { toast(result?.errors?.username?.[0]||result?.message||'Could not save'); return; }
@@ -4091,8 +4127,8 @@ async function loadProfileMetrics() {
     {icon:'✅',val:(data?.completion_rate_percent??0)+'%',label:'Completion Rate'},
     {icon:'⏭️',val:data?.skipped_tasks??0,label:'Missed Tasks'},
   ];
-  grid.innerHTML = `<div class="metric-row" style="grid-template-columns:1fr 1fr">${cards.map(c=>`
-    <div class="metric-card"><div class="metric-icon">${c.icon}</div><div class="metric-val" style="font-size:18px">${c.val}</div><div class="metric-label">${c.label}</div></div>
+  grid.innerHTML = `<div class="metric-row" style="grid-template-columns:1fr 1fr;gap:12px">${cards.map(c=>`
+    <div class="metric-card metric-card-lg"><div class="metric-icon">${c.icon}</div><div class="metric-val">${c.val}</div><div class="metric-label">${c.label}</div></div>
   `).join('')}</div>`;
 }
 

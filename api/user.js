@@ -51,6 +51,20 @@ export default async function handler(req, res) {
     data: {
       username: user.username || user.name,
       profilePicUrl: null,
+      // Edit Profile's autofill was silently broken for every field below -- it read
+      // u.dob/u.height/u.weight/etc from this exact response, but none of them were ever
+      // actually included, so the form always rendered blank regardless of what PUT
+      // /user/profile had really saved.
+      dob: user.dob,
+      gender: user.gender,
+      height: user.height,
+      weight: user.weight,
+      fitness_level: user.fitness_level,
+      diet: user.diet,
+      sleep_quality: user.sleep_quality,
+      stress_level: user.stress_level,
+      wake_time: user.wake_time,
+      wind_down_time: user.wind_down_time,
       phase: PHASE_NAMES[phase] || PHASE_NAMES[1],
       phaseStartDate: user.phase_start_date,
       days_in_phase: daysInPhase,

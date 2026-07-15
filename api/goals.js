@@ -263,6 +263,23 @@ function deriveGoalText(answers, pillarName) {
   return firstString || `Build a ${pillarName} plan`;
 }
 
+// Real vitals from onboarding, so DIET_ADDENDUM's "estimate a real TDEE from their
+// profile" claim actually has something to estimate from -- previously the AI prompt
+// never included height/weight/age/gender at all, so that instruction was aspirational
+// text with no real data behind it regardless of what the user had entered at signup.
+function profileContext(user) {
+  const lines = [];
+  if (user.dob) {
+    const ageMs = Date.now() - new Date(user.dob).getTime();
+    if (ageMs > 0) lines.push(`Age: ${Math.floor(ageMs / (365.25 * 86400000))}`);
+  }
+  if (user.gender) lines.push(`Gender: ${user.gender}`);
+  if (user.height) lines.push(`Height: ${user.height}cm`);
+  if (user.weight) lines.push(`Weight: ${user.weight}kg`);
+  if (user.fitness_level) lines.push(`Self-rated fitness level: ${user.fitness_level}`);
+  return lines.length ? 'Profile: ' + lines.join(', ') : null;
+}
+
 async function generateGoal(req, res, user) {
   const body = req.body || {};
   const pillar_name = body.pillar_name;
@@ -342,6 +359,7 @@ async function generateGoal(req, res, user) {
             `Goal type: ${goal_type}`,
             `Goal: ${user_goal}`,
             `Difficulty: ${goal_difficulty}/5`,
+            profileContext(user),
             questionnaire_answers ? `Activation questionnaire answers: ${JSON.stringify(questionnaire_answers)}` : null,
             valueprintContext(user.valueprint_data, pillar_name),
           ].filter(Boolean).join('\n') }],
