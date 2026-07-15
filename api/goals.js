@@ -63,6 +63,20 @@ Estimate a real TDEE from whatever profile signals are available (age/weight/sex
 ]
 3 plans covering different meal types, respecting any dietary restrictions/dislikes exactly (never include a restricted or disliked ingredient). If they rarely cook, keep instructions store-bought/takeaway-oriented rather than recipe-heavy.`;
 
+// Appended to SYSTEM only for Finances -- a real starter budget in the same call, using the
+// same 4-category model (Needs/Wants/Savings/Debt) the Finance Hub's transaction logging
+// already uses, so a fresh budget target isn't a blank $2500 the user has to type in
+// themselves before the Budgets tab means anything.
+const FINANCE_ADDENDUM = `
+Also include a "budgetPlan" object:
+"budgetPlan": {
+  "monthlyBudget": <number, total monthly spending target>,
+  "categoryAllocations": [{"category": "Needs", "amount": <number>}, {"category": "Wants", "amount": <number>}, {"category": "Savings", "amount": <number>}, {"category": "Debt", "amount": <number>}],
+  "savingsGoal": {"name": "<e.g. Emergency Fund>", "target": <number>} or null if their goal isn't savings-related,
+  "debtPayoffPlan": {"strategy": "<e.g. Debt Snowball>", "note": "<1 sentence on the approach>"} or null if debt isn't relevant
+}
+categoryAllocations must sum to monthlyBudget. Base monthlyBudget on whatever income/spending signals are available in their answers, else a reasonable general estimate. If income is variable/freelance, bias Savings higher for a buffer. If their goal is debt-related, prioritize Debt allocation and always include debtPayoffPlan; otherwise debtPayoffPlan is null.`;
+
 const GOAL_TYPES = new Set(['habit', 'project', 'skill', 'mindset']);
 
 // Static complementary-pillar map for the Synergy card -- deterministic, no AI call.
@@ -132,6 +146,22 @@ async function buildStrategyCards(user, g, unlockedPillarIds) {
           restrictions.length ? restrictions.join(', ') : null,
           planCount ? `${planCount} starter meal plan${planCount === 1 ? '' : 's'} ready in your Meal Hub` : null,
         ].filter(Boolean).join(' · ') || `${planCount} starter meal plans ready in your Meal Hub`,
+      });
+    }
+  }
+
+  if (pillarName === 'finances') {
+    const budgetRows = await sql`SELECT value FROM metric_logs WHERE user_id = ${user.id} AND pillar_id = ${g.pillar_id} AND log_type = 'budget_goal' LIMIT 1`;
+    const answersRows = await sql`SELECT answers FROM pillar_answers WHERE user_id = ${user.id} AND pillar_id = ${g.pillar_id} ORDER BY created_at DESC LIMIT 1`;
+    const answers = answersRows[0]?.answers || {};
+    if (budgetRows.length || answers.primary_goal) {
+      cards.push({
+        type: 'budget',
+        title: 'Your Budget Plan',
+        body: [
+          budgetRows.length ? `$${Number(budgetRows[0].value).toLocaleString()}/month target` : null,
+          answers.primary_goal ? `focused on ${answers.primary_goal}` : null,
+        ].filter(Boolean).join(' · ') || 'Set up in your Finance Hub',
       });
     }
   }
@@ -278,6 +308,7 @@ async function generateGoal(req, res, user) {
             PILLAR_PRINCIPLES[pillar_name.toLowerCase()],
             pillar_name.toLowerCase() === 'fitness' ? FITNESS_ADDENDUM : null,
             pillar_name.toLowerCase() === 'diet' ? DIET_ADDENDUM : null,
+            pillar_name.toLowerCase() === 'finances' ? FINANCE_ADDENDUM : null,
           ].filter(Boolean).join('\n\n'),
           messages: [{ role: 'user', content: [
             `Pillar: ${pillar_name}`,
@@ -437,6 +468,39 @@ async function generateGoal(req, res, user) {
       } else {
         await sql`INSERT INTO metric_logs (user_id, pillar_id, log_type, value, unit, data) VALUES (${user.id}, ${pillar_id}, 'diet_targets', ${targetsData.calories}, 'kcal', ${JSON.stringify(targetsData)}::jsonb)`;
       }
+    }
+  }
+
+  // Finances gets a real starter budget (see FINANCE_ADDENDUM) auto-applied instead of the
+  // Budgets tab starting at a blank hardcoded $2500 the user has to fill in themselves --
+  // budget_goal/savings_goal use the exact same metric_logs shape setBudgetGoal()/
+  // addSavingsGoal() already write client-side, so the existing Budgets tab renders them
+  // with zero frontend changes; category_allocations is new, for the real vs-target
+  // breakdown added to that tab below.
+  if (pillar_name.toLowerCase() === 'finances' && plan.budgetPlan?.monthlyBudget) {
+    const bp = plan.budgetPlan;
+    const existingBudget = await sql`SELECT id FROM metric_logs WHERE user_id = ${user.id} AND log_type = 'budget_goal' LIMIT 1`;
+    if (existingBudget.length) {
+      await sql`UPDATE metric_logs SET value = ${bp.monthlyBudget} WHERE id = ${existingBudget[0].id}`;
+    } else {
+      await sql`INSERT INTO metric_logs (user_id, pillar_id, log_type, value, unit) VALUES (${user.id}, ${pillar_id}, 'budget_goal', ${bp.monthlyBudget}, 'usd')`;
+    }
+
+    if (Array.isArray(bp.categoryAllocations) && bp.categoryAllocations.length) {
+      const allocData = { allocations: bp.categoryAllocations, debtPayoffPlan: bp.debtPayoffPlan || null };
+      const existingAlloc = await sql`SELECT id FROM metric_logs WHERE user_id = ${user.id} AND log_type = 'category_allocations' LIMIT 1`;
+      if (existingAlloc.length) {
+        await sql`UPDATE metric_logs SET data = ${JSON.stringify(allocData)}::jsonb WHERE id = ${existingAlloc[0].id}`;
+      } else {
+        await sql`INSERT INTO metric_logs (user_id, pillar_id, log_type, data) VALUES (${user.id}, ${pillar_id}, 'category_allocations', ${JSON.stringify(allocData)}::jsonb)`;
+      }
+    }
+
+    if (bp.savingsGoal?.name && Number(bp.savingsGoal.target) > 0) {
+      await sql`
+        INSERT INTO metric_logs (user_id, pillar_id, log_type, value, unit, data)
+        VALUES (${user.id}, ${pillar_id}, 'savings_goal', ${Number(bp.savingsGoal.target)}, 'usd', ${JSON.stringify({ name: bp.savingsGoal.name, current_amount: 0, source: 'goal' })}::jsonb)
+      `;
     }
   }
 
