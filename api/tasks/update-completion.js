@@ -212,10 +212,10 @@ export default async function handler(req, res) {
   }
 
   // Default: complete or partially-complete a task (the original behavior).
-  const { task_id, completion_percentage } = req.body || {};
+  const { task_id, completion_percentage, actual_minutes_spent } = req.body || {};
   if (!task_id) return res.status(422).json({ message: 'task_id is required' });
 
-  const result = await completeTask(sql, user, task_id, completion_percentage);
+  const result = await completeTask(sql, user, task_id, completion_percentage, actual_minutes_spent);
   if (!result) return res.status(404).json({ message: 'Task not found' });
 
   const userRows = await sql`SELECT xp FROM users WHERE id = ${user.id}`;

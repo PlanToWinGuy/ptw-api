@@ -67,7 +67,7 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
 .splash-sub em .thin{font-weight:400}
 .splash-tagline{text-align:center;margin-top:16px}
 .splash-tagline-lead{font-size:14px;color:var(--stone);letter-spacing:.3px}
-.splash-tagline-brand{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--text);letter-spacing:.3px;margin-top:2px}
+.splash-tagline-brand{font-family:'Syne',sans-serif;font-size:16px;font-weight:800;color:var(--text);letter-spacing:.3px;margin-top:2px}
 .splash-btn{
   margin-top:56px;padding:16px 52px;border-radius:50px;
   background:transparent;border:1.5px solid var(--cement);
@@ -655,7 +655,7 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
      HOME LAUNCHER
 ══════════════════════════════════ -->
 <div id="screen-home" class="screen">
-  <div class="top-bar">
+  <div class="top-bar" id="home-top-bar">
     <div style="display:flex;gap:8px">
       <button class="icon-btn" onclick="openNotifications()">🔔</button>
       <button class="icon-btn" onclick="openBreak()">☕</button>
@@ -668,7 +668,12 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
 
   <div class="home-body">
     <div id="cta-ring" class="active" onclick="handleCtaClick()">
-      <svg id="cta-timer-svg" viewBox="0 0 210 210" style="position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg);display:none">
+      <!-- pointer-events:none is the fix here -- a position:absolute element always
+           paints (and hit-tests) above the ring's static in-flow children regardless of
+           DOM order, so this purely-decorative arc was silently swallowing every tap on
+           the ✓/✏ micro-buttons underneath whenever it was visible (i.e. the whole time
+           any task -- scheduled or manually-started -- had a running timer). -->
+      <svg id="cta-timer-svg" viewBox="0 0 210 210" style="position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg);display:none;pointer-events:none">
         <circle id="cta-timer-arc" cx="105" cy="105" r="101" fill="none" stroke="var(--blue)" stroke-width="3" stroke-linecap="round" stroke-dasharray="634.6" stroke-dashoffset="0"/>
       </svg>
       <div class="cta-inner">
@@ -700,6 +705,20 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
   <!-- Active Pillar Apps -->
   <div class="pillar-apps" id="pillar-apps">
     <!-- Rendered by JS based on which pillars are unlocked -->
+  </div>
+
+  <!-- Swipe-progress hints (see setupHomeSwipeHint) -- first-time users have no way of
+       knowing Home has 3 hidden swipe destinations, so as a swipe is actually in
+       progress (not after it completes), a glow pulls in from that edge with the
+       destination's name, real-time proportional to how far the finger has dragged. -->
+  <div class="swipe-hint" id="swipe-hint-right" style="position:absolute;top:0;right:0;bottom:0;width:130px;pointer-events:none;opacity:0;background:linear-gradient(to left, rgba(91,164,220,.4), transparent);display:flex;align-items:center;justify-content:flex-end;padding-right:18px;z-index:50">
+    <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:13px;color:#fff;letter-spacing:1px;writing-mode:vertical-rl">PROFILE</div>
+  </div>
+  <div class="swipe-hint" id="swipe-hint-down" style="position:absolute;left:0;right:0;bottom:0;height:130px;pointer-events:none;opacity:0;background:linear-gradient(to top, rgba(91,164,220,.4), transparent);display:flex;align-items:flex-end;justify-content:center;padding-bottom:18px;z-index:50">
+    <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:13px;color:#fff;letter-spacing:1px">DAILY OVERVIEW</div>
+  </div>
+  <div class="swipe-hint" id="swipe-hint-up" style="position:absolute;left:0;right:0;top:0;height:130px;pointer-events:none;opacity:0;background:linear-gradient(to bottom, rgba(91,164,220,.4), transparent);display:flex;align-items:flex-start;justify-content:center;padding-top:18px;z-index:50">
+    <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:13px;color:#fff;letter-spacing:1px">TO-DO &amp; ROUTINES</div>
   </div>
 </div>
 
@@ -1555,7 +1574,7 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
        needs it to be allowed to shrink and scroll internally at all; 100% instead forced
        this to blow out past its own flex parent's height, pushing the input bar and
        everything below it off screen. -->
-  <div class="scroll-body" style="padding:0 18px;display:flex;flex-direction:column;justify-content:flex-end;min-height:0" id="chat-messages"></div>
+  <div class="scroll-body" style="padding:0 18px 20px;display:flex;flex-direction:column;justify-content:flex-end;min-height:0" id="chat-messages"></div>
   <div style="display:flex;gap:8px;padding:10px 18px calc(10px + var(--sb));background:var(--bg2);border-top:1px solid rgba(196,184,168,.1)">
     <input type="text" id="chat-input" placeholder="Type your message..." style="flex:1;padding:12px 14px;background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:20px;color:var(--text);font-size:14px;font-family:'Inter',sans-serif;outline:none" onkeydown="if(event.key==='Enter')sendChatMessage()">
     <button class="icon-btn" style="background:var(--blue)" onclick="sendChatMessage()">➢</button>
@@ -2951,12 +2970,19 @@ async function applySuccessImageBackground(pillarValue) {
   }
 }
 
-function openTaskCompletion() {
+// task/returnTo are optional -- the CTA ring's own ✓ button calls this with neither,
+// relying on S.currentTask already being set by applyCtaState()/renderManualTaskCta().
+// The To-Do List and Task Detail pass a real task object plus 'todo-routines' so every
+// task -- simple ones included -- goes through the same real percentage-completion
+// flow instead of simple tasks alone getting an instant, no-questions-asked complete.
+function openTaskCompletion(task, returnTo) {
+  if(task) S.currentTask={taskId:task.id, name:task.name, pillar:task.pillar_name||task.pillar_id};
   if(!S.currentTask) { toast('No current task'); return; }
   // Projects don't complete via the slider -- only their sub-tasks do (4.13). The
   // Current Task button for a Project routes into its own detail page instead.
   if(S.currentTask.taskType==='ProjectTask') { openProjectDetail(S.currentTask.taskId, 'home'); return; }
   S.subtaskCompletionId=null;
+  S.taskCompletionReturnTo=returnTo||null;
   showScreen('task-completion');
   document.getElementById('tc-task-name').textContent=S.currentTask.name;
   document.getElementById('tc-slider').value=100;
@@ -2991,15 +3017,23 @@ async function confirmTaskCompletion() {
     return;
   }
   if(!S.currentTask) { showScreen('home'); return; }
-  const result=await req('POST','/tasks/update-completion',{task_id:S.currentTask.taskId, completion_percentage:pct});
+  // If this is the task the Home ring's manual timer is running for, we know exactly
+  // how long it's actually taken so far -- the backend uses that (real pace) instead of
+  // blindly assuming the task tracked its own original time estimate.
+  const isManual=S.manualTaskOverride?.taskId===S.currentTask.taskId;
+  const actualMinutesSpent=isManual
+    ? Math.round((S.manualTaskOverride.elapsedMs+(S.manualTaskOverride.running?Date.now()-S.manualTaskOverride.lastResumeAt:0))/60000)
+    : null;
+  const result=await req('POST','/tasks/update-completion',{task_id:S.currentTask.taskId, completion_percentage:pct, actual_minutes_spent:actualMinutesSpent});
   const xp=result?.data?.xp_gained||0;
   toast('+'+xp+' XP! ⚡'+(result?.data?.remainder_task?' — rest rescheduled':''));
   // Clears a manual Start override too, if this was one -- otherwise the next tick would
   // resurrect the ring right back onto a task that was just marked done.
-  if(S.manualTaskOverride?.taskId===S.currentTask.taskId) S.manualTaskOverride=null;
+  if(isManual) S.manualTaskOverride=null;
   S.currentTask=null;
-  showScreen('home');
-  await loadHomeData();
+  const returnTo=S.taskCompletionReturnTo; S.taskCompletionReturnTo=null;
+  if(returnTo==='todo-routines') { showScreen('todo-routines'); await switchTodoRoutinesTab('todo'); }
+  else { showScreen('home'); await loadHomeData(); }
 }
 
 function cancelTaskCompletion() {
@@ -3012,7 +3046,8 @@ function cancelTaskCompletion() {
     renderProjectDetail();
     return;
   }
-  showScreen('home');
+  const returnTo=S.taskCompletionReturnTo; S.taskCompletionReturnTo=null;
+  showScreen(returnTo==='todo-routines' ? 'todo-routines' : 'home');
 }
 
 // Pencil: the real "Skip Task" / "Add 10 Minutes" menu (2.12.3), replacing the old
@@ -3556,12 +3591,16 @@ function updateManualTaskCountdown(homeScreen, svg, label, miniTimer) {
     // Stays the task's own pillar color throughout (no separate green/yellow/red
     // traffic-light scheme) -- it just fades toward faint as time runs out, instead of
     // changing hue, so the ring keeps reading as "this pillar's task" the whole time.
+    // The ring div's own static border is hidden while this arc is drawn -- otherwise
+    // there are visibly two concentric pillar-colored circles (one solid, one fading)
+    // instead of a single ring that fades.
     const pk=getPillarKey(m.pillar);
     const p=PILLARS[pk]||PILLARS.personal;
     const arc=document.getElementById('cta-timer-arc');
     arc.style.strokeDashoffset=String(CTA_RING_CIRCUMFERENCE*(1-frac));
     arc.style.stroke=p.color;
     arc.style.opacity=String(0.25+0.75*frac);
+    document.getElementById('cta-ring').style.borderColor='transparent';
   }
   const mm=Math.floor(remaining/60000), ss=Math.floor((remaining%60000)/1000);
   const timeText=mm+':'+String(ss).padStart(2,'0');
@@ -3626,16 +3665,12 @@ async function skipTaskDetailTask() {
   switchTodoRoutinesTab('todo');
   loadHomeData();
 }
-async function completeTaskDetailTask() {
+// Same real percentage-completion flow as every other task now, not an instant
+// no-questions-asked complete -- see openTaskCompletion/confirmTaskCompletion.
+function completeTaskDetailTask() {
   const task=S.taskDetailTask;
   if(!task) return;
-  if(S.manualTaskOverride?.taskId===task.id) clearManualTaskOverride();
-  const result=await req('POST','/simple-tasks/'+task.id+'/complete');
-  toast('+'+(result?.xpGained||0)+' XP ⚡');
-  S.todoTasksCache=(S.todoTasksCache||[]).filter(t=>t.id!==task.id);
-  showScreen('todo-routines');
-  switchTodoRoutinesTab('todo');
-  loadHomeData();
+  openTaskCompletion(task, 'todo-routines');
 }
 (function setupFocusLongPress(){
   const ring=document.getElementById('cta-ring');
@@ -3733,17 +3768,14 @@ function openTodoCardTap(e, taskId) {
   if(task) openTaskDetail(task);
 }
 
-async function quickCompleteTodoTask(id) {
-  const result=await req('POST','/simple-tasks/'+id+'/complete');
-  toast('+'+(result?.xpGained||0)+' XP ⚡');
-  // Same object reference as whatever's sitting in todoAllTasksCache (todoTasksCache is
-  // just a filtered view over it) -- flipping status here is what makes it show up
-  // under the Completed filter without a full refetch.
+function quickCompleteTodoTask(id) {
+  // Same real percentage-completion flow as every other task now -- swipe-complete is
+  // still a fast gesture (the card still slides away immediately), it just lands on
+  // the same "how much did you actually get done?" screen the ring uses, instead of
+  // silently assuming simple tasks are always all-or-nothing.
   const task=(S.todoTasksCache||[]).find(t=>t.id===id);
-  if(task) task.status='Completed';
-  S.todoTasksCache=(S.todoTasksCache||[]).filter(t=>t.id!==id);
-  renderTodoList();
-  loadHomeData();
+  if(!task) return;
+  openTaskCompletion(task, 'todo-routines');
 }
 
 async function deleteTodoTask(id) {
@@ -4607,6 +4639,53 @@ function setupSwipeNav(elId, {left, right, up, down}) {
 // you swipe back the way you came from each of those screens, same as tapping their
 // back button (Profile previously had no back-to-Home gesture or button at all).
 setupSwipeNav('screen-home', { right: openProfile, down: openDailyOverview, up: openTodoRoutines });
+
+// Live swipe-in-progress feedback for Home's 3 hidden destinations -- a first-time user
+// has no way to know these gestures exist at all. As a swipe actually happens (not
+// after it completes), a glow pulls in from whichever edge matches the drag direction
+// and reveals that screen's name, real-time proportional to drag distance; Home's own
+// buttons/icons fade out in the same proportion, like the light (and the UI) is being
+// pulled off toward that edge. Purely visual -- setupSwipeNav above still owns the
+// actual navigation decision once the gesture completes.
+(function setupHomeSwipeHint(){
+  const home=document.getElementById('screen-home');
+  if(!home) return;
+  const hints={ right:document.getElementById('swipe-hint-right'), down:document.getElementById('swipe-hint-down'), up:document.getElementById('swipe-hint-up') };
+  const fadeIds=['home-top-bar','cta-ring','pillar-apps'];
+  const MAX_DRAG=130;
+  let sx=0, sy=0, tracking=false;
+
+  function applyProgress(activeDir, frac) {
+    Object.entries(hints).forEach(([d,el])=>{ if(el) el.style.opacity = d===activeDir ? String(frac) : '0'; });
+    const fade=1-frac*0.85;
+    fadeIds.forEach(id=>{ const el=document.getElementById(id); if(el) el.style.opacity=String(fade); });
+  }
+  function reset() {
+    [...Object.values(hints), ...fadeIds.map(id=>document.getElementById(id))].forEach(el=>{ if(el) el.style.transition='opacity .2s ease'; });
+    Object.values(hints).forEach(el=>{ if(el) el.style.opacity='0'; });
+    fadeIds.forEach(id=>{ const el=document.getElementById(id); if(el) el.style.opacity='1'; });
+    setTimeout(()=>{ [...Object.values(hints), ...fadeIds.map(id=>document.getElementById(id))].forEach(el=>{ if(el) el.style.transition=''; }); }, 220);
+  }
+
+  home.addEventListener('touchstart', e=>{
+    const t=e.touches[0]; sx=t.clientX; sy=t.clientY; tracking=true;
+    [...Object.values(hints), ...fadeIds.map(id=>document.getElementById(id))].forEach(el=>{ if(el) el.style.transition='none'; });
+  }, {passive:true});
+
+  home.addEventListener('touchmove', e=>{
+    if(!tracking) return;
+    const t=e.touches[0];
+    const dx=t.clientX-sx, dy=t.clientY-sy;
+    let dir=null, dist=0;
+    if(Math.abs(dx)>Math.abs(dy)) { if(dx>15) { dir='right'; dist=dx; } }
+    else if(dy>15) { dir='down'; dist=dy; }
+    else if(dy<-15) { dir='up'; dist=-dy; }
+    applyProgress(dir, dir ? Math.min(1, dist/MAX_DRAG) : 0);
+  }, {passive:true});
+
+  home.addEventListener('touchend', ()=>{ tracking=false; reset(); }, {passive:true});
+  home.addEventListener('touchcancel', ()=>{ tracking=false; reset(); }, {passive:true});
+})();
 setupSwipeNav('screen-profile', { left: ()=>showScreen('home') });
 // Left = next day/week/month, right = previous -- same delta shiftOverview() already
 // uses for the ‹ › buttons, so swipe and tap stay perfectly consistent in every mode.
@@ -4890,7 +4969,7 @@ function renderChatMessages() {
     </div>`;
   }).join('');
   const showQuickReplies=S.chatMessages.length<=1;
-  const quickReplies=showQuickReplies?`<div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">
+  const quickReplies=showQuickReplies?`<div style="display:flex;flex-direction:column;gap:8px;margin-top:20px">
     ${CHAT_QUICK_PROMPTS.map(p=>`<button type="button" class="chat-quick-btn" onclick="sendChatMessage('${p.replace(/'/g,"\\'")}')">${p}</button>`).join('')}
   </div>`:'';
   const lastMsg=S.chatMessages[S.chatMessages.length-1];
