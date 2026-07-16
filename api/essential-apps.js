@@ -18,20 +18,29 @@ const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 //    already has a genuine photo -> AI macro estimate flow built for Diet logging
 //    (POST /metrics/scan-meal), so Essential Apps now routes straight into that instead
 //    of pretending to hand off to a device Camera app a PWA can't actually control.
+// category: 'utility' | 'entertainment' | 'skill' | 'wellness' -- lets the idle/
+// nothing-scheduled case (no task, no break) pull specifically from entertainment+skill
+// instead of quietly defaulting to the same utility set (Mail/Calendar/Notes) that makes
+// sense mid-task but is dead weight during genuine free time.
 const CATALOG = {
-  mail:      { appName: 'Mail',      iconName: 'mail_icon',      urlScheme: 'mailto:',              webFallback: 'https://mail.google.com/mail/' },
-  calendar:  { appName: 'Calendar',  iconName: 'calendar_icon',  urlScheme: 'calshow://',            webFallback: 'https://calendar.google.com/' },
-  notes:     { appName: 'Notes',     iconName: 'notes_icon',     urlScheme: 'mobilenotes://',        webFallback: 'https://keep.google.com/' },
-  spotify:   { appName: 'Spotify',   iconName: 'spotify_icon',   urlScheme: 'spotify:',               webFallback: 'https://open.spotify.com/' },
-  health:    { appName: 'Health',    iconName: 'health_icon',    urlScheme: 'x-apple-health://' },
-  calculator:{ appName: 'Calculator',iconName: 'calculator_icon',urlScheme: 'calc://' },
-  duolingo:  { appName: 'Duolingo',  iconName: 'duolingo_icon',  urlScheme: 'duolingo://',            webFallback: 'https://www.duolingo.com/' },
-  podcasts:  { appName: 'Podcasts',  iconName: 'podcasts_icon',  urlScheme: 'podcasts://' },
-  strava:    { appName: 'Strava',    iconName: 'health_icon',    webFallback: 'https://www.strava.com/' },
-  slack:     { appName: 'Slack',     iconName: 'mail_icon',      urlScheme: 'slack://open',           webFallback: 'https://slack.com/' },
-  zoom:      { appName: 'Zoom',      iconName: 'calendar_icon',  urlScheme: 'zoomus://',              webFallback: 'https://zoom.us/' },
-  whatsapp:  { appName: 'WhatsApp',  iconName: 'mail_icon',      urlScheme: 'whatsapp://',            webFallback: 'https://web.whatsapp.com/' },
-  scan_food: { appName: 'Scan Food', iconName: 'camera_icon',    action: 'scan_food' },
+  mail:      { appName: 'Mail',      iconName: 'mail_icon',      category: 'utility',      urlScheme: 'mailto:',              webFallback: 'https://mail.google.com/mail/' },
+  calendar:  { appName: 'Calendar',  iconName: 'calendar_icon',  category: 'utility',      urlScheme: 'calshow://',            webFallback: 'https://calendar.google.com/' },
+  notes:     { appName: 'Notes',     iconName: 'notes_icon',     category: 'utility',      urlScheme: 'mobilenotes://',        webFallback: 'https://keep.google.com/' },
+  spotify:   { appName: 'Spotify',   iconName: 'spotify_icon',   category: 'entertainment',urlScheme: 'spotify:',               webFallback: 'https://open.spotify.com/' },
+  health:    { appName: 'Health',    iconName: 'health_icon',    category: 'wellness',     urlScheme: 'x-apple-health://' },
+  calculator:{ appName: 'Calculator',iconName: 'calculator_icon',category: 'utility',      urlScheme: 'calc://' },
+  duolingo:  { appName: 'Duolingo',  iconName: 'duolingo_icon',  category: 'skill',        urlScheme: 'duolingo://',            webFallback: 'https://www.duolingo.com/' },
+  podcasts:  { appName: 'Podcasts',  iconName: 'podcasts_icon',  category: 'skill',        urlScheme: 'podcasts://' },
+  strava:    { appName: 'Strava',    iconName: 'health_icon',    category: 'wellness',     webFallback: 'https://www.strava.com/' },
+  slack:     { appName: 'Slack',     iconName: 'mail_icon',      category: 'utility',      urlScheme: 'slack://open',           webFallback: 'https://slack.com/' },
+  zoom:      { appName: 'Zoom',      iconName: 'calendar_icon',  category: 'utility',      urlScheme: 'zoomus://',              webFallback: 'https://zoom.us/' },
+  whatsapp:  { appName: 'WhatsApp',  iconName: 'mail_icon',      category: 'utility',      urlScheme: 'whatsapp://',            webFallback: 'https://web.whatsapp.com/' },
+  scan_food: { appName: 'Scan Food', iconName: 'camera_icon',    category: 'utility',      action: 'scan_food' },
+  youtube:   { appName: 'YouTube',   iconName: 'podcasts_icon',  category: 'entertainment',urlScheme: 'youtube://',             webFallback: 'https://www.youtube.com/' },
+  netflix:   { appName: 'Netflix',   iconName: 'podcasts_icon',  category: 'entertainment',urlScheme: 'nflx://',                webFallback: 'https://www.netflix.com/' },
+  kindle:    { appName: 'Kindle',    iconName: 'notes_icon',     category: 'skill',        urlScheme: 'kindle://',              webFallback: 'https://read.amazon.com/' },
+  audible:   { appName: 'Audible',   iconName: 'podcasts_icon',  category: 'skill',        urlScheme: 'audible://',             webFallback: 'https://www.audible.com/' },
+  brilliant: { appName: 'Brilliant', iconName: 'duolingo_icon',  category: 'skill',        webFallback: 'https://brilliant.org/' },
 };
 
 const APPS_BY_PILLAR = {
@@ -43,6 +52,10 @@ const APPS_BY_PILLAR = {
   Personal:  ['notes', 'spotify', 'duolingo'],
 };
 const DEFAULT_KEYS = ['mail', 'calendar', 'notes', 'spotify'];
+// The "nothing scheduled right now" fallback (no AI key configured) -- a real mix of
+// entertainment + skill-building instead of the task-context utility defaults above,
+// since idle time isn't well served by "here's your Mail app again."
+const IDLE_KEYS = ['duolingo', 'youtube', 'spotify', 'kindle'];
 
 // tool_hint-level overrides layered on top of the pillar list, for the cases where the
 // specific task matters more than the pillar overall (a meal-logging task always wants
@@ -56,6 +69,24 @@ const APPS_BY_TOOL_HINT = {
 
 function resolveApps(keys) {
   return keys.map(k => CATALOG[k]).filter(Boolean);
+}
+
+// A PWA has no API to see what's actually installed on the device, so "aware of apps
+// on your device" has to mean something a user explicitly tells it, via Settings ->
+// Preferred Quick-Add Apps (preferences scope 'essential_apps', { preferredKeys: [...] }).
+// When set, whichever context's normal key list gets reordered so the user's own picks
+// come first -- still shows the rest of the contextually-relevant set after them, rather
+// than hard-filtering down to only their picks (which could empty out a task-specific
+// drawer if none of their favorites happen to fit this particular context).
+async function getPreferredKeys(sql, userId) {
+  const rows = await sql`SELECT data FROM preferences WHERE user_id = ${userId} AND scope = 'essential_apps'`;
+  const keys = rows[0]?.data?.preferredKeys;
+  return Array.isArray(keys) ? keys.filter(k => CATALOG[k]) : [];
+}
+function prioritize(keys, preferredKeys) {
+  if (!preferredKeys.length) return keys;
+  const preferredSet = new Set(preferredKeys);
+  return [...keys.filter(k => preferredSet.has(k)), ...keys.filter(k => !preferredSet.has(k))];
 }
 
 const APPS_BY_BREAK = {
@@ -73,9 +104,9 @@ const HABIT_STACK_HINT = {
   free_time:    'One Duolingo lesson beats another scroll.',
 };
 
-const SUGGEST_SYSTEM = `You suggest 4 tools from a fixed catalog for someone opening a general "quick tools" drawer in a life-coaching app, with no specific task selected. Pick tools genuinely useful for their current moment (time of day, what's next on their schedule) -- not random. Return ONLY JSON: {"picks": [{"key": "<catalog key>", "reason": "<max 10 words, why this one right now>"}]}. Pick exactly 4, all keys must come from the provided catalog list, never invent a key.`;
+const SUGGEST_SYSTEM = `You suggest 4 tools from a fixed catalog for someone opening a general "quick tools" drawer in a life-coaching app, with no specific task selected. Pick tools genuinely useful for their current moment (time of day, what's next on their schedule) -- not random. If nothing is currently scheduled (genuine free/idle time), favor a real mix of entertainment and skill-building tools over plain utilities like Mail or Calendar, so downtime feels enriching rather than filler. If the person has told you which apps they actually use/prefer, weight picks toward those first. Return ONLY JSON: {"picks": [{"key": "<catalog key>", "reason": "<max 10 words, why this one right now>"}]}. Pick exactly 4, all keys must come from the provided catalog list, never invent a key.`;
 
-async function aiSuggest(catalogKeys, hour, nextTaskDesc) {
+async function aiSuggest(catalogKeys, hour, nextTaskDesc, preferredKeys) {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) return null;
   try {
@@ -88,7 +119,7 @@ async function aiSuggest(catalogKeys, hour, nextTaskDesc) {
         temperature: 0.4,
         system: SUGGEST_SYSTEM,
         messages: [{ role: 'user', content:
-          `Catalog keys: ${catalogKeys.join(', ')}\nCurrent hour (24h, server time): ${hour}\nNext scheduled task: ${nextTaskDesc || 'none scheduled'}`
+          `Catalog keys: ${catalogKeys.join(', ')}\nCurrent hour (24h, server time): ${hour}\nNext scheduled task: ${nextTaskDesc || 'none scheduled -- genuine free time right now'}\nApps this person says they actually use: ${preferredKeys?.length ? preferredKeys.join(', ') : 'not specified'}`
         }],
       }),
     });
@@ -126,26 +157,30 @@ export default async function handler(req, res) {
 
   const taskId = req.query.taskId ? Number(req.query.taskId) : null;
   const breakType = req.query.breakType || null;
+  const preferredKeys = await getPreferredKeys(sql, user.id);
 
   if (breakType) {
-    return res.status(200).json({ apps: resolveApps(APPS_BY_BREAK[breakType] || DEFAULT_KEYS), habitStack: HABIT_STACK_HINT[breakType] || null });
+    const keys = prioritize(APPS_BY_BREAK[breakType] || DEFAULT_KEYS, preferredKeys);
+    return res.status(200).json({ apps: resolveApps(keys), habitStack: HABIT_STACK_HINT[breakType] || null });
   }
 
   if (taskId) {
     const rows = await sql`SELECT * FROM tasks WHERE id = ${taskId} AND user_id = ${user.id}`;
     const task = rows[0];
     const pillarName = task ? PILLARS[task.pillar_id] : null;
-    const keys = (task?.tool_hint && APPS_BY_TOOL_HINT[task.tool_hint]) || APPS_BY_PILLAR[pillarName] || DEFAULT_KEYS;
+    const keys = prioritize((task?.tool_hint && APPS_BY_TOOL_HINT[task.tool_hint]) || APPS_BY_PILLAR[pillarName] || DEFAULT_KEYS, preferredKeys);
     return res.status(200).json({ apps: resolveApps(keys), habitStack: null });
   }
 
   // The "main Essential Apps folder" case -- opened straight from Home with no task or
-  // break context. This used to just return the same 4 static defaults every time, which
-  // is exactly what the founder flagged as "hardly giving suggestions." A cheap Haiku call
-  // picks from the real catalog based on time of day and what's actually next on the
-  // schedule, so this drawer earns the "amazing, makes your phone powerful" framing
-  // instead of being a flat shortcut list. Falls back to the static defaults if the AI
-  // call fails or no API key is set -- never a broken/empty drawer.
+  // break context, which in practice means genuinely idle/nothing-scheduled time. This
+  // used to just return the same 4 static defaults every time, which is exactly what the
+  // founder flagged as "hardly giving suggestions." A cheap Haiku call picks from the
+  // real catalog based on time of day, what's actually next on the schedule, and this
+  // person's own stated app preferences, favoring entertainment/skill-building over bare
+  // utilities during real downtime. Falls back to a curated entertainment+skill set (not
+  // the task-context utility defaults) if the AI call fails or no API key is set -- never
+  // a broken/empty drawer, and never just "here's Mail again" during free time.
   const todayRows = await sql`
     SELECT name, pillar_id FROM tasks
     WHERE user_id = ${user.id} AND status = 'Pending' AND due_date = CURRENT_DATE
@@ -154,8 +189,8 @@ export default async function handler(req, res) {
   const nextTask = todayRows[0];
   const nextTaskDesc = nextTask ? `${nextTask.name} (${PILLARS[nextTask.pillar_id] || 'general'})` : null;
   const hour = new Date().getUTCHours();
-  const suggested = await aiSuggest(Object.keys(CATALOG), hour, nextTaskDesc);
+  const suggested = await aiSuggest(Object.keys(CATALOG), hour, nextTaskDesc, preferredKeys);
   if (suggested && suggested.length) return res.status(200).json({ apps: suggested, habitStack: null, aiSuggested: true });
 
-  return res.status(200).json({ apps: resolveApps(DEFAULT_KEYS), habitStack: null });
+  return res.status(200).json({ apps: resolveApps(prioritize(IDLE_KEYS, preferredKeys)), habitStack: null });
 }

@@ -4,6 +4,7 @@ import { getUserFromRequest } from '../../lib/auth.js';
 import { getPillarState, buildPillarStates } from '../../lib/pillarState.js';
 import { computeStreakDays } from '../../lib/tasks.js';
 import { materializeRoutinesForDate } from '../../lib/routines.js';
+import { findOpenSlot, slotSearchWindowForPriority } from '../../lib/scheduling.js';
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 
@@ -63,9 +64,28 @@ async function runTool(sql, user, toolUse) {
   if (toolUse.name === 'create_simple_task') {
     const { name, pillar, estimatedDurationMinutes, priority, dueDate, dueTime } = toolUse.input;
     const pillar_id = pillar ? pillarIdFromName(pillar) : null;
+    const durationMin = estimatedDurationMinutes || 30;
+    const finalPriority = priority || 'Medium';
+    // Mirror POST /simple-tasks' auto-slotting: the model has no real knowledge of the
+    // user's actual schedule or of what "Urgent" is supposed to mean here, so a task
+    // created via chat without an explicit time used to just take whatever date the
+    // model free-associated (e.g. "this weekend") -- an "Urgent" task asked for in
+    // conversation could land days out with a wide-open day sitting empty. Same
+    // priority-based findOpenSlot search the manual Add Task modal already uses.
+    let finalDueDate = dueDate || null, finalStartTime = dueTime || null;
+    if (!dueTime) {
+      const { searchDays } = slotSearchWindowForPriority(finalPriority);
+      const slot = await findOpenSlot(sql, user.id, {
+        earliestDate: dueDate || today,
+        searchDays: dueDate ? 1 : searchDays,
+        durationMinutes: durationMin,
+      });
+      finalDueDate = slot.date;
+      finalStartTime = slot.startTime;
+    }
     const rows = await sql`
       INSERT INTO tasks (user_id, name, pillar_id, estimated_duration_minutes, priority, due_date, start_time, kind)
-      VALUES (${user.id}, ${name}, ${pillar_id}, ${estimatedDurationMinutes || 30}, ${priority || 'Medium'}, ${dueDate || null}, ${dueTime || null}, 'simple')
+      VALUES (${user.id}, ${name}, ${pillar_id}, ${durationMin}, ${finalPriority}, ${finalDueDate}, ${finalStartTime}, 'simple')
       RETURNING *
     `;
     return { result: JSON.stringify({ created: true, task: rows[0] }), action_taken: 'task_created' };

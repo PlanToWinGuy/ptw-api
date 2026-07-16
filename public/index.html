@@ -18,8 +18,8 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-html,body{height:100%;overflow:hidden;background:#0E0C0A}
-body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
+html,body{height:100%;overflow:hidden;background:var(--bg)}
+body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
 :root{
   --bg:#0E0C0A; --bg2:#181614; --bg3:#201E1B; --bg4:#2A2724;
   --cement:#C4B8A8; --stone:#6E6358; --blue:#5BA4DC; --text:#E8E2D9; --muted:#8A8278;
@@ -27,6 +27,21 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
   --relations:#C46882; --personal:#5BA4DC; --work:#8A70C0;
   --nav-h:70px; --sb:env(safe-area-inset-bottom,0px);
 }
+/* Light mode -- same brand accent hues (pillar colors, blue) held constant across
+   themes; only the neutral background/text scale flips. Toggled via Settings, see
+   applyTheme()/setTheme() -- persisted to localStorage, no server round-trip needed
+   since this is a per-device display preference. */
+:root[data-theme="light"]{
+  --bg:#F7F4EF; --bg2:#EFEAE1; --bg3:#E6DFD2; --bg4:#DCD3C2;
+  --cement:#4A4238; --stone:#5C5348; --text:#211D18; --muted:#948A7A;
+}
+/* A handful of "selected/active" overlays are hardcoded semi-transparent white, which
+   reads fine lightening an already-dark neutral background but washes out to nearly
+   invisible on a light one -- flipped to a dark tint in light mode so the selected
+   state stays visible. Pillar-colored cards (metric cards, task cards) intentionally
+   keep their white text/overlays untouched in both themes since the pillar color
+   itself doesn't change. */
+:root[data-theme="light"] .chip.sel{background:rgba(0,0,0,.05)}
 #app{max-width:430px;margin:0 auto;height:100dvh;display:flex;flex-direction:column;position:relative;overflow:hidden;background:var(--bg)}
 
 /* ── SCREENS ── */
@@ -196,7 +211,7 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
 .cta-glyph{font-size:24px;color:var(--stone);line-height:1}
 /* Two sizes up from the old 12px, and near-white instead of the muted stone tone --
    this is the number the user actually glances at most, it should read instantly. */
-.cta-timer-label{font-size:20px;font-weight:800;color:#F5F2EC;letter-spacing:.3px;margin-top:2px}
+.cta-timer-label{font-size:20px;font-weight:800;color:var(--text);letter-spacing:.3px;margin-top:2px}
 #cta-timer-arc{transition:stroke-dashoffset 1s linear,stroke .4s ease}
 .cta-btns{display:flex;gap:20px;margin-top:14px}
 .cta-micro{
@@ -667,7 +682,7 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
     </div>
     <!-- Always-visible, always-on-time clock -- 70% opacity so it reads as ambient
          info, not a competing focal point against the task name below it. -->
-    <div id="home-clock" style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text);opacity:.7;letter-spacing:.5px">--:--</div>
+    <div id="home-clock" style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--text);opacity:.7;letter-spacing:.5px">--:--</div>
     <div style="display:flex;align-items:center;gap:8px">
       <div class="ptw-badge" onclick="openAIChat()"><svg width="34" height="34" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"><g transform="translate(38,77) scale(2)"><text x="0" y="17" font-family="Syne,sans-serif" font-weight="800" font-size="17" fill="#F2EDE6">PT</text><polyline points="43,2 47.5,19 52.5,7 57.5,19 62,2" fill="none" stroke="#F2EDE6" stroke-width="3.6" stroke-linejoin="miter" stroke-linecap="butt"/><polyline points="52.5,7 57.5,19 62,2" fill="none" stroke="#5BA4DC" stroke-width="3.6" stroke-linejoin="miter" stroke-linecap="butt"/></g></svg></div>
       <!-- Profile is swipe-only (swipe right from Home) -- this corner is Settings, not a
@@ -1254,7 +1269,7 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
 ══════════════════════════════════ -->
 <div id="screen-task-detail" class="screen">
   <div class="pillar-top-bar">
-    <button class="icon-btn ghost" onclick="showScreen('todo-routines')">←</button>
+    <button class="icon-btn ghost" onclick="showScreen(S.taskDetailReturnScreen||'todo-routines')">←</button>
     <span style="width:36px"></span>
   </div>
   <div class="scroll-body" style="padding:0 24px;text-align:center">
@@ -1266,7 +1281,7 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
     </div>
     <div style="display:flex;justify-content:center;gap:16px;margin-bottom:26px">
       <button class="cta-micro" style="width:40px;height:40px;font-size:16px" onclick="openEditTask(S.taskDetailTask)" title="Edit">✏</button>
-      <button class="cta-micro" id="td-playpause-btn" style="width:40px;height:40px;font-size:16px;background:var(--blue);color:#fff" onclick="toggleTaskDetailTimer()" title="Start">▶</button>
+      <button class="cta-micro" id="td-playpause-btn" style="width:40px;height:40px;font-size:16px;background:var(--blue);color:#fff" onclick="toggleTaskDetailTimer()" title="Start"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>
       <button class="cta-micro" style="width:40px;height:40px;font-size:16px" onclick="skipTaskDetailTask()" title="Skip">⏭</button>
       <button class="cta-micro" style="width:40px;height:40px;font-size:16px" onclick="completeTaskDetailTask()" title="Complete">✓</button>
     </div>
@@ -1457,6 +1472,23 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
     <button class="icon-btn ghost" onclick="savePillarPreferences()" title="Save">✓</button>
   </div>
   <div class="scroll-body" style="padding:0 18px" id="pillar-prefs-body"></div>
+</div>
+
+<!-- ══════════════════════════════════
+     PREFERRED QUICK-ADD APPS -- since a PWA has no way to see what's actually installed
+     on the device, this is the honest substitute: the user tells us which apps in the
+     catalog they actually use, and Essential Apps suggestions weight toward those first.
+══════════════════════════════════ -->
+<div id="screen-essential-apps-prefs" class="screen">
+  <div class="pillar-top-bar">
+    <button class="icon-btn ghost" onclick="openSettingsHub()">←</button>
+    <h2 style="font-size:15px">Preferred Apps</h2>
+    <button class="icon-btn ghost" onclick="saveEssentialAppsPrefs()" title="Save">✓</button>
+  </div>
+  <div class="scroll-body" style="padding:0 18px">
+    <div style="font-size:12px;color:var(--stone);margin:14px 0 16px;line-height:1.5">Tell us which of these you actually use — Essential Apps suggestions (on Home, during breaks, and mid-task) will favor these first.</div>
+    <div id="ea-prefs-body"></div>
+  </div>
 </div>
 
 <!-- ══════════════════════════════════
@@ -1713,7 +1745,7 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
     </div>
     <div class="field"><label>PILLAR (OPTIONAL)</label>
       <div class="pillar-grid" id="task-pillar-grid" style="grid-template-columns:repeat(4,1fr)">
-        <button class="pg-btn sel" style="background:var(--bg4)" data-p="" onclick="selPillar(this,'task-pillar-grid')">—</button>
+        <button class="pg-btn sel" style="background:var(--bg4);color:var(--text)" data-p="" onclick="selPillar(this,'task-pillar-grid')">—</button>
         <button class="pg-btn" style="background:var(--fitness)" data-p="fitness" onclick="selPillar(this,'task-pillar-grid')">Fitness</button>
         <button class="pg-btn" style="background:var(--diet)" data-p="diet" onclick="selPillar(this,'task-pillar-grid')">Diet</button>
         <button class="pg-btn" style="background:var(--finances)" data-p="finances" onclick="selPillar(this,'task-pillar-grid')">Finances</button>
@@ -1872,6 +1904,24 @@ const S = {
   goalPillar: 'finances',
   unlocked: JSON.parse(localStorage.getItem('ptw_unlocked')||'["personal"]'),
 };
+
+// ════════════════════════════════════════
+// THEME (Light/Dark) -- a per-device display preference (localStorage only, no server
+// round-trip, same reasoning as most native apps' own theme setting). Applied
+// immediately at script-load time, not on some later init hook, so there's no visible
+// flash of the wrong theme before this runs.
+// ════════════════════════════════════════
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  const metaTheme=document.querySelector('meta[name="theme-color"]');
+  if(metaTheme) metaTheme.content = theme==='light' ? '#F7F4EF' : '#0E0C0A';
+}
+function setTheme(theme) {
+  localStorage.setItem('ptw_theme', theme);
+  applyTheme(theme);
+  if(document.getElementById('screen-settings')?.classList.contains('active')) renderSettingsBody();
+}
+applyTheme(localStorage.getItem('ptw_theme')||'dark');
 
 // ════════════════════════════════════════
 // API
@@ -2301,11 +2351,18 @@ function renderSettingsBody() {
     + settingsRow('👤','Edit Profile',"openProfileEditScreen()")
     + settingsRow('🔑','Account & Security',"openAccountSecurity()");
 
+  const currentTheme=localStorage.getItem('ptw_theme')||'dark';
   html += `<div class="section-sub" style="margin-top:20px">APP PREFERENCES</div>`
+    + `<div class="settings-row"><div class="sr-label">🌗 Theme</div>
+        <div style="display:flex;gap:6px">
+          <button type="button" class="chip${currentTheme==='dark'?' sel':''}" onclick="setTheme('dark')">Dark</button>
+          <button type="button" class="chip${currentTheme==='light'?' sel':''}" onclick="setTheme('light')">Light</button>
+        </div></div>`
     + settingsRow('🔔','Notification Settings',"openNotificationSettings()")
     + settingsRow('📏','Measurement Units',"openMeasurementUnits()")
     + settingsRow('☀️','Daily Briefings',"openDailyBriefingsSettings()")
-    + settingsRow('📅','Import a Schedule',"openScheduleImport()",'Upload a class, work, or practice schedule');
+    + settingsRow('📅','Import a Schedule',"openScheduleImport()",'Upload a class, work, or practice schedule')
+    + settingsRow('🧩','Preferred Quick-Add Apps',"openEssentialAppsPrefs()",'Which apps you actually use');
 
   // One section per pillar the user has actually unlocked -- no premium paywall/lock
   // icon here (unlike the original spec's model) since this app gates pillars by
@@ -2945,7 +3002,7 @@ function openCurrentTask() {
   // not fall through to the generic pillar-map routing below -- that's the whole point of
   // tapping back into the ring while it's running.
   if(S.manualTaskOverride?.taskId===t.taskId && S.taskDetailTask?.id===t.taskId) {
-    openTaskDetail(S.taskDetailTask);
+    openTaskDetail(S.taskDetailTask, 'home');
     return;
   }
   if(t.routineId) {
@@ -3590,13 +3647,20 @@ updateHomeClock();
 // too, so the ring's existing complete/skip/options actions keep working unchanged.
 // ════════════════════════════════════════
 function startManualTask(task) {
+  const durationMinutes=task.estimated_duration_minutes||task.durationMinutes||20;
+  // The time shown above the countdown reflects when this instance is ACTUALLY
+  // happening (right now through now+duration), not the calendar's original slot --
+  // starting a task early, late, or with no scheduled time at all used to still show
+  // its stale/nonexistent original slot next to a countdown that was really running
+  // from right now, which read as wrong/confusing. Recomputed fresh off the real clock
+  // every time a task is (re)started manually.
+  const now=new Date();
+  const startTime=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+  const endDate=new Date(now.getTime()+durationMinutes*60000);
+  const endTime=String(endDate.getHours()).padStart(2,'0')+':'+String(endDate.getMinutes()).padStart(2,'0');
   S.manualTaskOverride = {
     taskId: task.id, name: task.name, pillar: task.pillar_name||task.pillar_id,
-    durationMinutes: task.estimated_duration_minutes||task.durationMinutes||20,
-    // The task's own real scheduled slot -- Starting it manually changes what the ring
-    // counts down (real elapsed time from right now), it doesn't erase when it was
-    // actually supposed to happen, which still shows as its own line above the countdown.
-    startTime: task.start_time||task.startTime||null, endTime: task.end_time||task.endTime||null,
+    durationMinutes, startTime, endTime,
     elapsedMs: 0, running: true, lastResumeAt: Date.now(),
   };
   applyCtaState();
@@ -3674,8 +3738,12 @@ function updateManualTaskCountdown(homeScreen, svg, label, miniTimer, timeRangeE
 // ════════════════════════════════════════
 // SIMPLE TASK DETAIL
 // ════════════════════════════════════════
-function openTaskDetail(task) {
+function openTaskDetail(task, returnScreen) {
   S.taskDetailTask=task;
+  // Reached from two different places (the To-Do list, and tapping the Home CTA ring
+  // for the current task) with two different sensible "back" destinations -- same
+  // pattern as Project Detail's S.projectDetailReturnScreen.
+  S.taskDetailReturnScreen=returnScreen||'todo-routines';
   const pk=getPillarKey(task.pillar_name||task.pillar_id);
   const p=PILLARS[pk]||PILLARS.personal;
   document.getElementById('td-icon').innerHTML=task.icon||p.icon;
@@ -3688,6 +3756,8 @@ function openTaskDetail(task) {
   showScreen('task-detail');
   renderTaskDetailTimerUI();
 }
+const PLAY_ICON_SVG='<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+const PAUSE_ICON_SVG='<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>';
 function renderTaskDetailTimerUI() {
   const screen=document.getElementById('screen-task-detail');
   if(!screen || !screen.classList.contains('active')) return;
@@ -3698,7 +3768,7 @@ function renderTaskDetailTimerUI() {
   const btn=document.getElementById('td-playpause-btn');
   const fill=document.getElementById('td-progress-fill');
   if(!isThisTask) {
-    btn.textContent='▶'; btn.title='Start';
+    btn.innerHTML=PLAY_ICON_SVG; btn.title='Start';
     fill.style.width='0%';
     return;
   }
@@ -3706,7 +3776,7 @@ function renderTaskDetailTimerUI() {
   const elapsed=m.elapsedMs+(m.running?Date.now()-m.lastResumeAt:0);
   const pct=Math.min(100, Math.round((elapsed/totalMs)*100));
   fill.style.width=pct+'%';
-  btn.textContent=m.running?'⏸':'▶';
+  btn.innerHTML=m.running?PAUSE_ICON_SVG:PLAY_ICON_SVG;
   btn.title=m.running?'Pause':'Resume';
 }
 function toggleTaskDetailTimer() {
@@ -3723,8 +3793,9 @@ async function skipTaskDetailTask() {
   await req('POST','/tasks/skip',{task_id:task.id});
   toast("Skipped — it'll come back around");
   S.todoTasksCache=(S.todoTasksCache||[]).filter(t=>t.id!==task.id);
-  showScreen('todo-routines');
-  switchTodoRoutinesTab('todo');
+  const returnScreen=S.taskDetailReturnScreen||'todo-routines';
+  showScreen(returnScreen);
+  if(returnScreen==='todo-routines') switchTodoRoutinesTab('todo');
   loadHomeData();
 }
 // Same real percentage-completion flow as every other task now, not an instant
@@ -3732,7 +3803,7 @@ async function skipTaskDetailTask() {
 function completeTaskDetailTask() {
   const task=S.taskDetailTask;
   if(!task) return;
-  openTaskCompletion(task, 'todo-routines');
+  openTaskCompletion(task, S.taskDetailReturnScreen||'todo-routines');
 }
 (function setupFocusLongPress(){
   const ring=document.getElementById('cta-ring');
@@ -5209,6 +5280,48 @@ function launchEssentialApp(i) {
     window.removeEventListener('blur', onBlur);
     if(!handled && a.webFallback) window.open(a.webFallback,'_blank');
   }, 1200);
+}
+
+// ─── PREFERRED QUICK-ADD APPS (Settings) ───
+// Mirrors the backend catalog's names/categories just for rendering this picker -- the
+// real urlScheme/webFallback data stays server-side, this only ever sends back a list
+// of keys.
+const EA_CATALOG_UI = [
+  {key:'youtube',label:'YouTube',category:'Entertainment'}, {key:'netflix',label:'Netflix',category:'Entertainment'},
+  {key:'spotify',label:'Spotify',category:'Entertainment'}, {key:'podcasts',label:'Podcasts',category:'Entertainment'},
+  {key:'duolingo',label:'Duolingo',category:'Skill'}, {key:'kindle',label:'Kindle',category:'Skill'},
+  {key:'audible',label:'Audible',category:'Skill'}, {key:'brilliant',label:'Brilliant',category:'Skill'},
+  {key:'health',label:'Health',category:'Wellness'}, {key:'strava',label:'Strava',category:'Wellness'},
+  {key:'mail',label:'Mail',category:'Utility'}, {key:'calendar',label:'Calendar',category:'Utility'},
+  {key:'notes',label:'Notes',category:'Utility'}, {key:'calculator',label:'Calculator',category:'Utility'},
+  {key:'slack',label:'Slack',category:'Utility'}, {key:'zoom',label:'Zoom',category:'Utility'},
+  {key:'whatsapp',label:'WhatsApp',category:'Utility'},
+];
+let eaPreferredKeys=[];
+async function openEssentialAppsPrefs() {
+  showScreen('essential-apps-prefs');
+  const body=document.getElementById('ea-prefs-body');
+  body.innerHTML='<div class="spinner"></div>';
+  const prefs=await req('GET','/preferences/essential_apps')||{};
+  eaPreferredKeys=Array.isArray(prefs.preferredKeys)?prefs.preferredKeys:[];
+  const byCategory={};
+  EA_CATALOG_UI.forEach(a=>{ (byCategory[a.category]=byCategory[a.category]||[]).push(a); });
+  body.innerHTML = Object.entries(byCategory).map(([cat,apps])=>`
+    <div style="font-size:11px;color:var(--stone);letter-spacing:.3px;margin:16px 0 8px">${cat.toUpperCase()}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      ${apps.map(a=>`<button type="button" class="q-opt${eaPreferredKeys.includes(a.key)?' sel':''}" data-key="${a.key}" onclick="toggleEssentialAppPref(this)">${a.label}</button>`).join('')}
+    </div>`).join('');
+}
+function toggleEssentialAppPref(btn) {
+  btn.classList.toggle('sel');
+  const key=btn.dataset.key;
+  if(btn.classList.contains('sel')) { if(!eaPreferredKeys.includes(key)) eaPreferredKeys.push(key); }
+  else { eaPreferredKeys=eaPreferredKeys.filter(k=>k!==key); }
+}
+async function saveEssentialAppsPrefs() {
+  await req('PUT','/preferences/essential_apps',{preferredKeys:eaPreferredKeys});
+  toast('Preferred apps saved ✓');
+  openSettingsHub();
 }
 
 // ════════════════════════════════════════
