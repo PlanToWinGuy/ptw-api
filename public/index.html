@@ -62,7 +62,13 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
 .modal-scroll::-webkit-scrollbar{display:none}
 
 /* ══════════════════════════════════
-   SPLASH SCREEN
+   SPLASH SCREEN -- always the fixed dark brand look, independent of the in-app
+   Light/Dark theme setting (that's a per-device preference for the app's own daily
+   screens, not the pre-login welcome/marketing surface). Every color below is a fixed
+   dark-theme-equivalent value, not a var(--*) -- a returning user with Light mode saved
+   from a previous session used to land here with the background frozen dark (see
+   #screen-splash below) while this text quietly kept using the theme variables, which
+   flipped to their light-mode near-black values: invisible text on a dark screen.
 ══════════════════════════════════ */
 #screen-splash{justify-content:center;align-items:center;background:#0E0C0A}
 #splash-canvas{position:absolute;inset:0;width:100%;height:100%}
@@ -72,21 +78,21 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
 }
 .splash-title{
   font-family:'Syne',sans-serif;font-size:32px;font-weight:800;
-  color:var(--text);margin-top:32px;letter-spacing:.5px;display:none;
+  color:#E8E2D9;margin-top:32px;letter-spacing:.5px;display:none;
 }
 .splash-sub{
-  font-size:13px;color:var(--stone);margin-top:20px;
+  font-size:13px;color:#6E6358;margin-top:20px;
   text-align:center;line-height:1.7;max-width:260px;letter-spacing:.2px;
 }
-.splash-sub em{color:var(--cement);font-style:normal;font-weight:600}
+.splash-sub em{color:#C4B8A8;font-style:normal;font-weight:600}
 .splash-sub em .thin{font-weight:400}
 .splash-tagline{text-align:center;margin-top:16px}
-.splash-tagline-lead{font-size:14px;color:var(--stone);letter-spacing:.3px}
-.splash-tagline-brand{font-family:'Syne',sans-serif;font-size:16px;font-weight:800;color:var(--text);letter-spacing:.3px;margin-top:2px}
+.splash-tagline-lead{font-size:14px;color:#6E6358;letter-spacing:.3px}
+.splash-tagline-brand{font-family:'Syne',sans-serif;font-size:16px;font-weight:800;color:#E8E2D9;letter-spacing:.3px;margin-top:2px}
 .splash-btn{
   margin-top:56px;padding:16px 52px;border-radius:50px;
-  background:transparent;border:1.5px solid var(--cement);
-  color:var(--text);font-size:15px;font-weight:600;font-family:'Inter',sans-serif;
+  background:transparent;border:1.5px solid #C4B8A8;
+  color:#E8E2D9;font-size:15px;font-weight:600;font-family:'Inter',sans-serif;
   cursor:pointer;letter-spacing:.5px;transition:all .2s;
   animation:fadeUp .8s 1.2s ease both;
 }
@@ -695,8 +701,15 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
     <div style="display:flex;align-items:center;gap:8px">
       <div class="ptw-badge" onclick="openAIChat()"><svg width="34" height="34" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"><g transform="translate(38,77) scale(2)"><text x="0" y="17" font-family="Syne,sans-serif" font-weight="800" font-size="17" fill="#F2EDE6">PT</text><polyline points="43,2 47.5,19 52.5,7 57.5,19 62,2" fill="none" stroke="#F2EDE6" stroke-width="3.6" stroke-linejoin="miter" stroke-linecap="butt"/><polyline points="52.5,7 57.5,19 62,2" fill="none" stroke="#5BA4DC" stroke-width="3.6" stroke-linejoin="miter" stroke-linecap="butt"/></g></svg></div>
       <!-- Profile is swipe-only (swipe right from Home) -- this corner is Settings, not a
-           second entry point into Profile. -->
-      <button class="icon-btn" onclick="openSettings(null,'home')" title="Settings">⚙️</button>
+           second entry point into Profile. The Settings gear sits shorter than the AI
+           Coach badge next to it, leaving real vertical room above it -- a battery-%
+           readout (see initBatteryIndicator(), Battery Status API where supported) fills
+           that space instead of sitting empty, useful now that the OS status bar itself
+           is hidden in fullscreen/standalone launch. -->
+      <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+        <div id="home-battery" style="font-size:9px;color:var(--stone);font-weight:700;letter-spacing:.2px;display:none">--</div>
+        <button class="icon-btn" onclick="openSettings(null,'home')" title="Settings">⚙️</button>
+      </div>
     </div>
   </div>
 
@@ -1814,6 +1827,7 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
         <button class="pg-btn" style="background:var(--bg4)" data-icon="💡" onclick="selTaskIcon(this)">💡</button>
         <button class="pg-btn" style="background:var(--bg4)" data-icon="⭐" onclick="selTaskIcon(this)">⭐</button>
       </div>
+      <input type="text" id="t-icon-custom" placeholder="Or type/paste any emoji…" maxlength="8" style="width:100%;margin-top:8px;padding:10px 12px;background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:10px;color:var(--text);font-size:16px;font-family:'Inter',sans-serif;outline:none" oninput="useCustomTaskIcon(this.value)">
     </div>
     <div class="field"><label>COLOR (OPTIONAL)</label>
       <div class="pillar-grid" id="task-color-grid" style="grid-template-columns:repeat(4,1fr)">
@@ -2827,6 +2841,26 @@ async function enterApp() {
   renderPillarApps();
   loadHomeData();
   applyHomeBackground();
+  initBatteryIndicator();
+}
+
+// Battery Status API -- real support varies a lot (solid on Android Chrome/WebView,
+// unavailable on iOS Safari and increasingly restricted on desktop Chrome for
+// fingerprinting reasons), so this fails silently to a hidden element rather than ever
+// showing a fake/stale percentage. Live-updates via the API's own levelchange event
+// rather than polling.
+async function initBatteryIndicator() {
+  const el=document.getElementById('home-battery');
+  if(!el) return;
+  if(!navigator.getBattery) { el.style.display='none'; return; }
+  try {
+    const battery=await navigator.getBattery();
+    const update=()=>{ el.textContent=Math.round(battery.level*100)+'%'; el.style.display='block'; };
+    update();
+    battery.addEventListener('levelchange', update);
+  } catch(e) {
+    el.style.display='none';
+  }
 }
 
 async function loadUserData() {
@@ -4309,7 +4343,7 @@ function dailyTaskCard(t) {
     isCompleted ? 'opacity:.55' : '',
   ].filter(Boolean).join(';');
   return `<div class="sq-card"${openCall?` onclick="${openCall}"`:''}${cardStyle?` style="${cardStyle}"`:''}>
-    <div class="sq-icon" style="background:${p.color}22;color:${p.color}">${isCompleted?'✅':t.routineId?(t.toolHint?p.icon:'🔁'):(t.isAntiGoal?'🎯':p.emoji)}</div>
+    <div class="sq-icon" style="background:${p.color}22;color:${p.color}">${t.routineId?(t.toolHint?p.icon:'🔁'):(t.isAntiGoal?'🎯':p.emoji)}</div>
     <div class="sq-info">
       ${isFirstStepHighlight?`<div style="font-size:10px;color:${p.color};font-weight:700;letter-spacing:.4px;margin-bottom:2px">🎯 YOUR FIRST STEP</div>`:''}
       ${isDoingNow?`<div style="font-size:10px;color:${p.color};font-weight:700;letter-spacing:.4px;margin-bottom:2px">▶ DOING NOW</div>`:''}
@@ -8923,6 +8957,7 @@ function openAddTask() {
   document.getElementById('t-dur').value='30';
   document.getElementById('t-due-date').value=new Date().toISOString().split('T')[0];
   document.getElementById('t-due-time').value='';
+  document.getElementById('t-icon-custom').value='';
   resetTaskModalGrid('task-pillar-grid','p','',true);
   resetTaskModalGrid('task-icon-grid','icon','',true);
   resetTaskModalGrid('task-color-grid','color','',true);
@@ -8960,6 +8995,18 @@ function openEditTask(task) {
   resetTaskModalGrid('task-color-grid','color',task.color||'',true);
   resetTaskModalGrid('task-priority-grid','priority',task.priority||'Medium',true);
   S.taskPillar=pk; S.taskIcon=task.icon||''; S.taskColor=task.color||''; S.taskPriority=task.priority||'Medium';
+  // A previously-typed custom emoji (not one of the 8 presets) wouldn't match any grid
+  // button -- resetTaskModalGrid's fallback then wrongly lands on "—" instead of showing
+  // what's actually saved. Surface it in the custom field and clear the grid's own
+  // (wrong) selection instead.
+  const iconCustomInput=document.getElementById('t-icon-custom');
+  const presetIcons=[...document.querySelectorAll('#task-icon-grid .pg-btn')].map(b=>b.dataset.icon);
+  if(task.icon && !presetIcons.includes(task.icon)) {
+    document.querySelectorAll('#task-icon-grid .pg-btn').forEach(b=>b.classList.remove('sel'));
+    iconCustomInput.value=task.icon;
+  } else {
+    iconCustomInput.value='';
+  }
   document.getElementById('task-repeat-field').style.display='none';
   document.getElementById('modal-task').classList.add('open');
 }
@@ -8969,7 +9016,21 @@ function toggleTaskRepeat() {
 }
 function toggleRepeatDay(btn) { btn.classList.toggle('sel'); }
 
-function selTaskIcon(btn) { document.querySelectorAll('#task-icon-grid .pg-btn').forEach(b=>b.classList.remove('sel')); btn.classList.add('sel'); S.taskIcon=btn.dataset.icon; }
+function selTaskIcon(btn) {
+  document.querySelectorAll('#task-icon-grid .pg-btn').forEach(b=>b.classList.remove('sel'));
+  btn.classList.add('sel');
+  S.taskIcon=btn.dataset.icon;
+  document.getElementById('t-icon-custom').value='';
+}
+// Any emoji at all -- typed, or pasted from the device's own emoji keyboard/picker --
+// not just the 8 curated presets. Picking one deselects the grid (the two inputs are
+// mutually exclusive, same pattern as the pillar/color/priority grids' own "sel" state).
+function useCustomTaskIcon(val) {
+  const v=val.trim();
+  if(!v) return;
+  document.querySelectorAll('#task-icon-grid .pg-btn').forEach(b=>b.classList.remove('sel'));
+  S.taskIcon=v;
+}
 function selTaskColor(btn) { document.querySelectorAll('#task-color-grid .pg-btn').forEach(b=>b.classList.remove('sel')); btn.classList.add('sel'); S.taskColor=btn.dataset.color; }
 function selTaskPriority(btn) { document.querySelectorAll('#task-priority-grid .pg-btn').forEach(b=>b.classList.remove('sel')); btn.classList.add('sel'); S.taskPriority=btn.dataset.priority; }
 
