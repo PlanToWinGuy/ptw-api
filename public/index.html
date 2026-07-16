@@ -248,25 +248,25 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
 
 /* Pillar Apps strip */
 .pillar-apps{
-  flex-shrink:0;padding:14px 20px calc(14px + var(--sb));
-  display:flex;gap:10px;justify-content:center;flex-wrap:wrap;
-  /* Fades into whatever the screen's own background actually is (var(--bg), same as
-     .screen) instead of a hardcoded dark tone -- that was fine on the dark theme this
-     was built against, but showed up as a jarring black bar across the bottom of Home
-     once light mode existed, since the "fade" always ended at near-black regardless of
-     the surface it was supposed to be blending into. */
+  flex-shrink:0;padding:14px 12px calc(14px + var(--sb));
+  display:flex;gap:6px;justify-content:center;flex-wrap:nowrap;
+  /* Sized so all 6 unlocked pillars genuinely fit on one row even on a narrow phone
+     (~360px wide) -- the original 56px icon + 10px gap + 20px padding only fit 6 on a
+     wide device (~426px+), wrapping to a lopsided 5-then-1 on anything narrower. Icon
+     size, gap, and padding below are all tuned together for the 6-icon case; fewer
+     unlocked pillars just center with more breathing room. */
   background:linear-gradient(to top, var(--bg) 60%, transparent);
 }
 .pillar-app-btn{
   display:flex;flex-direction:column;align-items:center;gap:5px;
-  cursor:pointer;border:none;background:none;
+  cursor:pointer;border:none;background:none;flex-shrink:0;
   animation:appPop .4s ease both;
 }
 @keyframes appPop{from{opacity:0;transform:scale(.6) translateY(10px)}to{opacity:1;transform:scale(1) translateY(0)}}
 .pillar-app-icon{
-  width:56px;height:64px;border-radius:14px;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
-  font-size:20px;position:relative;
+  width:50px;height:58px;border-radius:13px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  font-size:18px;position:relative;
   box-shadow:0 4px 12px rgba(0,0,0,.3);
 }
 .pillar-app-icon::after{
@@ -275,7 +275,7 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
   transition:border-color .2s;
 }
 .pillar-app-btn:active .pillar-app-icon::after{border-color:rgba(196,184,168,.3)}
-.pillar-app-icon-name{font-size:9px;font-weight:700;color:rgba(255,255,255,.92);letter-spacing:.2px}
+.pillar-app-icon-name{font-size:8px;font-weight:700;color:rgba(255,255,255,.92);letter-spacing:.1px}
 .pillar-app-label{font-size:10px;color:var(--stone);font-weight:500;letter-spacing:.3px}
 .pillar-app-reason{font-size:9px;color:var(--muted);text-align:center;line-height:1.3;margin-top:1px}
 
@@ -714,6 +714,12 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
   </div>
 
   <div class="home-body">
+    <div id="cta-reshuffle-banner" style="display:none;align-items:center;gap:10px;background:var(--bg3);border:1px solid rgba(196,184,168,.15);border-radius:12px;padding:10px 12px;margin:0 20px 14px">
+      <div style="font-size:12px;color:var(--text);flex:1;line-height:1.4">Today's plan has slipped by a few hours — want to reshuffle from now?</div>
+      <button class="btn-p filled" style="padding:8px 12px;font-size:12px;white-space:nowrap" onclick="dismissReshufflePrompt();openShuffleDay()">Reshuffle</button>
+      <button class="icon-btn ghost" style="width:26px;height:26px" onclick="dismissReshufflePrompt()">×</button>
+    </div>
+
     <div id="cta-ring" class="active" onclick="handleCtaClick()">
       <!-- pointer-events:none is the fix here -- a position:absolute element always
            paints (and hit-tests) above the ring's static in-flow children regardless of
@@ -733,12 +739,6 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
         <button class="cta-micro" onclick="event.stopPropagation();openTaskCompletion()" title="Complete">✓</button>
         <button class="cta-micro" onclick="event.stopPropagation();openTaskActionsMenu()" title="Options">✏</button>
       </div>
-    </div>
-
-    <div id="cta-reshuffle-banner" style="display:none;align-items:center;gap:10px;background:var(--bg3);border:1px solid rgba(196,184,168,.15);border-radius:12px;padding:10px 12px;margin:0 20px 10px">
-      <div style="font-size:12px;color:var(--text);flex:1;line-height:1.4">Today's plan has slipped by a few hours — want to reshuffle from now?</div>
-      <button class="btn-p filled" style="padding:8px 12px;font-size:12px;white-space:nowrap" onclick="dismissReshufflePrompt();openShuffleDay()">Reshuffle</button>
-      <button class="icon-btn ghost" style="width:26px;height:26px" onclick="dismissReshufflePrompt()">×</button>
     </div>
 
     <div class="cta-sub">
@@ -1276,12 +1276,31 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
 </div>
 
 <div id="screen-routine-active" class="screen">
+  <!-- Same chrome as Simple Task Detail (icon / name / time-or-cadence / progress bar /
+       a row of circular icon buttons) instead of a differently-themed rectangular
+       Start/Skip/Complete row -- a routine is still just a task from the outside, it
+       should look like one. The step checklist below is the one genuinely
+       routine-specific piece (a single task has no sub-steps to check off). -->
   <div class="pillar-top-bar">
     <button class="icon-btn ghost" onclick="showScreen('todo-routines')">←</button>
-    <h2 id="ra-title" style="font-size:15px">Routine</h2>
-    <button class="icon-btn ghost" onclick="openEditRoutineFromActive()">✏️</button>
+    <span style="width:36px"></span>
   </div>
-  <div class="scroll-body" style="padding:0 18px" id="routine-active-body"></div>
+  <div class="scroll-body" style="padding:0 24px;text-align:center">
+    <div id="ra-icon" style="font-size:34px;margin-bottom:10px">🔁</div>
+    <div id="ra-title" style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--text);margin-bottom:6px">Routine</div>
+    <div id="ra-cadence" style="font-size:13px;color:var(--stone);margin-bottom:20px">Everyday · — min</div>
+    <div style="height:5px;background:var(--bg4);border-radius:3px;overflow:hidden;margin-bottom:22px">
+      <div id="ra-progress-fill" style="height:100%;width:0%;background:var(--blue);transition:width .3s ease"></div>
+    </div>
+    <div style="display:flex;justify-content:center;gap:16px;margin-bottom:26px">
+      <button class="cta-micro" style="width:40px;height:40px;font-size:16px" onclick="openEditRoutineFromActive()" title="Edit">✏</button>
+      <button class="cta-micro" id="ra-playpause-btn" style="width:40px;height:40px;font-size:16px;background:var(--blue);color:#fff" onclick="toggleRoutinePlay()" title="Start"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>
+      <button class="cta-micro" style="width:40px;height:40px;font-size:16px" onclick="skipRoutineStep()" title="Skip">⏭</button>
+      <button class="cta-micro" id="ra-complete-btn" style="width:40px;height:40px;font-size:16px" onclick="completeRoutine()" title="Complete">✓</button>
+    </div>
+    <div class="section-sub" style="text-align:left">STEPS</div>
+    <div id="routine-active-body" style="margin-top:8px"></div>
+  </div>
 </div>
 
 <!-- ══════════════════════════════════
@@ -3053,6 +3072,15 @@ const TOOL_HINT_OPEN = {
   transaction:  ()=>openLogTransaction('expense'),
   connection:   ()=>openConnectionLog(null),
   work_session: (t)=>openLogWorkSession(null,t.name),
+  // "Review your logged X" tasks land on that pillar's real history/log view instead
+  // of the same new-entry form as "log an X" -- see REVIEW_INTENT in
+  // lib/scheduling.js for how these get distinguished server-side.
+  personal_review:  ()=>{ showScreen('personal-hub'); switchPersonalHubTab('history'); },
+  diet_review:      ()=>openMealHub(),
+  fitness_review:   ()=>{ showScreen('workout-hub'); switchWorkoutHubTab('history'); },
+  finance_review:   ()=>openFinanceHub(),
+  relations_review: ()=>{ showScreen('social-hub'); switchSocialHubTab('history'); },
+  work_review:      ()=>{ showScreen('work-hub'); switchWorkHubTab('analytics'); },
 };
 function openTaskByToolHint(t) {
   const fn=t.toolHint && TOOL_HINT_OPEN[t.toolHint];
@@ -4561,7 +4589,8 @@ function renderRoutinesList(routines) {
 // single recurring action tied to a real pillar, not a generic multi-step morning/evening
 // routine -- tag it with that pillar's own color/icon instead of a flat blue 🔁 for every
 // routine regardless of origin.
-const TOOL_HINT_LABEL = { workout:'Workout', meal:'Meal', session:'Session', transaction:'Transaction', connection:'Connection', work_session:'Work Session', journal:'Journal' };
+const TOOL_HINT_LABEL = { workout:'Workout', meal:'Meal', session:'Session', transaction:'Transaction', connection:'Connection', work_session:'Work Session', journal:'Journal',
+  personal_review:'Review History', diet_review:'Review History', fitness_review:'Review History', finance_review:'Review History', relations_review:'Review History', work_review:'Review History' };
 
 function routineCard(r) {
   const pk = r.goalId ? getPillarKey(r.category) : null;
@@ -4702,6 +4731,11 @@ function openActiveRoutine(routineId, taskId) {
   routineActiveStepIdx=-1;
   if(routineTimerInterval) { clearInterval(routineTimerInterval); routineTimerInterval=null; }
   showScreen('routine-active');
+  // 'General' (the Wake-Up/Wind-Down bookend routines) isn't a real pillar -- keep the
+  // generic recurring-loop glyph for those, real pillar icon for anything category-linked.
+  const pk=r.category&&r.category!=='General'?getPillarKey(r.category):null;
+  const p=pk?(PILLARS[pk]||PILLARS.personal):null;
+  document.getElementById('ra-icon').innerHTML=p?p.icon:'🔁';
   document.getElementById('ra-title').textContent=r.name;
   renderActiveRoutine();
 }
@@ -4712,26 +4746,32 @@ function renderActiveRoutine() {
   const doneCount=routineChecked.filter(Boolean).length;
   const pct=steps.length?Math.round(doneCount/steps.length*100):0;
   const allDone=steps.length>0 && doneCount===steps.length;
-  document.getElementById('routine-active-body').innerHTML=`
-    <div style="text-align:center;margin:12px 0">
-      <div style="font-size:12px;color:var(--stone)">${(r.schedule?.days?.length?r.schedule.days.join(', '):'Everyday')} · ${r.totalDurationMinutes} min</div>
-    </div>
-    <div style="height:6px;background:var(--bg4);border-radius:4px;overflow:hidden;margin-bottom:14px"><div style="height:100%;width:${pct}%;background:var(--blue)"></div></div>
-    <div style="display:flex;gap:8px;margin-bottom:16px">
-      <button class="btn-p filled" style="flex:1;background:var(--blue);border-color:var(--blue);padding:10px" onclick="toggleRoutinePlay()">${routineTimerInterval?'⏸️ Pause':'▶️ Start'}</button>
-      <button class="btn-p filled" style="flex:1;background:var(--bg4);border-color:var(--bg4);padding:10px" onclick="skipRoutineStep()">⏭️ Skip</button>
-      <button class="btn-p filled" style="flex:1;background:${allDone?'var(--blue)':'var(--bg4)'};border-color:${allDone?'var(--blue)':'var(--bg4)'};padding:10px" ${allDone?'':'disabled'} onclick="completeRoutine()">✔️ Complete</button>
-    </div>
-    ${steps.map((s,i)=>`
-      <div class="sq-card">
-        <input type="checkbox" ${routineChecked[i]?'checked':''} style="width:20px;height:20px;margin-right:8px" onclick="toggleRoutineStepCheck(${i})">
-        <div class="sq-info">
-          <div class="sq-name" style="${routineChecked[i]?'text-decoration:line-through;opacity:.6':''}">${s.name}</div>
-          <div class="sq-meta">${s.durationMinutes} min</div>
-        </div>
-        ${i===routineActiveStepIdx&&routineTimerInterval?`<div id="ra-step-timer" style="font-size:12px;color:var(--blue);font-weight:700">--:--</div>`:''}
-      </div>`).join('')}
-  `;
+
+  document.getElementById('ra-cadence').textContent=(r.schedule?.days?.length?r.schedule.days.join(', '):'Everyday')+' · '+r.totalDurationMinutes+' min';
+  document.getElementById('ra-progress-fill').style.width=pct+'%';
+
+  const playBtn=document.getElementById('ra-playpause-btn');
+  playBtn.innerHTML=routineTimerInterval?PAUSE_ICON_SVG:PLAY_ICON_SVG;
+  playBtn.title=routineTimerInterval?'Pause':'Start';
+
+  // Same "lights up once actually actionable" treatment as the rest of the app's
+  // circular icon buttons, instead of a plain HTML disabled attribute with no visual
+  // distinction from the always-active Skip/Edit buttons next to it.
+  const completeBtn=document.getElementById('ra-complete-btn');
+  completeBtn.disabled=!allDone;
+  completeBtn.style.background=allDone?'var(--blue)':'';
+  completeBtn.style.color=allDone?'#fff':'';
+  completeBtn.style.opacity=allDone?'1':'.4';
+
+  document.getElementById('routine-active-body').innerHTML=steps.map((s,i)=>`
+    <div class="sq-card">
+      <input type="checkbox" ${routineChecked[i]?'checked':''} style="width:20px;height:20px;margin-right:8px" onclick="toggleRoutineStepCheck(${i})">
+      <div class="sq-info">
+        <div class="sq-name" style="${routineChecked[i]?'text-decoration:line-through;opacity:.6':''}">${s.name}</div>
+        <div class="sq-meta">${s.durationMinutes} min</div>
+      </div>
+      ${i===routineActiveStepIdx&&routineTimerInterval?`<div id="ra-step-timer" style="font-size:12px;color:var(--blue);font-weight:700">--:--</div>`:''}
+    </div>`).join('');
 }
 
 function toggleRoutineStepCheck(i) {
@@ -4746,7 +4786,10 @@ function toggleRoutinePlay() {
   routineActiveStepIdx = routineChecked.findIndex(c=>!c);
   if(routineActiveStepIdx===-1) { renderActiveRoutine(); return; }
   routineStepSecondsLeft=(steps[routineActiveStepIdx].durationMinutes||1)*60;
-  renderActiveRoutine();
+  // Start the interval BEFORE rendering -- renderActiveRoutine() reads
+  // routineTimerInterval to decide play-vs-pause icon, so rendering first (the old
+  // order) always saw it as still null/falsy and drew the Play icon even though the
+  // timer had, in fact, just started.
   routineTimerInterval=setInterval(()=>{
     routineStepSecondsLeft--;
     const el=document.getElementById('ra-step-timer');
@@ -4757,6 +4800,7 @@ function toggleRoutinePlay() {
       toggleRoutinePlay();
     }
   },1000);
+  renderActiveRoutine();
 }
 
 function skipRoutineStep() {
@@ -4867,7 +4911,7 @@ function weekTaskChip(t) {
 // app (Home's forward swipes, each screen's reverse swipe back, Pillar's dynamic
 // list-cycling) is built on this one primitive instead of hand-rolling the same
 // touchstart/touchmove/touchend threshold logic per screen.
-function detectSwipe(el, onSwipe) {
+function detectSwipe(el, onSwipe, {minDist=70, ratio=1.5}={}) {
   let sx=0, sy=0, st=0;
   el.addEventListener('touchstart', e=>{
     const t=e.touches[0]; sx=t.clientX; sy=t.clientY; st=Date.now();
@@ -4876,8 +4920,8 @@ function detectSwipe(el, onSwipe) {
     const t=e.changedTouches[0];
     const dx=t.clientX-sx, dy=t.clientY-sy, dt=Date.now()-st;
     if(dt>600) return;
-    const dxDominant = Math.abs(dx)>70 && Math.abs(dx)>Math.abs(dy)*1.5;
-    const dyDominant = Math.abs(dy)>70 && Math.abs(dy)>Math.abs(dx)*1.5;
+    const dxDominant = Math.abs(dx)>minDist && Math.abs(dx)>Math.abs(dy)*ratio;
+    const dyDominant = Math.abs(dy)>minDist && Math.abs(dy)>Math.abs(dx)*ratio;
     if(!dxDominant && !dyDominant) return;
     onSwipe(dx, dy);
   }, {passive:true});
@@ -4885,8 +4929,9 @@ function detectSwipe(el, onSwipe) {
 
 // Fixed direction -> action navigation. Home's forward swipes and every screen's
 // reverse swipe back to Home are built from this -- pass only the directions that
-// screen actually supports.
-function setupSwipeNav(elId, {left, right, up, down}) {
+// screen actually supports. opts lets a screen with a competing vertical scroll (e.g.
+// Daily Overview's task list) demand a more deliberate gesture instead of the default.
+function setupSwipeNav(elId, {left, right, up, down}, opts) {
   const el=document.getElementById(elId);
   if(!el) return;
   detectSwipe(el, (dx, dy) => {
@@ -4897,7 +4942,7 @@ function setupSwipeNav(elId, {left, right, up, down}) {
       if(dy>0 && down) down();
       else if(dy<0 && up) up();
     }
-  });
+  }, opts);
 }
 
 // Home: right → Profile, down → Daily Overview, up → To-Do List. Reverse swipes let
@@ -4957,7 +5002,23 @@ setupSwipeNav('screen-profile', { left: ()=>showScreen('home') });
 // Only in Day mode -- Week mode's own horizontal card scroll otherwise gets misread as
 // a day-swipe gesture (same touchend, opposite intent), turning every scroll attempt
 // into an accidental week change.
-setupSwipeNav('screen-daily', { up: ()=>showScreen('home'), left: ()=>{ if(S.overviewMode==='day') shiftOverview(1); }, right: ()=>{ if(S.overviewMode==='day') shiftOverview(-1); } });
+// Daily Overview's task list scrolls vertically in the exact same physical gesture as
+// "swipe up to exit to Home" -- dragging a finger up to scroll further down a long
+// day's list kept accidentally exiting the screen instead. The up-swipe now only fires
+// once the list is already scrolled to its own bottom (matching "scroll all the way,
+// then swipe" rather than fighting the scroll the whole way down); day-change left/
+// right also demands a more deliberate gesture (110px + a clearer horizontal ratio,
+// vs. the 70px/1.5x default) so an imperfectly-vertical scroll doesn't misfire as a
+// day change either.
+setupSwipeNav('screen-daily', {
+  up: ()=>{
+    const body=document.getElementById('daily-body');
+    if(body && body.scrollTop + body.clientHeight < body.scrollHeight - 4) return;
+    showScreen('home');
+  },
+  left: ()=>{ if(S.overviewMode==='day') shiftOverview(1); },
+  right: ()=>{ if(S.overviewMode==='day') shiftOverview(-1); },
+}, { minDist: 100, ratio: 2 });
 setupSwipeNav('screen-todo-routines', { down: ()=>showScreen('home') });
 
 // Horizontal swipe between unlocked pillars on a pillar's own screen (3.4) --
