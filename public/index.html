@@ -244,7 +244,12 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
 .pillar-apps{
   flex-shrink:0;padding:14px 20px calc(14px + var(--sb));
   display:flex;gap:10px;justify-content:center;flex-wrap:wrap;
-  background:linear-gradient(to top, rgba(14,12,10,.9) 60%, transparent);
+  /* Fades into whatever the screen's own background actually is (var(--bg), same as
+     .screen) instead of a hardcoded dark tone -- that was fine on the dark theme this
+     was built against, but showed up as a jarring black bar across the bottom of Home
+     once light mode existed, since the "fade" always ended at near-black regardless of
+     the surface it was supposed to be blending into. */
+  background:linear-gradient(to top, var(--bg) 60%, transparent);
 }
 .pillar-app-btn{
   display:flex;flex-direction:column;align-items:center;gap:5px;
@@ -675,6 +680,10 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
      HOME LAUNCHER
 ══════════════════════════════════ -->
 <div id="screen-home" class="screen">
+  <!-- Only shown when a custom photo/gradient background is active (see
+       applyHomeBackground()) -- keeps the ring/text legible over an arbitrary photo,
+       tinted to match the current theme rather than a fixed color. -->
+  <div id="home-bg-scrim" style="position:absolute;inset:0;pointer-events:none;display:none"></div>
   <div class="top-bar" id="home-top-bar">
     <div style="display:flex;gap:8px">
       <button class="icon-btn" onclick="openNotifications()">🔔</button>
@@ -687,7 +696,7 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
       <div class="ptw-badge" onclick="openAIChat()"><svg width="34" height="34" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"><g transform="translate(38,77) scale(2)"><text x="0" y="17" font-family="Syne,sans-serif" font-weight="800" font-size="17" fill="#F2EDE6">PT</text><polyline points="43,2 47.5,19 52.5,7 57.5,19 62,2" fill="none" stroke="#F2EDE6" stroke-width="3.6" stroke-linejoin="miter" stroke-linecap="butt"/><polyline points="52.5,7 57.5,19 62,2" fill="none" stroke="#5BA4DC" stroke-width="3.6" stroke-linejoin="miter" stroke-linecap="butt"/></g></svg></div>
       <!-- Profile is swipe-only (swipe right from Home) -- this corner is Settings, not a
            second entry point into Profile. -->
-      <button class="icon-btn" onclick="openSettings()" title="Settings">⚙️</button>
+      <button class="icon-btn" onclick="openSettings(null,'home')" title="Settings">⚙️</button>
     </div>
   </div>
 
@@ -778,7 +787,7 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
     <h2 id="pillar-title">Fitness</h2>
     <div style="display:flex;align-items:center;gap:8px">
       <span class="pillar-subtitle" id="pillar-lifescore" style="font-family:'Syne',sans-serif;font-weight:700;font-size:14px">—</span>
-      <button class="icon-btn ghost" style="width:26px;height:26px;min-width:0;font-size:13px" onclick="openSettings(S.activePillar)" title="Pillar Settings">⚙️</button>
+      <button class="icon-btn ghost" style="width:26px;height:26px;min-width:0;font-size:13px" onclick="openSettings(S.activePillar,'pillar')" title="Pillar Settings">⚙️</button>
     </div>
   </div>
 
@@ -1381,7 +1390,7 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
 
 <div id="screen-settings" class="screen">
   <div class="pillar-top-bar">
-    <button class="icon-btn ghost" onclick="showScreen('profile')">←</button>
+    <button class="icon-btn ghost" onclick="showScreen(S.settingsReturnScreen||'profile')">←</button>
     <h2 style="font-size:15px">Settings</h2>
     <span style="width:36px"></span>
   </div>
@@ -1488,6 +1497,25 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
   <div class="scroll-body" style="padding:0 18px">
     <div style="font-size:12px;color:var(--stone);margin:14px 0 16px;line-height:1.5">Tell us which of these you actually use — Essential Apps suggestions (on Home, during breaks, and mid-task) will favor these first.</div>
     <div id="ea-prefs-body"></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     CUSTOM HOME BACKGROUND -- a photo or gradient preset behind the Home CTA ring.
+══════════════════════════════════ -->
+<div id="screen-home-background" class="screen">
+  <div class="pillar-top-bar">
+    <button class="icon-btn ghost" onclick="openSettingsHub()">←</button>
+    <h2 style="font-size:15px">Home Background</h2>
+    <span style="width:36px"></span>
+  </div>
+  <div class="scroll-body" style="padding:0 18px">
+    <div class="section-sub" style="margin-top:14px">YOUR OWN PHOTO</div>
+    <input type="file" id="hb-file-input" accept="image/*" style="display:none" onchange="uploadHomeBackgroundPhoto(this.files[0])">
+    <button class="btn-p filled" style="background:var(--blue);border-color:var(--blue);margin-top:8px" onclick="document.getElementById('hb-file-input').click()">📷 Upload a Photo</button>
+    <div class="section-sub" style="margin-top:20px">PRESETS</div>
+    <div id="hb-preset-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:8px"></div>
+    <button class="btn-p" style="margin-top:20px" onclick="resetHomeBackground()">Reset to Default</button>
   </div>
 </div>
 
@@ -1920,6 +1948,9 @@ function setTheme(theme) {
   localStorage.setItem('ptw_theme', theme);
   applyTheme(theme);
   if(document.getElementById('screen-settings')?.classList.contains('active')) renderSettingsBody();
+  // Re-tint the custom-background scrim (if one's active) to match -- otherwise
+  // flipping themes would leave a dark-tuned scrim over a now-light app, or vice versa.
+  if(S.token) applyHomeBackground();
 }
 applyTheme(localStorage.getItem('ptw_theme')||'dark');
 
@@ -2326,7 +2357,12 @@ async function activateAllPillarsForTesting() {
 
 // Tapping a pillar's own gear icon jumps straight to that pillar's preferences
 // (skips the hub) -- back button from there still returns to the full Settings list.
-function openSettings(focusPillarKey) {
+// Settings itself is reachable from more than one place (Home's top bar, Profile's
+// gear icon, a pillar's own gear icon) -- returnScreen remembers which, so backing all
+// the way out of Settings (from the hub, not from a sub-page returning to the hub)
+// lands wherever it was actually opened from instead of always Profile.
+function openSettings(focusPillarKey, returnScreen) {
+  S.settingsReturnScreen = returnScreen || 'profile';
   if(focusPillarKey && (S.unlocked||[]).includes(focusPillarKey)) { openPillarPreferences(focusPillarKey); return; }
   openSettingsHub();
 }
@@ -2362,7 +2398,8 @@ function renderSettingsBody() {
     + settingsRow('📏','Measurement Units',"openMeasurementUnits()")
     + settingsRow('☀️','Daily Briefings',"openDailyBriefingsSettings()")
     + settingsRow('📅','Import a Schedule',"openScheduleImport()",'Upload a class, work, or practice schedule')
-    + settingsRow('🧩','Preferred Quick-Add Apps',"openEssentialAppsPrefs()",'Which apps you actually use');
+    + settingsRow('🧩','Preferred Quick-Add Apps',"openEssentialAppsPrefs()",'Which apps you actually use')
+    + settingsRow('🖼️','Home Background',"showScreen('home-background');renderHomeBackgroundPresets()",'Photo or color behind your Home screen');
 
   // One section per pillar the user has actually unlocked -- no premium paywall/lock
   // icon here (unlike the original spec's model) since this app gates pillars by
@@ -2789,6 +2826,7 @@ async function enterApp() {
   showScreen('home');
   renderPillarApps();
   loadHomeData();
+  applyHomeBackground();
 }
 
 async function loadUserData() {
@@ -2825,17 +2863,25 @@ function applyCtaState() {
   if(S.manualTaskOverride) { renderManualTaskCta(); return; }
   const all=S.todaySchedule||[];
   const pending=all.filter(t=>t.status==='Pending').sort((a,b)=>(a.startTime||'99').localeCompare(b.startTime||'99'));
-
-  // "Current" means actually happening right now (or unscheduled/floating, which has no
-  // time block to be out of) -- not just "the earliest pending task", which could be
-  // hours away. That distinction is what separates a real current task from a genuine
-  // gap in the schedule.
   const nowStr=new Date().toTimeString().slice(0,8);
-  const activeNow=pending.find(t=>!t.startTime || (t.startTime<=nowStr && (!t.endTime || t.endTime>=nowStr)));
-  const nextUp=pending.find(t=>t!==activeNow && t.startTime && t.startTime>nowStr) || pending.find(t=>t!==activeNow);
 
-  if(activeNow) {
-    const t=activeNow;
+  // Once a schedule-based task becomes "current," it stays locked as current -- even
+  // once its window ends -- until the user explicitly completes or skips it. The old
+  // behavior re-derived "current" purely from the wall clock every 20s, so a task whose
+  // end time passed would just silently stop being shown, with nothing ever confirming
+  // how much of it actually got done. Now the scheduler waits on the user instead of
+  // moving on without them; see updateCtaTimerRing()'s overtime branch for what this
+  // looks like once time's up. Clearing happens naturally: completing/skipping removes
+  // the task from `pending`, so it stops matching here on the next poll.
+  let current = S.lockedTaskId ? pending.find(t=>t.taskId===S.lockedTaskId) : null;
+  if(!current) {
+    current = pending.find(t=>!t.startTime || (t.startTime<=nowStr && (!t.endTime || t.endTime>=nowStr)));
+    if(current) S.lockedTaskId=current.taskId;
+  }
+  const nextUp=pending.find(t=>t!==current && t.startTime && t.startTime>nowStr) || pending.find(t=>t!==current);
+
+  if(current) {
+    const t=current;
     const pk=getPillarKey(t.pillar);
     const p=PILLARS[pk]||PILLARS.personal;
     document.getElementById('cta-label').textContent=t.name||'Your Quest';
@@ -2845,6 +2891,7 @@ function applyCtaState() {
     document.getElementById('next-txt').textContent=nextUp?('Next: '+nextUp.name+(nextUp.startTime?' ('+formatTimeOfDay(nextUp.startTime)+')':'')):'';
     S.currentTask=t;
   } else {
+    S.lockedTaskId=null;
     S.currentTask=null;
     document.getElementById('cta-ring').style.borderColor='var(--blue)';
     document.getElementById('cta-glyph').textContent='∞';
@@ -3090,11 +3137,21 @@ async function confirmTaskCompletion() {
   if(!S.currentTask) { showScreen('home'); return; }
   // If this is the task the Home ring's manual timer is running for, we know exactly
   // how long it's actually taken so far -- the backend uses that (real pace) instead of
-  // blindly assuming the task tracked its own original time estimate.
+  // blindly assuming the task tracked its own original time estimate. A schedule-based
+  // task (never manually started) has no timer, but now that it stays locked as
+  // "current" through any overtime instead of silently swapping away, its own scheduled
+  // start time is a real reference point too -- wall-clock minutes since then, capped at
+  // not-yet-started (don't report negative time for a task completed early).
   const isManual=S.manualTaskOverride?.taskId===S.currentTask.taskId;
-  const actualMinutesSpent=isManual
-    ? Math.round((S.manualTaskOverride.elapsedMs+(S.manualTaskOverride.running?Date.now()-S.manualTaskOverride.lastResumeAt:0))/60000)
-    : null;
+  let actualMinutesSpent=null;
+  if(isManual) {
+    actualMinutesSpent=Math.round((S.manualTaskOverride.elapsedMs+(S.manualTaskOverride.running?Date.now()-S.manualTaskOverride.lastResumeAt:0))/60000);
+  } else if(S.currentTask.startTime) {
+    const [sh,sm,ss]=S.currentTask.startTime.split(':').map(Number);
+    const start=new Date(); start.setHours(sh,sm,ss||0,0);
+    const now=new Date();
+    if(now>start) actualMinutesSpent=Math.round((now-start)/60000);
+  }
   const result=await req('POST','/tasks/update-completion',{task_id:S.currentTask.taskId, completion_percentage:pct, actual_minutes_spent:actualMinutesSpent});
   const xp=result?.data?.xp_gained||0;
   toast('+'+xp+' XP! ⚡'+(result?.data?.remainder_task?' — rest rescheduled':''));
@@ -3612,9 +3669,15 @@ function updateCtaTimerRing() {
     const mm=Math.floor(untilStartMs/60000), sec=Math.floor((untilStartMs%60000)/1000);
     countdownText='Starts in '+mm+':'+String(sec).padStart(2,'0');
   } else if(now>=end) {
+    // Overtime: the ring stays locked on this task (see applyCtaState) and keeps
+    // counting -- upward now -- instead of freezing on a static "Time's up" while
+    // silently having already moved on to something else. Real elapsed-past-estimate
+    // time is exactly what actual_minutes_spent captures at completion.
     arc.style.strokeDashoffset=String(CTA_RING_CIRCUMFERENCE);
     arc.style.stroke='#C46882';
-    countdownText="Time's up";
+    const overMs=now-end;
+    const mm=Math.floor(overMs/60000), sec=Math.floor((overMs%60000)/1000);
+    countdownText='+'+mm+':'+String(sec).padStart(2,'0')+' over';
   } else {
     const frac=(end-now)/totalMs;
     arc.style.strokeDashoffset=String(CTA_RING_CIRCUMFERENCE*(1-frac));
@@ -3701,35 +3764,46 @@ function updateManualTaskCountdown(homeScreen, svg, label, miniTimer, timeRangeE
   const totalMs=m.durationMinutes*60000;
   const elapsed=m.elapsedMs+(m.running?Date.now()-m.lastResumeAt:0);
   const remaining=totalMs-elapsed;
-  if(remaining<=0) {
-    toast(m.name+' — time\'s up! ⏰');
-    clearManualTaskOverride();
-    loadHomeData();
-    renderTaskDetailTimerUI();
-    return;
+  // Hitting zero used to silently clear the task and hand the ring back to the
+  // schedule -- with nothing ever asking "did you actually finish?" Now it keeps
+  // running in overtime (counting up) until the user explicitly completes or skips it
+  // via the ring's own ✓/✏ buttons, which stay live throughout. One toast on the way
+  // into overtime, not a repeat nag every second.
+  if(remaining<=0 && !m.overtimeNotified) {
+    m.overtimeNotified=true;
+    toast(m.name+" — time's up. Mark it complete when you're done ⏰");
   }
   if(timeRangeEl) timeRangeEl.textContent = m.startTime ? (m.endTime?(formatTimeOfDay(m.startTime)+' - '+formatTimeOfDay(m.endTime)):formatTimeOfDay(m.startTime)) : '';
-  const frac=remaining/totalMs;
   const onHome=homeScreen && homeScreen.classList.contains('active');
   if(svg) svg.style.display=onHome?'block':'none';
   if(label) label.style.display=onHome?'block':'none';
   if(onHome) {
-    // Stays the task's own pillar color throughout (no separate green/yellow/red
-    // traffic-light scheme) -- it just fades toward faint as time runs out, instead of
-    // changing hue, so the ring keeps reading as "this pillar's task" the whole time.
-    // The ring div's own static border is hidden while this arc is drawn -- otherwise
-    // there are visibly two concentric pillar-colored circles (one solid, one fading)
-    // instead of a single ring that fades.
     const pk=getPillarKey(m.pillar);
     const p=PILLARS[pk]||PILLARS.personal;
     const arc=document.getElementById('cta-timer-arc');
-    arc.style.strokeDashoffset=String(CTA_RING_CIRCUMFERENCE*(1-frac));
-    arc.style.stroke=p.color;
-    arc.style.opacity=String(0.25+0.75*frac);
+    if(remaining>0) {
+      // Stays the task's own pillar color throughout (no separate green/yellow/red
+      // traffic-light scheme) -- it just fades toward faint as time runs out, instead of
+      // changing hue, so the ring keeps reading as "this pillar's task" the whole time.
+      const frac=remaining/totalMs;
+      arc.style.strokeDashoffset=String(CTA_RING_CIRCUMFERENCE*(1-frac));
+      arc.style.stroke=p.color;
+      arc.style.opacity=String(0.25+0.75*frac);
+    } else {
+      // Overtime: full ring, urgent red, fully opaque -- a clearly different state from
+      // the fading countdown, so it reads as "this needs your attention" not "done."
+      arc.style.strokeDashoffset='0';
+      arc.style.stroke='#C46882';
+      arc.style.opacity='1';
+    }
+    // The ring div's own static border is hidden while this arc is drawn -- otherwise
+    // there are visibly two concentric pillar-colored circles (one solid, one fading)
+    // instead of a single ring that fades.
     document.getElementById('cta-ring').style.borderColor='transparent';
   }
-  const mm=Math.floor(remaining/60000), ss=Math.floor((remaining%60000)/1000);
-  const timeText=mm+':'+String(ss).padStart(2,'0');
+  const absMs=Math.abs(remaining);
+  const mm=Math.floor(absMs/60000), ss=Math.floor((absMs%60000)/1000);
+  const timeText = remaining>0 ? (mm+':'+String(ss).padStart(2,'0')) : ('+'+mm+':'+String(ss).padStart(2,'0')+' over');
   if(label) label.textContent=timeText;
   if(miniTimer) miniTimer.textContent=timeText;
   renderTaskDetailTimerUI();
@@ -4033,13 +4107,13 @@ async function loadWeekOverview() {
   // Cards reach most of the way down the screen (min-height) without being forced to
   // literally fill it -- a light day's card still looks substantial, but doesn't stretch
   // into an oddly empty box the way a hard height:100% did.
-  body.innerHTML=`<div style="display:flex;gap:12px;overflow-x:auto;height:100%;-webkit-overflow-scrolling:touch">` +
+  body.innerHTML=`<div id="week-scroll-track" style="display:flex;gap:12px;overflow-x:auto;height:100%;-webkit-overflow-scrolling:touch">` +
     dates.map((d,i)=>{
       const dayTasks=results[i]?.data||[];
       const isToday=d.toDateString()===todayStr;
       const dayName=d.toLocaleDateString('en-US',{weekday:'short'});
       const dateStr=d.toISOString().split('T')[0];
-      return `<div class="rm-goal-card" style="min-width:260px;max-width:260px;flex-shrink:0;min-height:68%;max-height:100%;box-sizing:border-box;overflow-y:auto;cursor:pointer;${isToday?'border:1.5px solid var(--blue)':''}" onclick="jumpToDay('${dateStr}')">
+      return `<div class="rm-goal-card" data-date="${dateStr}" style="min-width:260px;max-width:260px;flex-shrink:0;min-height:68%;max-height:100%;box-sizing:border-box;overflow-y:auto;cursor:pointer;${isToday?'border:1.5px solid var(--blue)':''}" onclick="jumpToDay('${dateStr}')">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:${dayTasks.length?'12px':'0'}">
           <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:${isToday?'var(--blue)':'var(--text)'}">${dayName} ${d.getDate()}</div>
           ${isToday?'<span style="font-size:10px;color:var(--blue);background:rgba(91,164,220,.15);padding:2px 8px;border-radius:10px">TODAY</span>':''}
@@ -4048,6 +4122,13 @@ async function loadWeekOverview() {
         ${dayTasks.map(weekTaskChip).join('') || (isToday?'<div style="font-size:12px;color:var(--muted)">Nothing planned</div>':'')}
       </div>`;
     }).join('') + `</div>`;
+
+  // Opens scrolled to today's card instead of always the start of the week -- the whole
+  // point of a "week view" is seeing where you are right now, not re-scrolling past
+  // Monday every single time. Only auto-scrolls when today is actually in this week
+  // (S.weekAnchor may have been paged to a different week via shiftWeekAnchor).
+  const todayCard=body.querySelector(`[data-date="${new Date().toISOString().split('T')[0]}"]`);
+  if(todayCard) todayCard.scrollIntoView({inline:'start', block:'nearest'});
 }
 
 function shiftMonthAnchor(delta) {
@@ -4169,6 +4250,17 @@ function renderDailyTaskList(tasks) {
 function dailyTaskCard(t) {
   const pk=getPillarKey(t.pillar);
   const p=PILLARS[pk]||PILLARS.personal;
+  const isCompleted = t.status==='Completed';
+  // The whole point of a day view is reading top-to-bottom what's done vs. still ahead
+  // -- a completed card used to look identical to a pending one (just a small "✓ Done"
+  // in the meta line), so there was no way to scan the day at a glance. Struck-through
+  // name + dimmed + read-only (same treatment as the Completed To-Do tab's cards).
+  const isToday = S.dailyDate===new Date().toISOString().split('T')[0];
+  // "Doing now" only makes sense on today's list, and only for the exact task actually
+  // driving the Home CTA ring right now (manual override takes priority, same as
+  // applyCtaState's own logic) -- so this stays in sync with whatever the ring shows.
+  const isDoingNow = !isCompleted && isToday &&
+    (S.manualTaskOverride ? S.manualTaskOverride.taskId===t.taskId : S.currentTask?.taskId===t.taskId);
 
   // One-time "this is your first step" highlight, set by acceptPillarPlan() right after a
   // new goal is generated -- shown exactly once the first time this specific task actually
@@ -4206,19 +4298,25 @@ function dailyTaskCard(t) {
   // inferToolHint(), same as habits/routines already did) opens its exact tool on tap --
   // the same "everything you need for this task in one place" routing, not just for
   // Logging-kind and routine-kind tasks anymore.
-  const openCall = t.routineId ? `openDailyRoutineTask(${t.routineId},${t.taskId},${t.toolHint?`'${t.toolHint}'`:'null'},'${(t.name||'').replace(/'/g,"\\'")}')`
+  const openCall = isCompleted ? '' : t.routineId ? `openDailyRoutineTask(${t.routineId},${t.taskId},${t.toolHint?`'${t.toolHint}'`:'null'},'${(t.name||'').replace(/'/g,"\\'")}')`
     : isProject ? `openProjectDetail(${t.taskId},'daily')`
-    : (t.isAntiGoal && t.antiGoalType==='progressive' && t.status!=='Completed') ? `openLogAntiGoal(${t.taskId})`
-    : (t.taskType==='Logging' && t.status!=='Completed') ? `openDailyLoggingTask(${t.taskId})`
-    : (t.toolHint && t.status!=='Completed') ? `openDailyLoggingTask(${t.taskId})` : '';
-  return `<div class="sq-card"${openCall?` onclick="${openCall}"`:''}${isFirstStepHighlight?` style="border:1.5px solid ${p.color}"`:''}>
-    <div class="sq-icon" style="background:${p.color}22;color:${p.color}">${t.routineId?(t.toolHint?p.icon:'🔁'):(t.isAntiGoal?'🎯':p.emoji)}</div>
+    : (t.isAntiGoal && t.antiGoalType==='progressive') ? `openLogAntiGoal(${t.taskId})`
+    : (t.taskType==='Logging') ? `openDailyLoggingTask(${t.taskId})`
+    : t.toolHint ? `openDailyLoggingTask(${t.taskId})` : '';
+  const cardStyle = [
+    isFirstStepHighlight ? `border:1.5px solid ${p.color}` : '',
+    isDoingNow ? `border:1.5px solid ${p.color};background:${p.color}0f` : '',
+    isCompleted ? 'opacity:.55' : '',
+  ].filter(Boolean).join(';');
+  return `<div class="sq-card"${openCall?` onclick="${openCall}"`:''}${cardStyle?` style="${cardStyle}"`:''}>
+    <div class="sq-icon" style="background:${p.color}22;color:${p.color}">${isCompleted?'✅':t.routineId?(t.toolHint?p.icon:'🔁'):(t.isAntiGoal?'🎯':p.emoji)}</div>
     <div class="sq-info">
       ${isFirstStepHighlight?`<div style="font-size:10px;color:${p.color};font-weight:700;letter-spacing:.4px;margin-bottom:2px">🎯 YOUR FIRST STEP</div>`:''}
-      <div class="sq-name">${t.startTime?formatTimeOfDay(t.startTime)+' — ':''}${t.name}</div>
-      <div class="sq-meta">${goalLabel} · ${t.durationMinutes||0} min${t.status==='Completed'?' · ✓ Done':''}${t.wasSkipped&&t.status!=='Completed'?' · <span style="color:var(--blue)">⏭ moved to later today</span>':''}</div>
+      ${isDoingNow?`<div style="font-size:10px;color:${p.color};font-weight:700;letter-spacing:.4px;margin-bottom:2px">▶ DOING NOW</div>`:''}
+      <div class="sq-name"${isCompleted?' style="text-decoration:line-through"':''}>${t.startTime?formatTimeOfDay(t.startTime)+' — ':''}${t.name}</div>
+      <div class="sq-meta">${goalLabel} · ${t.durationMinutes||0} min${isCompleted?' · ✓ Done':''}${t.wasSkipped&&!isCompleted?' · <span style="color:var(--blue)">⏭ moved to later today</span>':''}</div>
     </div>
-    ${t.status==='Completed'||isProject?'':`<div style="display:flex;gap:4px">
+    ${isCompleted||isProject?'':`<div style="display:flex;gap:4px">
       <button class="icon-btn ghost" style="width:30px;height:30px;font-size:13px" onclick="event.stopPropagation();openRescheduleTask(${t.taskId})" title="Reschedule">↻</button>
       <button class="icon-btn ghost" style="width:30px;height:30px;font-size:13px" onclick="event.stopPropagation();skipDailyTask(${t.taskId})" title="Skip">⏭</button>
     </div>`}
@@ -5322,6 +5420,73 @@ async function saveEssentialAppsPrefs() {
   await req('PUT','/preferences/essential_apps',{preferredKeys:eaPreferredKeys});
   toast('Preferred apps saved ✓');
   openSettingsHub();
+}
+
+// ─── CUSTOM HOME BACKGROUND ───
+// Brand accent hues, same family as the pillar colors, rather than arbitrary art --
+// keeps a custom background feeling like part of this app rather than a random photo.
+const HOME_BG_PRESETS = [
+  {key:'sunrise',  label:'Sunrise',  css:'linear-gradient(160deg,#E07840,#C9A832)'},
+  {key:'ocean',    label:'Ocean',    css:'linear-gradient(160deg,#5BA4DC,#5A9460)'},
+  {key:'dusk',     label:'Dusk',     css:'linear-gradient(160deg,#8A70C0,#C46882)'},
+  {key:'forest',   label:'Forest',   css:'linear-gradient(160deg,#5A9460,#201E1B)'},
+  {key:'midnight', label:'Midnight', css:'linear-gradient(160deg,#0E0C0A,#181430)'},
+  {key:'blush',    label:'Blush',    css:'linear-gradient(160deg,#C46882,#E07840)'},
+];
+function renderHomeBackgroundPresets() {
+  document.getElementById('hb-preset-grid').innerHTML = HOME_BG_PRESETS.map(p=>`
+    <button type="button" style="height:64px;border-radius:12px;border:none;cursor:pointer;background:${p.css};position:relative" onclick="selectHomeBackgroundPreset('${p.key}')">
+      <span style="position:absolute;bottom:6px;left:8px;font-size:10px;font-weight:700;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.5)">${p.label}</span>
+    </button>`).join('');
+}
+async function selectHomeBackgroundPreset(key) {
+  const preset=HOME_BG_PRESETS.find(p=>p.key===key);
+  if(!preset) return;
+  await req('PUT','/preferences/home_background',{type:'preset',key,css:preset.css});
+  toast('Home background updated ✓');
+  applyHomeBackground();
+}
+async function uploadHomeBackgroundPhoto(file) {
+  if(!file) return;
+  const fd=new FormData();
+  fd.append('image',file);
+  const h={};
+  if(S.token) h['Authorization']='Bearer '+S.token;
+  toast('Uploading...');
+  const r=await fetch(API+'/home-background/upload',{method:'POST',headers:h,body:fd});
+  const data=await r.json().catch(()=>null);
+  if(!r.ok) { toast(data?.message||'Upload failed'); return; }
+  toast('Home background updated ✓');
+  applyHomeBackground();
+}
+async function resetHomeBackground() {
+  await req('PUT','/preferences/home_background',{type:'default'});
+  toast('Reset to default ✓');
+  applyHomeBackground();
+}
+// Called once at app entry (and after any change above) -- reads the saved preference
+// and applies it directly to #screen-home's own background, with a theme-matched scrim
+// so the ring/text stay legible over an arbitrary photo or gradient.
+async function applyHomeBackground() {
+  const pref=await req('GET','/preferences/home_background')||{};
+  const screen=document.getElementById('screen-home');
+  const scrim=document.getElementById('home-bg-scrim');
+  if(pref.type==='photo' && pref.url) {
+    screen.style.backgroundImage=`url('${pref.url}')`;
+    screen.style.backgroundSize='cover';
+    screen.style.backgroundPosition='center';
+  } else if(pref.type==='preset' && pref.css) {
+    screen.style.backgroundImage=pref.css;
+    screen.style.backgroundSize='';
+    screen.style.backgroundPosition='';
+  } else {
+    screen.style.backgroundImage='';
+    scrim.style.display='none';
+    return;
+  }
+  const theme=localStorage.getItem('ptw_theme')||'dark';
+  scrim.style.background = theme==='light' ? 'rgba(247,244,239,.55)' : 'rgba(14,12,10,.45)';
+  scrim.style.display='block';
 }
 
 // ════════════════════════════════════════

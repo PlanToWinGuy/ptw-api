@@ -132,13 +132,18 @@ CREATE TABLE IF NOT EXISTS tasks (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- actual_minutes_spent: real elapsed time at completion (manual-timer elapsed, or
+-- wall-clock time since scheduled start) -- captured so a future scheduling pass can
+-- compare against estimated_duration_minutes per user/pillar to tailor time estimates
+-- to how long things actually take this person.
 ALTER TABLE tasks
   ADD COLUMN IF NOT EXISTS start_time TIME,
   ADD COLUMN IF NOT EXISTS end_time TIME,
   ADD COLUMN IF NOT EXISTS routine_id INTEGER REFERENCES routines(id) ON DELETE SET NULL,
   ADD COLUMN IF NOT EXISTS parent_task_id INTEGER REFERENCES tasks(id) ON DELETE CASCADE,
   ADD COLUMN IF NOT EXISTS session_started_at TIMESTAMPTZ,
-  ADD COLUMN IF NOT EXISTS notes TEXT;
+  ADD COLUMN IF NOT EXISTS notes TEXT,
+  ADD COLUMN IF NOT EXISTS actual_minutes_spent INTEGER;
 
 CREATE TABLE IF NOT EXISTS side_quests (
   id SERIAL PRIMARY KEY,

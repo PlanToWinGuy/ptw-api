@@ -44,31 +44,47 @@ const CATALOG = {
 };
 
 const APPS_BY_PILLAR = {
-  Work:      ['mail', 'calendar', 'notes', 'slack', 'zoom'],
-  Fitness:   ['spotify', 'scan_food', 'health', 'strava'],
-  Diet:      ['scan_food', 'notes', 'spotify'],
-  Finances:  ['notes', 'calculator'],
-  Relations: ['mail', 'calendar', 'whatsapp'],
-  Personal:  ['notes', 'spotify', 'duolingo'],
+  Work:      ['mail', 'calendar', 'notes', 'slack', 'zoom', 'whatsapp'],
+  Fitness:   ['spotify', 'scan_food', 'health', 'strava', 'podcasts', 'youtube'],
+  Diet:      ['scan_food', 'notes', 'spotify', 'health', 'calculator'],
+  Finances:  ['notes', 'calculator', 'mail', 'calendar'],
+  Relations: ['mail', 'calendar', 'whatsapp', 'notes', 'zoom'],
+  Personal:  ['notes', 'spotify', 'duolingo', 'kindle', 'audible', 'brilliant', 'podcasts'],
 };
-const DEFAULT_KEYS = ['mail', 'calendar', 'notes', 'spotify'];
+const DEFAULT_KEYS = ['mail', 'calendar', 'notes', 'spotify', 'calculator', 'whatsapp'];
 // The "nothing scheduled right now" fallback (no AI key configured) -- a real mix of
 // entertainment + skill-building instead of the task-context utility defaults above,
 // since idle time isn't well served by "here's your Mail app again."
-const IDLE_KEYS = ['duolingo', 'youtube', 'spotify', 'kindle'];
+const IDLE_KEYS = ['duolingo', 'youtube', 'spotify', 'kindle', 'netflix', 'podcasts', 'brilliant', 'audible'];
 
 // tool_hint-level overrides layered on top of the pillar list, for the cases where the
 // specific task matters more than the pillar overall (a meal-logging task always wants
 // Scan Food first regardless of pillar; a workout wants music+health, not the Diet set).
 const APPS_BY_TOOL_HINT = {
-  meal:    ['scan_food', 'notes'],
-  workout: ['spotify', 'health', 'strava'],
-  weight:  ['health'],
-  transaction: ['calculator', 'notes'],
+  meal:    ['scan_food', 'notes', 'spotify'],
+  workout: ['spotify', 'health', 'strava', 'podcasts'],
+  weight:  ['health', 'notes'],
+  transaction: ['calculator', 'notes', 'mail'],
 };
 
 function resolveApps(keys) {
   return keys.map(k => CATALOG[k]).filter(Boolean);
+}
+
+const ALL_CATALOG_KEYS = Object.keys(CATALOG);
+// A curated context list is often short (2-6 real fits) -- pad it out with the rest of
+// the catalog so the drawer never feels thin, capped so it never becomes an unscannable
+// wall either. "Show as many as possible, average around 6" per the founder's ask.
+function padKeys(keys, min = 6, max = 12) {
+  const deduped = [...new Set(keys)];
+  const result = deduped.slice(0, max);
+  if (result.length < min) {
+    for (const k of ALL_CATALOG_KEYS) {
+      if (result.length >= min) break;
+      if (!result.includes(k)) result.push(k);
+    }
+  }
+  return result.slice(0, max);
 }
 
 // A PWA has no API to see what's actually installed on the device, so "aware of apps
@@ -90,12 +106,12 @@ function prioritize(keys, preferredKeys) {
 }
 
 const APPS_BY_BREAK = {
-  bathroom:     ['duolingo', 'podcasts'],
-  snack:        ['spotify', 'podcasts', 'scan_food'],
-  stretch:      ['spotify'],
-  walk:         ['spotify', 'podcasts'],
-  mental_reset: ['notes'],
-  free_time:    ['duolingo', 'mail', 'notes'],
+  bathroom:     ['duolingo', 'podcasts', 'brilliant', 'kindle'],
+  snack:        ['spotify', 'podcasts', 'scan_food', 'youtube'],
+  stretch:      ['spotify', 'health', 'strava'],
+  walk:         ['spotify', 'podcasts', 'health', 'strava'],
+  mental_reset: ['notes', 'spotify', 'duolingo'],
+  free_time:    ['duolingo', 'mail', 'notes', 'youtube', 'netflix', 'kindle'],
 };
 const HABIT_STACK_HINT = {
   bathroom:     'A quick Duolingo lesson pairs well with a bathroom break.',
@@ -104,7 +120,7 @@ const HABIT_STACK_HINT = {
   free_time:    'One Duolingo lesson beats another scroll.',
 };
 
-const SUGGEST_SYSTEM = `You suggest 4 tools from a fixed catalog for someone opening a general "quick tools" drawer in a life-coaching app, with no specific task selected. Pick tools genuinely useful for their current moment (time of day, what's next on their schedule) -- not random. If nothing is currently scheduled (genuine free/idle time), favor a real mix of entertainment and skill-building tools over plain utilities like Mail or Calendar, so downtime feels enriching rather than filler. If the person has told you which apps they actually use/prefer, weight picks toward those first. Return ONLY JSON: {"picks": [{"key": "<catalog key>", "reason": "<max 10 words, why this one right now>"}]}. Pick exactly 4, all keys must come from the provided catalog list, never invent a key.`;
+const SUGGEST_SYSTEM = `You suggest tools from a fixed catalog for someone opening a general "quick tools" drawer in a life-coaching app, with no specific task selected. Pick tools genuinely useful for their current moment (time of day, what's next on their schedule) -- not random, and don't force in a bad fit just to hit a number. If nothing is currently scheduled (genuine free/idle time), favor a real mix of entertainment and skill-building tools over plain utilities like Mail or Calendar, so downtime feels enriching rather than filler. If the person has told you which apps they actually use/prefer, weight picks toward those first. Return ONLY JSON: {"picks": [{"key": "<catalog key>", "reason": "<max 10 words, why this one right now>"}]}. Pick between 6 and 10 tools (never fewer than 6, never more than 10), all keys must come from the provided catalog list, never invent a key.`;
 
 async function aiSuggest(catalogKeys, hour, nextTaskDesc, preferredKeys) {
   const key = process.env.ANTHROPIC_API_KEY;
@@ -115,7 +131,7 @@ async function aiSuggest(catalogKeys, hour, nextTaskDesc, preferredKeys) {
       headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 300,
+        max_tokens: 600,
         temperature: 0.4,
         system: SUGGEST_SYSTEM,
         messages: [{ role: 'user', content:
@@ -160,7 +176,7 @@ export default async function handler(req, res) {
   const preferredKeys = await getPreferredKeys(sql, user.id);
 
   if (breakType) {
-    const keys = prioritize(APPS_BY_BREAK[breakType] || DEFAULT_KEYS, preferredKeys);
+    const keys = padKeys(prioritize(APPS_BY_BREAK[breakType] || DEFAULT_KEYS, preferredKeys));
     return res.status(200).json({ apps: resolveApps(keys), habitStack: HABIT_STACK_HINT[breakType] || null });
   }
 
@@ -168,7 +184,7 @@ export default async function handler(req, res) {
     const rows = await sql`SELECT * FROM tasks WHERE id = ${taskId} AND user_id = ${user.id}`;
     const task = rows[0];
     const pillarName = task ? PILLARS[task.pillar_id] : null;
-    const keys = prioritize((task?.tool_hint && APPS_BY_TOOL_HINT[task.tool_hint]) || APPS_BY_PILLAR[pillarName] || DEFAULT_KEYS, preferredKeys);
+    const keys = padKeys(prioritize((task?.tool_hint && APPS_BY_TOOL_HINT[task.tool_hint]) || APPS_BY_PILLAR[pillarName] || DEFAULT_KEYS, preferredKeys));
     return res.status(200).json({ apps: resolveApps(keys), habitStack: null });
   }
 
@@ -192,5 +208,5 @@ export default async function handler(req, res) {
   const suggested = await aiSuggest(Object.keys(CATALOG), hour, nextTaskDesc, preferredKeys);
   if (suggested && suggested.length) return res.status(200).json({ apps: suggested, habitStack: null, aiSuggested: true });
 
-  return res.status(200).json({ apps: resolveApps(prioritize(IDLE_KEYS, preferredKeys)), habitStack: null });
+  return res.status(200).json({ apps: resolveApps(padKeys(prioritize(IDLE_KEYS, preferredKeys))), habitStack: null });
 }
