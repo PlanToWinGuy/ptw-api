@@ -42,10 +42,22 @@ export default async function handler(req, res) {
   const longestCurrentRaw = activeRaw.reduce((best, s) => (!best || s.length > best.length) ? s : best, null);
   const longestEverRaw = namedRuns.reduce((best, s) => (s.longestEver && (!best || s.longestEver.length > best.length)) ? { name: s.name, length: s.longestEver.length } : best, null);
 
+  // Streak Save tokens (2.6.3): bank of 2 per pillar, earned weekly at 90%+ completion,
+  // spent automatically (via lib/streakTokens.js's reconcileStreakTokens, called from
+  // /api/user-projects) whenever a day's completion falls below the 50% auto-save
+  // threshold. save_used_dates lets the UI badge exactly which past days were covered by
+  // a token rather than genuine full completion.
+  const tokenBank = user.streak_save_tokens || {};
+  const streak_save_tokens = { count: tokenBank[pillarKey] || 0, max: 2 };
+  const saveRows = await sql`SELECT save_date FROM streak_saves WHERE user_id = ${user.id} AND pillar_id = ${pillar_id} ORDER BY save_date DESC`;
+  const save_used_dates = saveRows.map(r => dateStr(r.save_date));
+
   res.status(200).json({
     longest_current_streak: longestCurrentRaw ? { name: longestCurrentRaw.name, length: fmtDays(longestCurrentRaw.length) } : null,
     longest_ever_streak: longestEverRaw ? { name: longestEverRaw.name, length: fmtDays(longestEverRaw.length) } : null,
     active_streaks: activeRaw.map(s => ({ name: s.name, start_date: s.start_date, current_length: fmtDays(s.length) })),
     past_streaks: pastRaw.map(s => ({ name: s.name, start_date: s.start_date, end_date: s.end_date, final_length: fmtDays(s.length) })),
+    streak_save_tokens,
+    save_used_dates,
   });
 }

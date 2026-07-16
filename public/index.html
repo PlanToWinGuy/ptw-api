@@ -188,8 +188,15 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
 @keyframes ctaPulse{0%,100%{box-shadow:0 0 0 0 rgba(91,164,220,0)}50%{box-shadow:0 0 0 20px rgba(91,164,220,.07)}}
 .cta-inner{display:flex;flex-direction:column;align-items:center;gap:6px;padding:0 20px}
 .cta-name{font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:var(--text);text-align:center;line-height:1.3;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+/* The task's real scheduled slot (e.g. "3:00 - 3:30 PM") -- every task has one now
+   (auto-slotted by priority if not given an explicit time), so it's always shown, not
+   just when there's nothing else to say. Sits above the live countdown, not instead
+   of it, so you can see both what was planned and how much time is actually left. */
+.cta-time-range{font-size:11px;font-weight:600;color:var(--stone);letter-spacing:.3px}
 .cta-glyph{font-size:24px;color:var(--stone);line-height:1}
-.cta-timer-label{font-size:12px;font-weight:700;color:var(--stone);letter-spacing:.3px;margin-top:2px}
+/* Two sizes up from the old 12px, and near-white instead of the muted stone tone --
+   this is the number the user actually glances at most, it should read instantly. */
+.cta-timer-label{font-size:20px;font-weight:800;color:#F5F2EC;letter-spacing:.3px;margin-top:2px}
 #cta-timer-arc{transition:stroke-dashoffset 1s linear,stroke .4s ease}
 .cta-btns{display:flex;gap:20px;margin-top:14px}
 .cta-micro{
@@ -403,15 +410,13 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
    whatever screen was already open (usually Home) rather than replacing it, so
    the rest of the app dims underneath instead of going fully dark/dead.
 ══════════════════════════════════ */
-/* Fully opaque -- nothing else on screen should be visible, only the ring itself (see
-   enterFocusMode(), which positions .focus-ring at the exact on-screen coordinates of the
-   real #cta-ring so it doesn't shift position when Focus Mode opens). */
+/* Fully opaque -- nothing else on screen should be visible. enterFocusMode() moves the
+   REAL #cta-ring element into this overlay (not a separate lookalike) so its pillar
+   color, fade-as-time-runs-out, and timer arc are pixel-identical to Home -- a copy
+   could drift out of sync with any future ring change, the real element can't. */
 #focus-overlay{position:fixed;inset:0;z-index:300;background:#000;display:none}
 #focus-overlay.open{display:block}
-.focus-ring{position:absolute;border-radius:50%;background:var(--bg3);border:2.5px solid var(--blue);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:0 24px;text-align:center;pointer-events:none;filter:brightness(.8)}
-.focus-ring #focus-label{font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:var(--text);line-height:1.3}
-.focus-ring #focus-mini-timer{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--blue);margin-top:2px;min-height:16px}
-.focus-ring .focus-exit-hint{font-size:10px;color:var(--stone);letter-spacing:.3px;margin-top:10px}
+#focus-overlay .focus-exit-hint{position:absolute;left:0;font-size:10px;color:var(--stone);letter-spacing:.3px;text-align:center;width:100%}
 .modal{
   background:var(--bg2);border-radius:20px 20px 0 0;
   padding:24px 20px calc(24px + var(--sb));
@@ -660,10 +665,15 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
       <button class="icon-btn" onclick="openNotifications()">🔔</button>
       <button class="icon-btn" onclick="openBreak()">☕</button>
     </div>
-    <div class="ptw-badge" onclick="openAIChat()"><svg width="34" height="34" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"><g transform="translate(38,77) scale(2)"><text x="0" y="17" font-family="Syne,sans-serif" font-weight="800" font-size="17" fill="#F2EDE6">PT</text><polyline points="43,2 47.5,19 52.5,7 57.5,19 62,2" fill="none" stroke="#F2EDE6" stroke-width="3.6" stroke-linejoin="miter" stroke-linecap="butt"/><polyline points="52.5,7 57.5,19 62,2" fill="none" stroke="#5BA4DC" stroke-width="3.6" stroke-linejoin="miter" stroke-linecap="butt"/></g></svg></div>
-    <!-- Profile is swipe-only (swipe right from Home) -- this corner is Settings, not a
-         second entry point into Profile. -->
-    <button class="icon-btn" onclick="openSettings()" title="Settings">⚙️</button>
+    <!-- Always-visible, always-on-time clock -- 70% opacity so it reads as ambient
+         info, not a competing focal point against the task name below it. -->
+    <div id="home-clock" style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text);opacity:.7;letter-spacing:.5px">--:--</div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <div class="ptw-badge" onclick="openAIChat()"><svg width="34" height="34" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"><g transform="translate(38,77) scale(2)"><text x="0" y="17" font-family="Syne,sans-serif" font-weight="800" font-size="17" fill="#F2EDE6">PT</text><polyline points="43,2 47.5,19 52.5,7 57.5,19 62,2" fill="none" stroke="#F2EDE6" stroke-width="3.6" stroke-linejoin="miter" stroke-linecap="butt"/><polyline points="52.5,7 57.5,19 62,2" fill="none" stroke="#5BA4DC" stroke-width="3.6" stroke-linejoin="miter" stroke-linecap="butt"/></g></svg></div>
+      <!-- Profile is swipe-only (swipe right from Home) -- this corner is Settings, not a
+           second entry point into Profile. -->
+      <button class="icon-btn" onclick="openSettings()" title="Settings">⚙️</button>
+    </div>
   </div>
 
   <div class="home-body">
@@ -678,6 +688,7 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
       </svg>
       <div class="cta-inner">
         <div class="cta-name" id="cta-label">Loading...</div>
+        <div class="cta-time-range" id="cta-time-range"></div>
         <div class="cta-glyph" id="cta-glyph">∞</div>
         <div class="cta-timer-label" id="cta-timer-label" style="display:none"></div>
       </div>
@@ -1132,11 +1143,8 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
      for that; this keeps the tab awake via Wake Lock while it's in the foreground.)
 ══════════════════════════════════ -->
 <div id="focus-overlay" onclick="exitFocusMode()">
-  <div class="focus-ring">
-    <div id="focus-label">—</div>
-    <div id="focus-mini-timer"></div>
-    <div class="focus-exit-hint">tap to exit</div>
-  </div>
+  <!-- #cta-ring gets moved in here by enterFocusMode() and back out by exitFocusMode() -->
+  <div class="focus-exit-hint" id="focus-exit-hint">tap to exit</div>
 </div>
 
 <!-- ══════════════════════════════════
@@ -1703,9 +1711,10 @@ body{font-family:'Inter',sans-serif;color:#E8E2D9;overscroll-behavior:none}
         <button class="pg-btn" style="background:var(--bg4)" data-priority="Urgent" onclick="selTaskPriority(this)">Urgent</button>
       </div>
     </div>
-    <div class="field"><label>PILLAR</label>
-      <div class="pillar-grid" id="task-pillar-grid">
-        <button class="pg-btn sel" style="background:var(--fitness)" data-p="fitness" onclick="selPillar(this,'task-pillar-grid')">Fitness</button>
+    <div class="field"><label>PILLAR (OPTIONAL)</label>
+      <div class="pillar-grid" id="task-pillar-grid" style="grid-template-columns:repeat(4,1fr)">
+        <button class="pg-btn sel" style="background:var(--bg4)" data-p="" onclick="selPillar(this,'task-pillar-grid')">—</button>
+        <button class="pg-btn" style="background:var(--fitness)" data-p="fitness" onclick="selPillar(this,'task-pillar-grid')">Fitness</button>
         <button class="pg-btn" style="background:var(--diet)" data-p="diet" onclick="selPillar(this,'task-pillar-grid')">Diet</button>
         <button class="pg-btn" style="background:var(--finances)" data-p="finances" onclick="selPillar(this,'task-pillar-grid')">Finances</button>
         <button class="pg-btn" style="background:var(--relations)" data-p="relations" onclick="selPillar(this,'task-pillar-grid')">Relations</button>
@@ -3450,24 +3459,44 @@ function finishPillarActivation() { enterApp(); }
 let wakeLock=null, ctaLongPressFired=false;
 
 async function enterFocusMode() {
-  document.getElementById('focus-label').textContent = document.getElementById('cta-label').textContent || 'Focus';
-  // Position the overlay's ring at the real CTA ring's exact on-screen coordinates (not
-  // flex-centered in the viewport) -- the two containers aren't the same height (.home-body
-  // excludes the top bar), so centering in each independently would visibly shift the ring
-  // the instant Focus Mode opens. Captured fresh every time in case of resize/rotation.
+  // Moves the REAL #cta-ring element into the overlay (not a separate lookalike) --
+  // its pillar color, the fade-toward-faint effect on a manually-started task, and the
+  // timer arc are then guaranteed pixel-identical to Home, since it's literally the
+  // same DOM node running the same setInterval-driven updates, not a second copy that
+  // could ever drift out of sync. Positioned at its own real on-screen coordinates
+  // first (captured before the move, since .home-body and the overlay aren't the same
+  // height) so it doesn't visibly jump the instant Focus Mode opens.
   const realRing=document.getElementById('cta-ring');
   const rect=realRing.getBoundingClientRect();
-  const focusRing=document.querySelector('.focus-ring');
-  focusRing.style.top=rect.top+'px';
-  focusRing.style.left=rect.left+'px';
-  focusRing.style.width=rect.width+'px';
-  focusRing.style.height=rect.height+'px';
+  realRing.style.position='fixed';
+  realRing.style.top=rect.top+'px';
+  realRing.style.left=rect.left+'px';
+  realRing.style.margin='0';
+  realRing.style.filter='brightness(.85)';
+  // pointer-events:none so any tap (including on the ring's own ✓/✏ micro-buttons)
+  // falls through to the overlay's exitFocusMode() -- Focus Mode is look-only, tapping
+  // anywhere should just exit it, never trigger the ring's normal actions.
+  realRing.style.pointerEvents='none';
+  realRing.dataset.focusMode='1';
+  document.getElementById('focus-overlay').appendChild(realRing);
+
+  const rect2=realRing.getBoundingClientRect();
+  document.getElementById('focus-exit-hint').style.top=(rect2.bottom+14)+'px';
+
   document.getElementById('focus-overlay').classList.add('open');
   try { if('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch(e) {}
-  updateCtaTimerRing(); // populate the mini timer immediately instead of waiting for the next tick
+  updateCtaTimerRing(); // keeps the timer arc/label current the instant Focus Mode opens
 }
 function exitFocusMode() {
   if(wakeLock) { wakeLock.release().catch(()=>{}); wakeLock=null; }
+  const realRing=document.getElementById('cta-ring');
+  if(realRing.dataset.focusMode) {
+    realRing.style.position=''; realRing.style.top=''; realRing.style.left='';
+    realRing.style.margin=''; realRing.style.filter=''; realRing.style.pointerEvents='';
+    delete realRing.dataset.focusMode;
+    const homeBody=document.querySelector('.home-body');
+    homeBody.insertBefore(realRing, homeBody.firstChild); // its original position
+  }
   document.getElementById('focus-overlay').classList.remove('open');
 }
 function handleCtaClick() {
@@ -3484,15 +3513,19 @@ const CTA_RING_CIRCUMFERENCE=634.6;
 function updateCtaTimerRing() {
   const svg=document.getElementById('cta-timer-svg');
   const label=document.getElementById('cta-timer-label');
+  const timeRangeEl=document.getElementById('cta-time-range');
   const miniTimer=document.getElementById('focus-mini-timer');
   const homeScreen=document.getElementById('screen-home');
-  // A manually-started task counts down for real (elapsed vs. its own duration) instead
-  // of showing a scheduled time range -- there is no "start time" to display, since the
-  // whole point is the user started it themselves, right now, regardless of the calendar.
-  if(S.manualTaskOverride) { updateManualTaskCountdown(homeScreen, svg, label, miniTimer); return; }
+  // A manually-started task still shows its real scheduled slot (every task has one
+  // now, auto-slotted if not given an explicit time) -- it just counts down real
+  // elapsed-vs-duration time underneath it instead of time-until-the-schedule-ends,
+  // since the whole point of starting it manually is doing it right now regardless of
+  // when the calendar says it was supposed to happen.
+  if(S.manualTaskOverride) { updateManualTaskCountdown(homeScreen, svg, label, miniTimer, timeRangeEl); return; }
   if(!homeScreen || !homeScreen.classList.contains('active') || !S.currentTask?.startTime) {
     if(svg) svg.style.display='none';
     if(label) label.style.display='none';
+    if(timeRangeEl) timeRangeEl.textContent='';
     if(miniTimer) miniTimer.textContent='';
     return;
   }
@@ -3509,27 +3542,46 @@ function updateCtaTimerRing() {
   }
   const totalMs=end-start;
   const timeRangeText=t.endTime?(formatTimeOfDay(t.startTime)+' - '+formatTimeOfDay(t.endTime)):formatTimeOfDay(t.startTime);
+  if(timeRangeEl) timeRangeEl.textContent=timeRangeText;
   if(totalMs<=0) { svg.style.display='none'; label.style.display='block'; label.textContent=timeRangeText; if(miniTimer) miniTimer.textContent=timeRangeText; return; }
 
   const arc=document.getElementById('cta-timer-arc');
   arc.style.opacity='1'; // a manual task's fade-out effect must not leak into the scheduled ring
-  label.textContent=timeRangeText;
+  let countdownText;
   if(now<start) {
     arc.style.strokeDashoffset='0';
     arc.style.stroke='var(--blue)';
+    const untilStartMs=start-now;
+    const mm=Math.floor(untilStartMs/60000), sec=Math.floor((untilStartMs%60000)/1000);
+    countdownText='Starts in '+mm+':'+String(sec).padStart(2,'0');
   } else if(now>=end) {
     arc.style.strokeDashoffset=String(CTA_RING_CIRCUMFERENCE);
     arc.style.stroke='#C46882';
+    countdownText="Time's up";
   } else {
     const frac=(end-now)/totalMs;
     arc.style.strokeDashoffset=String(CTA_RING_CIRCUMFERENCE*(1-frac));
     arc.style.stroke = frac>0.5?'#5A9460':frac>0.2?'#C9A832':'#C46882';
+    const remainMs=end-now;
+    const mm=Math.floor(remainMs/60000), sec=Math.floor((remainMs%60000)/1000);
+    countdownText=mm+':'+String(sec).padStart(2,'0');
   }
+  label.textContent=countdownText;
   svg.style.display='block';
   label.style.display='block';
-  if(miniTimer) miniTimer.textContent=label.textContent;
+  if(miniTimer) miniTimer.textContent=countdownText;
 }
 setInterval(updateCtaTimerRing, 1000);
+
+// Persistent Home top-bar clock -- always current regardless of what's happening in
+// the ring below it, so there's always a real answer to "what time is it right now"
+// even mid-Focus-Mode or between tasks.
+function updateHomeClock() {
+  const el=document.getElementById('home-clock');
+  if(el) el.textContent=new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+}
+setInterval(updateHomeClock, 1000);
+updateHomeClock();
 
 // ════════════════════════════════════════
 // MANUAL "START" TASK -- forces a task (usually from Task Detail) into the Home CTA
@@ -3541,6 +3593,10 @@ function startManualTask(task) {
   S.manualTaskOverride = {
     taskId: task.id, name: task.name, pillar: task.pillar_name||task.pillar_id,
     durationMinutes: task.estimated_duration_minutes||task.durationMinutes||20,
+    // The task's own real scheduled slot -- Starting it manually changes what the ring
+    // counts down (real elapsed time from right now), it doesn't erase when it was
+    // actually supposed to happen, which still shows as its own line above the countdown.
+    startTime: task.start_time||task.startTime||null, endTime: task.end_time||task.endTime||null,
     elapsedMs: 0, running: true, lastResumeAt: Date.now(),
   };
   applyCtaState();
@@ -3576,7 +3632,7 @@ function renderManualTaskCta() {
   S.currentTask={taskId:m.taskId, name:m.name, pillar:m.pillar};
   updateCtaTimerRing();
 }
-function updateManualTaskCountdown(homeScreen, svg, label, miniTimer) {
+function updateManualTaskCountdown(homeScreen, svg, label, miniTimer, timeRangeEl) {
   const m=S.manualTaskOverride;
   const totalMs=m.durationMinutes*60000;
   const elapsed=m.elapsedMs+(m.running?Date.now()-m.lastResumeAt:0);
@@ -3588,6 +3644,7 @@ function updateManualTaskCountdown(homeScreen, svg, label, miniTimer) {
     renderTaskDetailTimerUI();
     return;
   }
+  if(timeRangeEl) timeRangeEl.textContent = m.startTime ? (m.endTime?(formatTimeOfDay(m.startTime)+' - '+formatTimeOfDay(m.endTime)):formatTimeOfDay(m.startTime)) : '';
   const frac=remaining/totalMs;
   const onHome=homeScreen && homeScreen.classList.contains('active');
   if(svg) svg.style.display=onHome?'block':'none';
@@ -8516,8 +8573,18 @@ async function renderStreaksTab(pillarKey) {
   const data=await req('GET','/streaks?pillar='+pillarKey);
   const lc=data?.longest_current_streak, le=data?.longest_ever_streak;
   const active=data?.active_streaks||[], past=data?.past_streaks||[];
+  const tokens=data?.streak_save_tokens||{count:0,max:2};
+  const savedDates=new Set(data?.save_used_dates||[]);
   const fmtDate=d=>new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+  const rangeHasSave=(startStr,endStr)=>{ for(const d of savedDates){ if(d>=startStr && d<=endStr) return true; } return false; };
   body.innerHTML = `
+    <div class="rm-goal-card" style="margin-bottom:14px;display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <div style="font-size:11px;color:var(--stone);letter-spacing:.3px">💾 STREAK SAVE TOKENS</div>
+        <div style="font-size:11px;color:var(--stone);margin-top:2px">Earned weekly at 90%+ completion</div>
+      </div>
+      <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:20px;color:var(--text)">${tokens.count}<span style="color:var(--stone);font-size:13px;font-weight:600">/${tokens.max}</span></div>
+    </div>
     <div class="rm-goal-card" style="margin-bottom:14px">
       <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--stone);margin-bottom:6px"><span>Longest Current</span><span style="color:var(--text);font-weight:600">${lc?`${lc.name}: ${lc.length} 🔥`:'—'}</span></div>
       <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--stone)"><span>Longest Ever</span><span style="color:var(--text);font-weight:600">${le?`${le.name}: ${le.length}`:'—'}</span></div>
@@ -8527,14 +8594,14 @@ async function renderStreaksTab(pillarKey) {
       <div class="rm-goal-card" style="margin-bottom:8px">
         <div style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text)">${s.name}</div>
         <div style="font-size:11px;color:var(--stone);margin:4px 0">Started: ${fmtDate(s.start_date)} — Ongoing</div>
-        <div style="font-size:12px;color:var(--fitness)">Current Length: ${s.current_length}</div>
+        <div style="font-size:12px;color:var(--fitness)">Current Length: ${s.current_length}${rangeHasSave(s.start_date,new Date().toISOString().split('T')[0])?' &nbsp;<span style="color:var(--stone)">💾 Save Used</span>':''}</div>
       </div>`).join('') : `<div class="empty"><div class="empty-text">No active streaks right now.</div></div>`}
     <div class="section-title" style="margin-top:16px">Past Streaks</div>
     ${past.length ? past.map(s=>`
       <div class="rm-goal-card" style="margin-bottom:8px">
         <div style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text)">${s.name}</div>
         <div style="font-size:11px;color:var(--stone);margin:4px 0">${fmtDate(s.start_date)} - ${fmtDate(s.end_date)}</div>
-        <div style="font-size:12px;color:var(--stone)">Final Length: ${s.final_length}</div>
+        <div style="font-size:12px;color:var(--stone)">Final Length: ${s.final_length}${rangeHasSave(s.start_date,s.end_date)?' &nbsp;💾 Save Used':''}</div>
       </div>`).join('') : `<div class="empty"><div class="empty-text">No past streaks yet.</div></div>`}`;
 }
 
@@ -8578,11 +8645,11 @@ function openAddTask() {
   document.getElementById('t-dur').value='30';
   document.getElementById('t-due-date').value=new Date().toISOString().split('T')[0];
   document.getElementById('t-due-time').value='';
-  resetTaskModalGrid('task-pillar-grid','p','fitness',true);
+  resetTaskModalGrid('task-pillar-grid','p','',true);
   resetTaskModalGrid('task-icon-grid','icon','',true);
   resetTaskModalGrid('task-color-grid','color','',true);
   resetTaskModalGrid('task-priority-grid','priority','Medium',true);
-  S.taskPillar='fitness'; S.taskIcon=''; S.taskColor=''; S.taskPriority='Medium';
+  S.taskPillar=''; S.taskIcon=''; S.taskColor=''; S.taskPriority='Medium';
   // Repeat is only offered on creation -- converting an existing task into a routine
   // mid-edit raises questions (what happens to the original task/its history?) that are
   // out of scope for a simple "make new things repeat" toggle.
@@ -8605,7 +8672,11 @@ function openEditTask(task) {
   document.getElementById('t-dur').value=task.estimated_duration_minutes||'';
   document.getElementById('t-due-date').value=task.due_date?task.due_date.split('T')[0]:'';
   document.getElementById('t-due-time').value=task.start_time?task.start_time.slice(0,5):'';
-  const pk=getPillarKey(task.pillar_name||task.pillar_id);
+  // getPillarKey always falls back to 'personal' even for a genuinely pillar-less task
+  // (that fallback exists for display contexts that need SOME pillar to color/icon by) --
+  // here it would wrongly pre-select Personal instead of "—" for a task that was
+  // actually created with no pillar at all.
+  const pk=(task.pillar_name||task.pillar_id)?getPillarKey(task.pillar_name||task.pillar_id):'';
   resetTaskModalGrid('task-pillar-grid','p',pk,true);
   resetTaskModalGrid('task-icon-grid','icon',task.icon||'',true);
   resetTaskModalGrid('task-color-grid','color',task.color||'',true);
@@ -8660,7 +8731,10 @@ async function submitTask() {
   const due_date=document.getElementById('t-due-date').value||null;
   const due_time=document.getElementById('t-due-time').value||null;
   if(!name){toast('Enter a task name');return;}
-  const p=PILLARS[S.taskPillar]||PILLARS.personal;
+  // Pillar is optional now -- a manually-added task doesn't have to belong to one of
+  // the six pillars (a plain personal errand shouldn't be forced into a category it
+  // doesn't fit). S.taskPillar is '' when the "—" option is selected.
+  const p=S.taskPillar ? (PILLARS[S.taskPillar]||null) : null;
 
   // Repeat toggle creates a real Routine instead of a one-off task -- same fields
   // (name/duration/icon/pillar), just reshaped into a routine's single-step + schedule
@@ -8672,7 +8746,7 @@ async function submitTask() {
     if(!selectedDays.length){toast('Pick at least one day to repeat on');return;}
     const days = selectedDays.length===7 ? [] : selectedDays;
     const data=await req('POST','/routines',{
-      name, icon:S.taskIcon||null, category:p.label, isActive:true, notes:description||null,
+      name, icon:S.taskIcon||null, category:p?.label||'General', isActive:true, notes:description||null,
       steps:[{name, durationMinutes:dur}], schedule:{days, time:due_time},
     });
     if(!data || data.errors){ toast(data?.message||'Could not create routine — try again'); return; }
@@ -8680,12 +8754,11 @@ async function submitTask() {
     closeModal('modal-task');
     document.getElementById('t-name').value='';
     loadHomeData();
-    if(S.activePillar) loadPillarMap(S.activePillar);
     if(document.getElementById('screen-todo-routines').classList.contains('active')) switchTodoRoutinesTab('routines');
     return;
   }
 
-  const payload={name,pillar_id:p.id,estimatedDurationMinutes:dur,priority,description,icon:S.taskIcon||null,color:S.taskColor||null,due_date,due_time};
+  const payload={name,pillar_id:p?.id||null,estimatedDurationMinutes:dur,priority,description,icon:S.taskIcon||null,color:S.taskColor||null,due_date,due_time};
   // 🔌 API: POST /api/simple-tasks (or PUT /api/simple-tasks/:id when editing)
   // The live API validates on estimatedDurationMinutes (camelCase) despite returning
   // estimated_duration_minutes (snake_case) — confirmed live, contract mismatch vs. the handoff doc.
@@ -8702,7 +8775,9 @@ async function submitTask() {
   document.getElementById('t-name').value='';
   S.editingTaskId=null;
   loadHomeData();
-  if(S.activePillar) loadPillarMap(S.activePillar);
+  // Was also eagerly refreshing S.activePillar's map content in the background here --
+  // that pillar refetches its own data via showPillarScreen()/loadPillarMap() the next
+  // real time it's visited anyway, so this was pure unnecessary risk for zero benefit.
   if(document.getElementById('screen-todo-routines').classList.contains('active') && S.todoRoutinesTab==='todo') switchTodoRoutinesTab('todo');
 }
 

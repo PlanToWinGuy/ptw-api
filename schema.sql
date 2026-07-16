@@ -42,7 +42,23 @@ CREATE TABLE IF NOT EXISTS users (
 -- matters for a fresh install; this is what actually mutates the deployed DB).
 ALTER TABLE users
   ADD COLUMN IF NOT EXISTS sleep_quality TEXT,
-  ADD COLUMN IF NOT EXISTS stress_level TEXT;
+  ADD COLUMN IF NOT EXISTS stress_level TEXT,
+  ADD COLUMN IF NOT EXISTS streak_save_tokens JSONB NOT NULL DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS streak_tokens_checked_through DATE;
+
+-- Per-pillar "Streak Save" token bank (2.6.3): streak_save_tokens is keyed by lowercase
+-- pillar name (e.g. {"fitness":2}), reconciled lazily -- see lib/streakTokens.js.
+-- streak_tokens_checked_through is the rolling cursor up through which that
+-- reconciliation has already run, so a user who skips days still gets fully caught up
+-- the next time they open the app instead of losing evaluation windows.
+CREATE TABLE IF NOT EXISTS streak_saves (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  pillar_id INTEGER NOT NULL REFERENCES pillars(id),
+  save_date DATE NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(user_id, pillar_id, save_date)
+);
 
 CREATE TABLE IF NOT EXISTS tokens (
   token TEXT PRIMARY KEY,
