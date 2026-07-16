@@ -11,6 +11,7 @@ export function serializeTask(t) {
     id: t.id,
     user_id: t.user_id,
     goal_id: t.goal_id,
+    routine_id: t.routine_id,
     parent_task_id: t.parent_task_id,
     session_started_at: t.session_started_at,
     name: t.name,

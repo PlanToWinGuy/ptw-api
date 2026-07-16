@@ -19,11 +19,13 @@ const SYSTEM = `You create a personalized goal plan from someone's pillar, goal 
   "milestones": [
     {"label": "<e.g. Week 1>", "marker": "<what they should notice or be able to do>"}
   ],
-  "alts": ["<alternative version — different approach, same destination>"]
+  "alts": ["<alternative version — different approach, same destination>"],
+  "tips": ["<a general awareness rule or situational tip — NOT something to schedule>"]
 }
 Timeline logic: habits need 21-66 days (fresh start=66, tried+stopped=30, in progress=21 to cement). Projects 60-90 days. Skills 90 days min. Mindset 30-60 days daily practice.
 If a Valueprint reading is provided (archetype, growth edge, pillar alignment), ground the "why" in it specifically — reference their actual edge or alignment gap, not generic encouragement.
-For a significant, quantifiable goal (e.g. "lose 20kg", "save $10,000"), first work out a realistic, science-based rate (e.g. weight loss: 0.5-1kg/week) and let that rate set the timeline and milestones — don't just default to a round number of days.`;
+For a significant, quantifiable goal (e.g. "lose 20kg", "save $10,000"), first work out a realistic, science-based rate (e.g. weight loss: 0.5-1kg/week) and let that rate set the timeline and milestones — don't just default to a round number of days.
+"actions" inside each phase must ONLY be concrete, schedulable things that belong on a calendar at a specific time — "log an expense", "do a workout", "call a friend". Never put a general awareness rule, if-then habit reminder, or situational heads-up in "actions" (e.g. "log every purchase over $20 before you leave the store", "take the stairs when you can") — those go in the top-level "tips" array instead, since they have no specific duration or time slot and aren't something to check off. If nothing fits that description, "tips" can be an empty array.`;
 
 // Science-backed reasoning rules per pillar (from the Pillar Playbooks doc) -- appended to
 // SYSTEM based on which pillar is generating, so the AI's judgment calls are grounded in
@@ -113,6 +115,7 @@ function serialize(g, strategyCards) {
     phases: g.phases,
     milestones: g.milestones,
     alts: g.alts,
+    tips: g.tips || [],
     difficulty: g.difficulty,
     created_at: g.created_at,
     strategyCards: strategyCards || [],
@@ -330,6 +333,7 @@ async function generateGoal(req, res, user) {
     dailyAnchor: user_goal,
     milestones: [{ label: 'Week 1', marker: 'First consistent week' }],
     alts: [],
+    tips: [],
   };
 
   if (key) {
@@ -391,10 +395,11 @@ async function generateGoal(req, res, user) {
     : (() => { const days = parseTimelineDays(plan.timeline); return days ? addDays(today, days) : null; })();
 
   const goalRows = await sql`
-    INSERT INTO goals (user_id, pillar_id, type, title, why, timeline, daily_anchor, phases, milestones, alts, difficulty, timeline_type, end_date)
+    INSERT INTO goals (user_id, pillar_id, type, title, why, timeline, daily_anchor, phases, milestones, alts, tips, difficulty, timeline_type, end_date)
     VALUES (${user.id}, ${pillar_id}, ${goal_type}, ${plan.title}, ${plan.why || null}, ${plan.timeline || null},
             ${plan.dailyAnchor || null}, ${JSON.stringify(plan.phases || [])}::jsonb,
-            ${JSON.stringify(plan.milestones || [])}::jsonb, ${JSON.stringify(plan.alts || [])}::jsonb, ${goal_difficulty},
+            ${JSON.stringify(plan.milestones || [])}::jsonb, ${JSON.stringify(plan.alts || [])}::jsonb,
+            ${JSON.stringify(plan.tips || [])}::jsonb, ${goal_difficulty},
             ${timeline_type}, ${end_date})
     RETURNING id
   `;

@@ -230,7 +230,7 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
   width:40px;height:40px;border-radius:10px;background:var(--bg3);
   border:none;cursor:pointer;color:var(--cement);display:flex;align-items:center;justify-content:center;
 }
-.next-txt{font-size:13px;color:var(--stone);text-align:center;flex:1}
+.next-txt{font-size:13px;color:var(--stone);text-align:center;flex:1;line-height:1.3;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
 .shuffle-fab{
   position:absolute;right:18px;bottom:calc(18px + var(--sb));z-index:20;
   width:52px;height:52px;border-radius:50%;background:var(--blue);
@@ -248,13 +248,12 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
 
 /* Pillar Apps strip */
 .pillar-apps{
-  flex-shrink:0;padding:14px 12px calc(14px + var(--sb));
-  display:flex;gap:6px;justify-content:center;flex-wrap:nowrap;
+  flex-shrink:0;padding:14px 6px calc(14px + var(--sb));
+  display:flex;gap:4px;justify-content:center;flex-wrap:nowrap;
   /* Sized so all 6 unlocked pillars genuinely fit on one row even on a narrow phone
-     (~360px wide) -- the original 56px icon + 10px gap + 20px padding only fit 6 on a
-     wide device (~426px+), wrapping to a lopsided 5-then-1 on anything narrower. Icon
-     size, gap, and padding below are all tuned together for the 6-icon case; fewer
-     unlocked pillars just center with more breathing room. */
+     (~360px wide) while using close to the full width of the strip -- icon size, gap,
+     and padding below are all tuned together for the 6-icon case; fewer unlocked
+     pillars just center with more breathing room. */
   background:linear-gradient(to top, var(--bg) 60%, transparent);
 }
 .pillar-app-btn{
@@ -264,9 +263,9 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
 }
 @keyframes appPop{from{opacity:0;transform:scale(.6) translateY(10px)}to{opacity:1;transform:scale(1) translateY(0)}}
 .pillar-app-icon{
-  width:50px;height:58px;border-radius:13px;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
-  font-size:18px;position:relative;
+  width:54px;height:68px;border-radius:14px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  font-size:21px;position:relative;
   box-shadow:0 4px 12px rgba(0,0,0,.3);
 }
 .pillar-app-icon::after{
@@ -275,7 +274,7 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
   transition:border-color .2s;
 }
 .pillar-app-btn:active .pillar-app-icon::after{border-color:rgba(196,184,168,.3)}
-.pillar-app-icon-name{font-size:8px;font-weight:700;color:rgba(255,255,255,.92);letter-spacing:.1px}
+.pillar-app-icon-name{font-size:9px;font-weight:700;color:rgba(255,255,255,.92);letter-spacing:.1px}
 .pillar-app-label{font-size:10px;color:var(--stone);font-weight:500;letter-spacing:.3px}
 .pillar-app-reason{font-size:9px;color:var(--muted);text-align:center;line-height:1.3;margin-top:1px}
 
@@ -730,9 +729,9 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
         <circle id="cta-timer-arc" cx="105" cy="105" r="101" fill="none" stroke="var(--blue)" stroke-width="3" stroke-linecap="round" stroke-dasharray="634.6" stroke-dashoffset="0"/>
       </svg>
       <div class="cta-inner">
-        <div class="cta-name" id="cta-label">Loading...</div>
-        <div class="cta-time-range" id="cta-time-range"></div>
         <div class="cta-glyph" id="cta-glyph">∞</div>
+        <div class="cta-time-range" id="cta-time-range"></div>
+        <div class="cta-name" id="cta-label">Loading...</div>
         <div class="cta-timer-label" id="cta-timer-label" style="display:none"></div>
       </div>
       <div class="cta-btns">
@@ -940,6 +939,11 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
     <span style="width:36px"></span>
   </div>
   <div class="scroll-body" style="padding:0 18px" id="meal-log-body"></div>
+  <div style="display:flex;justify-content:center;padding:12px 0 calc(12px + var(--sb))">
+    <button class="grid-btn" onclick="openEssentialApps()">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+    </button>
+  </div>
 </div>
 
 <!-- ══════════════════════════════════
@@ -965,6 +969,11 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
     <span style="width:36px"></span>
   </div>
   <div class="scroll-body" style="padding:0 18px" id="workout-log-body"></div>
+  <div style="display:flex;justify-content:center;padding:12px 0 calc(12px + var(--sb))">
+    <button class="grid-btn" onclick="openEssentialApps()">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+    </button>
+  </div>
 </div>
 
 <!-- ══════════════════════════════════
@@ -992,6 +1001,11 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
     <button class="icon-btn" style="background:var(--finances)" onclick="submitTransaction()">💾</button>
   </div>
   <div class="scroll-body" style="padding:0 18px" id="transaction-log-body"></div>
+  <div style="display:flex;justify-content:center;padding:12px 0 calc(12px + var(--sb))">
+    <button class="grid-btn" onclick="openEssentialApps()">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+    </button>
+  </div>
 </div>
 
 <div id="screen-transaction-detail" class="screen">
@@ -1028,6 +1042,11 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
     <span style="width:36px"></span>
   </div>
   <div class="scroll-body" style="padding:0 18px" id="connection-log-body"></div>
+  <div style="display:flex;justify-content:center;padding:12px 0 calc(12px + var(--sb))">
+    <button class="grid-btn" onclick="openEssentialApps()">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+    </button>
+  </div>
 </div>
 
 <div id="screen-plan-event" class="screen">
@@ -1074,6 +1093,11 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
     <span style="width:36px"></span>
   </div>
   <div class="scroll-body" style="padding:0 18px" id="log-session-body"></div>
+  <div style="display:flex;justify-content:center;padding:12px 0 calc(12px + var(--sb))">
+    <button class="grid-btn" onclick="openEssentialApps()">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+    </button>
+  </div>
 </div>
 
 <div id="screen-focus-detail" class="screen">
@@ -1118,6 +1142,11 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
     <span style="width:36px"></span>
   </div>
   <div class="scroll-body" style="padding:0 18px" id="log-work-session-body"></div>
+  <div style="display:flex;justify-content:center;padding:12px 0 calc(12px + var(--sb))">
+    <button class="grid-btn" onclick="openEssentialApps()">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+    </button>
+  </div>
 </div>
 
 <div id="screen-project-detail" class="screen">
@@ -1301,6 +1330,11 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
     <div class="section-sub" style="text-align:left">STEPS</div>
     <div id="routine-active-body" style="margin-top:8px"></div>
   </div>
+  <div style="display:flex;justify-content:center;padding:16px 0 calc(16px + var(--sb))">
+    <button class="grid-btn" onclick="openEssentialApps()">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+    </button>
+  </div>
 </div>
 
 <!-- ══════════════════════════════════
@@ -1328,6 +1362,9 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
     </div>
     <div class="section-sub" style="text-align:left">NOTES</div>
     <div id="td-notes" style="background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:14px;padding:14px 16px;text-align:left;margin-top:8px"></div>
+    <div id="td-start-now-wrap" style="display:none;margin-top:16px">
+      <button class="btn-p" style="border-color:var(--blue);color:var(--blue)" onclick="startTaskNow()">⚡ Start Now — move to today, right now</button>
+    </div>
   </div>
   <div style="display:flex;justify-content:center;padding:16px 0 calc(16px + var(--sb))">
     <button class="grid-btn" onclick="openEssentialApps()">
@@ -2941,7 +2978,7 @@ function applyCtaState() {
     document.getElementById('cta-glyph').innerHTML=p.icon;
     document.getElementById('cta-ring').style.borderColor=p.color;
     document.getElementById('cta-ring').classList.add('active');
-    document.getElementById('next-txt').textContent=nextUp?('Next: '+nextUp.name+(nextUp.startTime?' ('+formatTimeOfDay(nextUp.startTime)+')':'')):'';
+    document.getElementById('next-txt').textContent=formatNextText(nextUp);
     S.currentTask=t;
   } else {
     S.lockedTaskId=null;
@@ -2951,7 +2988,7 @@ function applyCtaState() {
     if(nextUp) {
       // A genuine gap in the schedule right now, but something real is coming up today.
       document.getElementById('cta-label').textContent="Busy doing something else? Log it, or add something to do.";
-      document.getElementById('next-txt').textContent='Next: '+nextUp.name+(nextUp.startTime?' ('+formatTimeOfDay(nextUp.startTime)+')':'');
+      document.getElementById('next-txt').textContent=formatNextText(nextUp);
     } else {
       document.getElementById('cta-label').textContent='Nothing scheduled — log how you spend your time, or add something to do.';
       document.getElementById('next-txt').textContent='';
@@ -2997,6 +3034,13 @@ function formatTimeOfDay(t) {
   const h12=h%12||12;
   return `${h12}:${String(m).padStart(2,'0')} ${ampm}`;
 }
+// Time reads immediately after "Next:" (not buried at the end of a long name) --
+// #next-txt itself is 2-line-clamped with a fade (see .next-txt), so a long name
+// doesn't just get visually cut off with no indication there's more.
+function formatNextText(t) {
+  if(!t) return '';
+  return 'Next: '+(t.startTime?formatTimeOfDay(t.startTime)+' — ':'')+t.name;
+}
 
 function renderPillarApps() {
   const container=document.getElementById('pillar-apps');
@@ -3039,6 +3083,19 @@ function getNextMealType() {
   return hour<11?'Breakfast':hour<15?'Lunch':hour<21?'Dinner':'Snack';
 }
 
+// A generated task's own text usually already says which meal it means ("Log
+// breakfast", "Plan tomorrow's lunch") -- trust that over the current wall-clock time,
+// which only kicks in as a fallback when the task text doesn't name a specific meal
+// (e.g. a generic "Log a meal" action).
+function inferMealTypeFromText(text) {
+  const t=String(text||'').toLowerCase();
+  if(t.includes('breakfast')) return 'Breakfast';
+  if(t.includes('lunch')) return 'Lunch';
+  if(t.includes('dinner')||t.includes('supper')) return 'Dinner';
+  if(t.includes('snack')) return 'Snack';
+  return getNextMealType();
+}
+
 // Opens a real workout to log against, not a plans list -- uses the user's first saved
 // plan if one exists (fetching it if the cache is cold, e.g. on a fresh page load),
 // falling back to the Workout Hub's empty state only when there's truly nothing to log.
@@ -3053,7 +3110,7 @@ async function openFitnessLogEntry() {
 
 const LOGGING_TASK_OPEN = {
   fitness:   ()=>openFitnessLogEntry(),
-  diet:      ()=>openMealLog(getNextMealType()),
+  diet:      (t)=>openMealLog(inferMealTypeFromText(t?.name)),
   finances:  ()=>openLogTransaction('expense'),
   relations: ()=>openConnectionLog(null),
   personal:  ()=>openLogSession(null),
@@ -3067,8 +3124,9 @@ const LOGGING_TASK_OPEN = {
 const TOOL_HINT_OPEN = {
   journal:      (t)=>openJournalEntry(t.name),
   session:      ()=>openLogSession(null),
-  meal:         ()=>openMealLog('snack'),
+  meal:         (t)=>openMealLog(inferMealTypeFromText(t.name)),
   workout:      ()=>openWorkoutHub(),
+  steps:        (t)=>openStepsLogger(t),
   transaction:  ()=>openLogTransaction('expense'),
   connection:   ()=>openConnectionLog(null),
   work_session: (t)=>openLogWorkSession(null,t.name),
@@ -3123,7 +3181,7 @@ function openCurrentTask() {
   if(t.taskType==='Logging') {
     S.pendingTaskId=t.taskId;
     if(openTaskByToolHint(t)) return;
-    (LOGGING_TASK_OPEN[pk]||(()=>showPillarScreen(pk)))();
+    (LOGGING_TASK_OPEN[pk]||(()=>showPillarScreen(pk)))(t);
   } else if(t.taskType==='ProjectTask') {
     openProjectDetail(t.taskId, 'home');
   } else {
@@ -3217,6 +3275,9 @@ async function confirmTaskCompletion() {
   const result=await req('POST','/tasks/update-completion',{task_id:S.currentTask.taskId, completion_percentage:pct, actual_minutes_spent:actualMinutesSpent});
   const xp=result?.data?.xp_gained||0;
   toast('+'+xp+' XP! ⚡'+(result?.data?.remainder_task?' — rest rescheduled':''));
+  // Captured before S.currentTask is cleared -- used below for the cross-pillar
+  // "log an expense?" prompt, which needs the name/pillar of what was just completed.
+  const completedName=S.currentTask.name, completedPillar=S.currentTask.pillar;
   // Clears a manual Start override too, if this was one -- otherwise the next tick would
   // resurrect the ring right back onto a task that was just marked done.
   if(isManual) S.manualTaskOverride=null;
@@ -3224,6 +3285,21 @@ async function confirmTaskCompletion() {
   const returnTo=S.taskCompletionReturnTo; S.taskCompletionReturnTo=null;
   if(returnTo==='todo-routines') { showScreen('todo-routines'); await switchTodoRoutinesTab('todo'); }
   else { showScreen('home'); await loadHomeData(); }
+  maybePromptExpenseLog(completedName, completedPillar);
+}
+
+// A task like "Go grocery shopping" or "Buy a birthday gift" often costs money, but it
+// lives in whatever pillar it's really about (Fitness, Relations, ...) -- not Finances.
+// Deterministic keyword match (same cost-discipline precedent as inferToolHint/
+// isRecurringAction -- no AI call for this), only offered when Finances is actually
+// unlocked and isn't the pillar of the task that was just completed.
+const SPEND_SUGGESTIVE_PATTERN=/\b(grocery|groceries|shopping|shop|buy|bought|purchase|gift|store|mall|errands?)\b/i;
+function maybePromptExpenseLog(taskName, taskPillar) {
+  if(!taskName || !SPEND_SUGGESTIVE_PATTERN.test(taskName)) return;
+  if(!(S.unlocked||[]).includes('finances')) return;
+  if(getPillarKey(taskPillar)==='finances') return;
+  openConfirm('Log an Expense?', `"${taskName}" might have cost you something — want to log it while it's fresh?`, ()=>openLogTransaction('expense', taskName));
+  document.getElementById('confirm-yes-btn').textContent='Log Expense';
 }
 
 function cancelTaskCompletion() {
@@ -3889,8 +3965,22 @@ function openTaskDetail(task, returnScreen) {
   document.getElementById('td-notes').innerHTML = notes.length
     ? '<ul style="margin:0;padding-left:18px;color:var(--text);font-size:13px;line-height:1.8">'+notes.map(n=>`<li>${n}</li>`).join('')+'</ul>'
     : '<div style="color:var(--muted);font-size:13px">No notes for this task.</div>';
+  // Start Now only makes sense for a genuinely manual, ad-hoc task -- a goal-plan or
+  // routine-derived task already has its own real place in the schedule that a project's
+  // Plan Shift / the routine engine manages; moving it here would fight that.
+  document.getElementById('td-start-now-wrap').style.display = (!task.goal_id && !task.routine_id) ? 'block' : 'none';
   showScreen('task-detail');
   renderTaskDetailTimerUI();
+}
+async function startTaskNow() {
+  const task=S.taskDetailTask;
+  if(!task) return;
+  const result=await req('POST','/simple-tasks/'+task.id+'/start-now');
+  if(!result || result.shiftedCount===undefined) { toast(result?.message||'Could not start now — too much of today would need to move'); return; }
+  toast(result.shiftedCount ? `Started now — ${result.shiftedCount} task${result.shiftedCount===1?'':'s'} shifted later ⚡` : 'Started now ⚡');
+  S.taskDetailTask={...task, due_date:result.due_date, start_time:result.start_time};
+  await loadHomeData();
+  showScreen('home');
 }
 const PLAY_ICON_SVG='<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
 const PAUSE_ICON_SVG='<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>';
@@ -4552,7 +4642,12 @@ async function switchTodoRoutinesTab(tab) {
 
   if(tab==='todo') {
     const data=await req('GET','/simple-tasks');
-    const allTasks=(Array.isArray(data)?data:(data?.data||[])).filter(t=>!t.parent_task_id && t.kind!=='project');
+    // To-Do is manually-added tasks only -- anything that came from a goal plan
+    // (goal_id) or materializes from a routine (routine_id) has its own real home
+    // already (Daily Overview for the day it's due, the Routines tab for the recurring
+    // definition itself) and showing it here too just duplicated the same task in two
+    // places with two different vocabularies for the same thing.
+    const allTasks=(Array.isArray(data)?data:(data?.data||[])).filter(t=>!t.parent_task_id && t.kind!=='project' && !t.goal_id && !t.routine_id);
     S.todoAllTasksCache=allTasks;
     S.todoTasksCache=allTasks.filter(t=>t.status==='Pending'||!t.status);
     renderTodoList();
@@ -5875,6 +5970,7 @@ async function viewMealDetail(id) {
     <div style="display:flex;justify-content:center;gap:20px;font-size:13px;color:var(--stone);margin-bottom:20px">
       <span>Carbs: ${d.carbs_g||0}g</span><span>Protein: ${d.protein_g||0}g</span><span>Fat: ${d.fat_g||0}g</span>
     </div>
+    ${d.description?`<div class="section-sub" style="text-align:left">DESCRIPTION</div><div style="background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:14px;padding:14px 16px;text-align:left;font-size:13px;color:var(--text);margin-bottom:20px">${d.description}</div>`:''}
     <button class="btn-p" onclick="showScreen('meal-hub')">← Back to Meal Hub</button>`;
 }
 
@@ -6098,6 +6194,7 @@ function renderMealReview() {
     </div>
     ${d.note?`<div class="section-sub" style="margin-top:10px;color:var(--muted)">${d.note}</div>`:''}
     ${d.ingredients?.length?`<div style="font-size:12px;color:var(--stone);margin-top:10px">Logging this will remove ${d.ingredients.length} ingredient${d.ingredients.length===1?'':'s'} from your Grocery List.</div>`:''}
+    <div class="field" style="margin-top:14px"><label>DESCRIPTION (optional)</label><textarea id="ml-desc" rows="2" placeholder="e.g. Extra sauce, no rice, ate half" style="width:100%;padding:12px;background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:10px;color:var(--text);font-size:13px;font-family:'Inter',sans-serif;outline:none;resize:none">${d.description||''}</textarea></div>
     <button class="btn-p filled" style="margin-top:18px" onclick="confirmLogMeal()">Log This Meal</button>
     <button class="btn-p" style="margin-top:8px;border-color:transparent;color:var(--stone)" onclick="saveMealTemplate()">Save as Meal</button>`;
 }
@@ -6109,6 +6206,7 @@ function readMealForm() {
     protein_g: Number(document.getElementById('ml-protein').value)||0,
     carbs_g: Number(document.getElementById('ml-carbs').value)||0,
     fat_g: Number(document.getElementById('ml-fat').value)||0,
+    description: document.getElementById('ml-desc').value.trim(),
   };
 }
 
@@ -6117,7 +6215,7 @@ async function confirmLogMeal() {
   const p=PILLARS.diet;
   const taskId=S.pendingTaskId; S.pendingTaskId=null;
   const ingredients=mealLogDraft?.ingredients||null;
-  const result=await req('POST','/metrics',{pillar_id:p.id, log_type:'meal', value:m.calories, unit:'kcal', task_id:taskId||undefined, data:{name:m.name, protein_g:m.protein_g, carbs_g:m.carbs_g, fat_g:m.fat_g, meal_type:mealLogMealType}});
+  const result=await req('POST','/metrics',{pillar_id:p.id, log_type:'meal', value:m.calories, unit:'kcal', task_id:taskId||undefined, data:{name:m.name, protein_g:m.protein_g, carbs_g:m.carbs_g, fat_g:m.fat_g, meal_type:mealLogMealType, description:m.description||''}});
   // The "logging it clears what you used" half of the plan <-> grocery sync -- only fires
   // when this meal came from a plan (readMealForm() alone can't carry ingredients).
   if(ingredients?.length) await removeIngredientsFromGroceryList(ingredients);
@@ -6156,11 +6254,12 @@ let workoutPlansCache={}, activeWorkout=null, mealPlansCache={};
 async function loadFitnessMap() {
   const container=document.getElementById('pillar-tab-map');
   const p=PILLARS.fitness;
-  const [data, goalData, plansData, weightLogs]=await Promise.all([
+  const [data, goalData, plansData, weightLogs, stepsData]=await Promise.all([
     req('GET','/metrics?pillar_id='+p.id+'&days=30'),
     req('GET','/goals?pillar_id='+p.id),
     req('GET','/metrics?pillar_id='+p.id+'&log_type=workout_plan'),
     req('GET','/metrics?pillar_id='+p.id+'&log_type=weight'),
+    req('GET','/metrics?pillar_id='+p.id+'&log_type=steps&days=1'),
   ]);
   const logs=(data?.logs||[]).filter(l=>l.log_type==='workout');
   const dateOf=l=>(l.logged_at||'').split('T')[0];
@@ -6196,6 +6295,8 @@ async function loadFitnessMap() {
   const todaysPlan = (!metTarget && plans.length) ? plans[workoutsThisWeek % plans.length] : null;
 
   const latestWeight=(weightLogs?.logs||[])[0];
+  const todayStr=today.toISOString().split('T')[0];
+  const stepsToday=(stepsData?.logs||[]).filter(l=>dateOf(l)===todayStr).reduce((s,l)=>s+(Number(l.value)||0),0);
 
   // Layout order matches every other pillar's Map tab (metrics first, then the pillar's
   // own action card, then "View Full Hub") -- Pass 4 originally put the action card first,
@@ -6222,15 +6323,85 @@ async function loadFitnessMap() {
         <div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:#fff;margin:6px 0 14px">No plans yet</div>
         <button class="btn-p" style="border-color:rgba(255,255,255,.5);color:#fff" onclick="openWorkoutHub()">Build a Plan</button>`}
     </div>
+    <div class="rm-goal-card" style="margin-top:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div class="section-sub">Current Weight</div>
+          <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:var(--text)">${latestWeight?`${latestWeight.value} ${latestWeight.unit||'kg'}`:'Not logged yet'}</div>
+        </div>
+        <button class="view-log-btn" style="width:auto" onclick="openLogWeight()">+ Log Weight</button>
+      </div>
+      ${weightTrendHtml(weightLogs?.logs||[])}
+    </div>
     <div class="rm-goal-card" style="margin-top:14px;display:flex;justify-content:space-between;align-items:center">
       <div>
-        <div class="section-sub">Current Weight</div>
-        <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:var(--text)">${latestWeight?`${latestWeight.value} ${latestWeight.unit||'kg'}`:'Not logged yet'}</div>
+        <div class="section-sub">Steps Today</div>
+        <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:var(--text)">${stepsToday?stepsToday.toLocaleString():'Not logged yet'}</div>
       </div>
-      <button class="view-log-btn" style="width:auto" onclick="openLogWeight()">+ Log Weight</button>
+      <button class="view-log-btn" style="width:auto" onclick="openStepsLogger(null)">+ Log Steps</button>
     </div>
     <button class="view-log-btn" style="margin-top:10px" onclick="openWorkoutHub()">View Full Workout Hub</button>`;
   container.innerHTML=html;
+}
+
+// ── Steps logger -- a real fitness-tracking tool for step-based tasks/routines, not just
+// a generic completion checkbox. A task like "Walk 8,000 steps daily" carries its own
+// target right in the text; this session's remaining count is that target minus whatever
+// has already been logged today, so multiple short walks across the day all count toward
+// the same daily goal instead of resetting each time. ──
+let stepsLoggerState=null;
+function parseStepsTarget(text) {
+  const m=String(text||'').match(/(\d[\d,]*)\s*steps?/i);
+  return m ? Number(m[1].replace(/,/g,'')) : 8000; // sane default when text names no number
+}
+async function openStepsLogger(task) {
+  const target=parseStepsTarget(task?.name);
+  showScreen('workout-log');
+  document.getElementById('workout-log-header').textContent='Steps';
+  document.getElementById('workout-log-body').innerHTML='<div style="padding:60px 0;text-align:center"><div class="spinner"></div></div>';
+  const p=PILLARS.fitness;
+  const data=await req('GET','/metrics?pillar_id='+p.id+'&log_type=steps&days=1');
+  const today=new Date().toISOString().split('T')[0];
+  const loggedToday=(data?.logs||[]).filter(l=>(l.logged_at||'').split('T')[0]===today).reduce((s,l)=>s+(Number(l.value)||0),0);
+  stepsLoggerState={target, loggedToday};
+  renderStepsLogger();
+}
+function renderStepsLogger() {
+  const s=stepsLoggerState;
+  const remaining=Math.max(0, s.target-s.loggedToday);
+  document.getElementById('workout-log-body').innerHTML=`
+    <div class="rm-goal-card" style="text-align:center;margin-top:14px">
+      <div class="section-sub">TODAY'S GOAL</div>
+      <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--text);margin:6px 0">${s.target.toLocaleString()} steps</div>
+      <div style="font-size:12px;color:var(--stone)">${s.loggedToday.toLocaleString()} logged today${remaining>0?` — ${remaining.toLocaleString()} more needed this session`:' — goal already hit today! 🎉'}</div>
+    </div>
+    <div class="rm-goal-card" style="margin-top:14px">
+      <div class="section-sub" style="text-align:center">LOG THIS SESSION'S STEPS</div>
+      <input type="number" id="steps-actual" placeholder="e.g. ${remaining||2000}" style="width:100%;margin-top:10px;padding:12px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;font-size:18px;outline:none">
+      <button class="btn-p filled" style="margin-top:14px;background:var(--fitness);border-color:var(--fitness)" onclick="confirmLogSteps()">Log Steps</button>
+    </div>`;
+}
+async function confirmLogSteps() {
+  const steps=Number(document.getElementById('steps-actual').value)||0;
+  if(!steps) { toast('Enter how many steps you walked'); return; }
+  const p=PILLARS.fitness;
+  const taskId=S.pendingTaskId; S.pendingTaskId=null;
+  const s=stepsLoggerState;
+  const result=await req('POST','/metrics',{pillar_id:p.id, log_type:'steps', value:steps, unit:'steps', task_id:taskId||undefined, data:{target:s.target}});
+  showStepsLogged({steps, xp:result?.xp_gained||0, totalToday:s.loggedToday+steps, target:s.target});
+}
+function showStepsLogged(m) {
+  const metTarget=m.totalToday>=m.target;
+  document.getElementById('workout-log-body').innerHTML=`
+    <div style="text-align:center;padding:20px 0">
+      <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--fitness)">✦ Steps Logged! ✦</div>
+      <div class="section-sub" style="margin-top:18px">REWARDS</div>
+      <div style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:var(--fitness);margin:6px 0 18px">+${m.xp} XP</div>
+      <div class="section-sub">TODAY'S TOTAL</div>
+      <div style="font-family:'Syne',sans-serif;font-size:24px;font-weight:800;color:var(--text);margin:6px 0">${m.totalToday.toLocaleString()} / ${m.target.toLocaleString()} steps</div>
+      ${metTarget?'<div style="font-size:13px;color:var(--fitness);margin-bottom:20px">Goal hit today! 🎉</div>':`<div style="font-size:13px;color:var(--stone);margin-bottom:20px">${(m.target-m.totalToday).toLocaleString()} more to go</div>`}
+      <button class="btn-p filled" onclick="showPillarScreen('fitness')">🏠 Back to Home</button>
+    </div>`;
 }
 
 // Today's Workout CTA -- no task-linkage exists for an individual lifting day in this
@@ -6239,6 +6410,32 @@ async function loadFitnessMap() {
 function startTodaysWorkout(planId) {
   S.pendingTaskId=null;
   startWorkout(planId);
+}
+
+// A single number ("74 kg") doesn't say whether that's progress -- the trend (gain or
+// loss over the last 30 days of logs, GET /metrics's default window) is the part that
+// actually matters for a weight-management goal. Needs at least 2 points to draw a line.
+function weightTrendHtml(logs) {
+  if(!logs || logs.length<2) return '';
+  const points=[...logs].reverse(); // API returns newest-first; chart reads left-to-right chronologically
+  const vals=points.map(l=>Number(l.value));
+  const min=Math.min(...vals), max=Math.max(...vals);
+  const range=(max-min)||1;
+  const w=280, h=50, pad=4;
+  const stepX=points.length>1 ? (w-pad*2)/(points.length-1) : 0;
+  const coords=vals.map((v,i)=>{
+    const x=pad+i*stepX;
+    const y=pad+(1-(v-min)/range)*(h-pad*2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  const delta=vals[vals.length-1]-vals[0];
+  const unit=points[points.length-1].unit||'kg';
+  const deltaLabel = delta===0 ? 'No change' : `${delta>0?'+':''}${delta.toFixed(1)} ${unit} over last ${points.length} logs`;
+  return `
+    <svg viewBox="0 0 ${w} ${h}" style="width:100%;height:44px;margin-top:12px;display:block" preserveAspectRatio="none">
+      <polyline points="${coords}" fill="none" stroke="var(--fitness)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+    </svg>
+    <div style="font-size:11px;color:var(--stone);margin-top:4px">${deltaLabel}</div>`;
 }
 
 async function openLogWeight() {
@@ -6270,9 +6467,9 @@ function openWorkoutQuickAdd() {
       <div class="sq-icon" style="background:var(--fitness)22;color:var(--fitness)">🗓️</div>
       <div class="sq-info"><div class="sq-name">Log Past Activity</div><div class="sq-meta">Record a workout you already did</div></div>
     </div>
-    <div class="sq-card" onclick="closeModal('modal-workout-quick-add');S.pendingTaskId=null;openWorkoutHub()">
+    <div class="sq-card" onclick="closeModal('modal-workout-quick-add');S.pendingTaskId=null;openCreateWorkoutTemplate('start')">
       <div class="sq-icon" style="background:var(--fitness)22;color:var(--fitness)">⚡</div>
-      <div class="sq-info"><div class="sq-name">Start Spontaneous Activity</div><div class="sq-meta">Jump into a workout right now</div></div>
+      <div class="sq-info"><div class="sq-name">Start Spontaneous Activity</div><div class="sq-meta">Type anything -- squash, a run, a hike -- and jump in</div></div>
     </div>
     <div class="sq-card" onclick="closeModal('modal-workout-quick-add');openCreateWorkoutTemplate()">
       <div class="sq-icon" style="background:var(--fitness)22;color:var(--fitness)">✏️</div>
@@ -6286,14 +6483,25 @@ function openWorkoutQuickAdd() {
 async function openLogPastActivityPicker() {
   const data=await req('GET','/metrics?pillar_id='+PILLARS.fitness.id+'&log_type=workout_plan');
   const plans=data?.logs||[];
-  if(!plans.length) { toast('No saved plans yet — create a template first'); return; }
-  openConfirm('Log Past Activity', 'Pick a date, then choose a plan to log it against.', ()=>{});
+  openConfirm('Log Past Activity', 'Pick a date, then choose a plan -- or log something new you did that isn\'t saved yet.', ()=>{});
   document.getElementById('confirm-yes-btn').style.display='none';
   document.getElementById('confirm-body').innerHTML=`
     <input type="date" id="past-activity-date" value="${new Date().toISOString().split('T')[0]}" max="${new Date().toISOString().split('T')[0]}" style="width:100%;padding:10px;margin-bottom:10px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);outline:none">
     <div style="display:flex;flex-direction:column;gap:6px">
       ${plans.map(p=>`<div class="view-log-btn" style="text-align:left;justify-content:space-between" onclick="startPastWorkout(${p.id})">${p.data?.name||'Plan'} <span>›</span></div>`).join('')}
+      <div class="view-log-btn" style="text-align:left;justify-content:space-between;border-color:var(--fitness);color:var(--fitness)" onclick="startPastNewActivity()">+ Log a New Activity <span>›</span></div>
     </div>`;
+}
+
+// Something done that was never saved as a plan (e.g. a spontaneous game of squash) --
+// carries the chosen past date into the same freeform quick-start flow "Start Spontaneous
+// Activity" uses, so it isn't a dead end just because it's not on the My Plans list yet.
+function startPastNewActivity() {
+  S.quickAddPastDate=document.getElementById('past-activity-date')?.value||null;
+  closeModal('modal-confirm');
+  document.getElementById('confirm-yes-btn').style.display='';
+  S.pendingTaskId=null;
+  openCreateWorkoutTemplate('start');
 }
 
 function startPastWorkout(planId) {
@@ -6335,20 +6543,26 @@ function workoutPlanSummary(d) {
   return `${(d.exercises||[]).length} Exercises`;
 }
 
-function openCreateWorkoutTemplate() {
+// mode='save' (default, from "Create New Template"): just saves a reusable plan.
+// mode='start' (from "Start Spontaneous Activity"): saves the same plan -- so any
+// activity typed here, even a one-off like "Squash", is available to reuse next time --
+// then jumps straight into the real logger for it via startWorkout(), same as tapping a
+// saved plan's Start button. Either way, freeform activity names are never a dead end.
+function openCreateWorkoutTemplate(mode) {
+  mode = mode==='start' ? 'start' : 'save';
   S.tplActivityType='strength';
   S.tplName='';
   S.tplRows=[{name:'',sets:3,reps:10,weight:0}];
   S.tplCardio={durationMin:20, distance:0, intensity:'Moderate'};
   S.tplHiit={rounds:8, workSeconds:30, restSeconds:15};
   S.tplMobility={durationMin:10, stretches:''};
-  openConfirm('Create Workout Template', '', ()=>{});
+  openConfirm(mode==='start' ? 'What Are You Doing?' : 'Create Workout Template', mode==='start' ? 'Type any activity -- squash, a hike, a spontaneous run -- pick the closest type, and jump straight in.' : '', ()=>{});
   renderTemplateForm();
   const yesBtn=document.getElementById('confirm-yes-btn');
-  yesBtn.textContent='Save Template';
+  yesBtn.textContent = mode==='start' ? 'Start Now' : 'Save Template';
   yesBtn.onclick=async ()=>{
     const name=(document.getElementById('tpl-name')?.value||'').trim();
-    if(!name) { toast('Enter a plan name'); return; }
+    if(!name) { toast('Enter an activity name'); return; }
     let data={name, activityType:S.tplActivityType, source:'manual'}, value=45, unit='min';
     if(S.tplActivityType==='strength') {
       const exercises=S.tplRows.filter(r=>r.name.trim()).map(r=>({name:r.name.trim(), sets:r.sets||3, targetReps:r.reps||10, targetWeight:r.weight||0}));
@@ -6368,8 +6582,13 @@ function openCreateWorkoutTemplate() {
     }
     closeModal('modal-confirm');
     yesBtn.textContent='Yes';
-    await req('POST','/metrics',{pillar_id:PILLARS.fitness.id, log_type:'workout_plan', value, unit, data});
-    toast('Template created');
+    const result=await req('POST','/metrics',{pillar_id:PILLARS.fitness.id, log_type:'workout_plan', value, unit, data});
+    if(mode==='start' && result?.data?.id) {
+      workoutPlansCache[result.data.id]=data;
+      startWorkout(result.data.id);
+    } else {
+      toast('Template created');
+    }
   };
 }
 
@@ -7173,13 +7392,13 @@ async function addAsset() {
 }
 
 // ── Log a Transaction ──
-function openLogTransaction(type) {
+function openLogTransaction(type, prefillName) {
   S.transactionType=type||'expense';
   showScreen('transaction-log');
-  renderTransactionForm();
+  renderTransactionForm(prefillName);
 }
 
-function renderTransactionForm() {
+function renderTransactionForm(prefillName) {
   const isIncome=S.transactionType==='income';
   document.getElementById('transaction-log-body').innerHTML=`
     <div style="display:flex;gap:20px;justify-content:center;margin:14px 0;font-size:14px;font-weight:700">
@@ -7187,7 +7406,7 @@ function renderTransactionForm() {
       <span onclick="setTransactionType('income')" style="cursor:pointer;padding-bottom:6px;border-bottom:2px solid ${isIncome?'var(--finances)':'transparent'};color:${isIncome?'var(--text)':'var(--stone)'}">Income</span>
     </div>
     <div class="field"><label>AMOUNT</label><input type="number" id="txn-amount" placeholder="0.00" style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800"></div>
-    <div class="field"><label>NAME / DESCRIPTION</label><input type="text" id="txn-name" placeholder="e.g. Groceries"></div>
+    <div class="field"><label>NAME / DESCRIPTION</label><input type="text" id="txn-name" placeholder="e.g. Groceries" value="${prefillName||''}"></div>
     <div class="field"><label>CATEGORY</label>
       <select id="txn-category">${isIncome?'<option>Income</option>':FINANCE_CATEGORIES.map(c=>`<option>${c}</option>`).join('')}</select>
     </div>
@@ -8825,6 +9044,17 @@ async function loadPillarRoadmap(pillarKey) {
         ${(ph.actions||[]).map(a=>`<div class="view-log-btn" style="justify-content:space-between;margin-top:6px;text-align:left">${a}${isRecurringActionText(a)?' <span style="color:'+p.color+';font-size:11px">🔁</span>':''} <span>›</span></div>`).join('')}
       </div>`;
     });
+  }
+
+  // Tips: awareness rules and situational reminders the AI generated alongside the plan
+  // ("log every purchase over $20 before you leave the store") -- these have no real
+  // duration or time slot, so they read as suggestions here instead of cluttering the
+  // real schedule as dead-end scheduled tasks.
+  if((g.tips||[]).length) {
+    html += `<div class="section-title" style="margin-top:20px">Tips & Awareness</div>
+      <div class="rm-goal-card">
+        ${g.tips.map(t=>`<div style="display:flex;gap:8px;align-items:flex-start;padding:8px 0;border-bottom:1px solid rgba(196,184,168,.1)"><span style="flex-shrink:0">💡</span><span style="font-size:13px;color:var(--text);line-height:1.5">${t}</span></div>`).join('')}
+      </div>`;
   }
 
   html += `</div>`;

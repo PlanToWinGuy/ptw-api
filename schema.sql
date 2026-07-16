@@ -358,3 +358,12 @@ CREATE TABLE IF NOT EXISTS fixed_commitments (
   source_filename TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- A generic awareness reminder ("log every purchase over $20 before you leave the
+-- store") isn't a real, schedulable action the way "log an expense" is -- it used to get
+-- bin-packed into `phases[].actions[]` right alongside real tasks and land on the
+-- calendar as a timed to-do with nothing to actually do at that time. `tips` holds the
+-- AI's advice-style output separately so it can render as read-only suggestions on the
+-- Roadmap instead of cluttering the real schedule.
+ALTER TABLE goals
+  ADD COLUMN IF NOT EXISTS tips JSONB NOT NULL DEFAULT '[]';
