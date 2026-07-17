@@ -3070,7 +3070,7 @@ const FAQ_ITEMS=[
   ['What is LifeScore?', "LifeScore is a projected healthspan estimate in years that rises as you invest across your pillars. It's a motivational north star, not medical advice."],
   ['Can I import my class or work schedule?', "Yes — in Settings, import a PDF or Word schedule and it becomes fixed commitments the planner schedules around."],
   ['Is my data private?', "Your data is yours. See the Privacy Policy for details. We never sell your personal information."],
-  ['How do I get help?', "Email us anytime at support@plantowin.app — during the beta we read every message."],
+  ['How do I get help?', "Email us anytime at hello@plantowin.app — during the beta we read every message."],
 ];
 const STATIC_PAGES={
   help: {title:'Help & FAQ', body:
@@ -3078,7 +3078,7 @@ const STATIC_PAGES={
       <div style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text);font-size:14px;margin-bottom:6px">${q}</div>
       <div style="font-size:13px;color:var(--stone);line-height:1.65">${a}</div>
     </div>`).join('')
-    + `<div style="text-align:center;margin:18px 0 24px"><button class="btn-p filled" style="background:var(--blue);border-color:var(--blue)" onclick="window.location.href='mailto:support@plantowin.app'">✉️ Email Support</button></div>`
+    + `<div style="text-align:center;margin:18px 0 24px"><button class="btn-p filled" style="background:var(--blue);border-color:var(--blue)" onclick="window.location.href='mailto:hello@plantowin.app'">✉️ Email Support</button></div>`
   },
   terms: {title:'Terms of Service', body:
     `<div style="font-size:13px;color:var(--text);line-height:1.7">
@@ -3087,7 +3087,7 @@ const STATIC_PAGES={
       <p style="margin-bottom:12px"><strong>Not professional advice.</strong> Plan To Win provides general planning, wellness, and motivational guidance. It is not medical, financial, legal, or mental-health advice. Always consult a qualified professional for decisions in those areas.</p>
       <p style="margin-bottom:12px"><strong>Your content.</strong> Goals, notes, logs, and images you add stay yours. You grant us only the permission needed to store and display them back to you within the app.</p>
       <p style="margin-bottom:12px"><strong>Availability.</strong> We may update, pause, or discontinue features during the beta. We'll give reasonable notice of major changes where we can.</p>
-      <p>Questions? Email <strong>support@plantowin.app</strong>.</p>
+      <p>Questions? Email <strong>hello@plantowin.app</strong>.</p>
     </div>`
   },
   privacy: {title:'Privacy Policy', body:
@@ -3097,7 +3097,7 @@ const STATIC_PAGES={
       <p style="margin-bottom:12px"><strong>What we don't do.</strong> We don't sell your personal information. We don't post anything on your behalf.</p>
       <p style="margin-bottom:12px"><strong>Your control.</strong> You can edit your profile any time and delete your account from Settings, which removes your data.</p>
       <p style="margin-bottom:12px"><strong>Security.</strong> Data is stored on managed cloud infrastructure and transmitted over encrypted connections. No system is perfectly secure, but we take reasonable measures to protect it.</p>
-      <p>Privacy questions? Email <strong>support@plantowin.app</strong>.</p>
+      <p>Privacy questions? Email <strong>hello@plantowin.app</strong>.</p>
     </div>`
   },
 };
@@ -5838,8 +5838,14 @@ function renderProfile() {
     const pk=PILLARS[b.pillar];
     const icon=pk?pk.icon:'🎯'; // 'antiGoals' isn't a real pillar key -- falls back to a generic icon
     const label=pk?pk.label:'Discipline';
+    const color=pk?pk.color:'#C4B8A8';
     const has=b.years_contributed>0;
-    return `<div style="display:flex;align-items:center;gap:3px;background:rgba(255,255,255,${has?.22:.1});border-radius:8px;padding:3px 7px;font-size:9.5px;color:rgba(255,255,255,${has?1:.6})" title="${label}"><span>${icon}</span><span>+${b.years_contributed||0}</span></div>`;
+    // Each chip carries its own pillar's colour rather than uniform white-on-blue -- the
+    // whole card is meant to read as "these six colours are what's adding up". A white pill
+    // keeps the pillar colour legible on the blue LifeScore card even for the personal
+    // (blue) pillar; a zero-contribution pillar dims but keeps its colour so it's still
+    // recognisably "that pillar, not started yet".
+    return `<div style="display:flex;align-items:center;gap:3px;background:rgba(255,255,255,${has?.95:.55});border-radius:8px;padding:3px 7px;font-size:9.5px;font-weight:700;color:${color};opacity:${has?1:.65}" title="${label}"><span>${icon}</span><span>+${b.years_contributed||0}</span></div>`;
   }).join('') : '<div style="font-size:10px;color:rgba(255,255,255,.6)">No pillar contributions yet</div>';
 
   renderProfilePillarFilter();
@@ -6197,8 +6203,13 @@ function switchLifeScoreDetailTab(tab) {
       <div class="section-sub">PILLAR CONTRIBUTION CAPS</div>
       ${Object.entries(caps).filter(([k])=>k!=='antiGoals').map(([k,cap])=>{
         const b=(u.lifescore_breakdown||[]).find(x=>x.pillar===k)||{};
+        const p=PILLARS[k];
+        const color=p?p.color:'var(--blue)';
         const maint = b.is_maintenance ? ' <span style="color:var(--diet)">🔒 Maintaining</span>' : '';
-        return `<div class="sq-card"><div class="sq-info"><div class="sq-name">${capitalize(k)}${maint}</div><div class="sq-meta">Level ${b.level||0}</div></div><div style="font-weight:800;color:var(--blue)">+${b.years_contributed||0} / ${cap} yrs</div></div>`;
+        // Each pillar's contribution reads in its OWN colour (name accented + the "+X / cap
+        // yrs" total), not a uniform blue -- so a glance down the list is a glance across
+        // the six pillar identities, and the left accent bar reinforces which is which.
+        return `<div class="sq-card" style="border-left:3px solid ${color}"><div class="sq-info"><div class="sq-name" style="color:${color}">${capitalize(k)}${maint}</div><div class="sq-meta">Level ${b.level||0}</div></div><div style="font-weight:800;color:${color}">+${b.years_contributed||0} / ${cap} yrs</div></div>`;
       }).join('')}
     `;
   } else {
