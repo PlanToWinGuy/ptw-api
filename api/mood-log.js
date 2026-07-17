@@ -15,9 +15,9 @@ export default async function handler(req, res) {
   if (req.method === 'GET') {
     const limit = Math.min(Number(req.query.limit) || 30, 90);
     const rows = await sql`
-      SELECT mood, created_at FROM mood_logs
+      SELECT mood, logged_at FROM mood_logs
       WHERE user_id = ${user.id}
-      ORDER BY created_at DESC
+      ORDER BY logged_at DESC
       LIMIT ${limit}
     `;
     const MOOD_SCORE = { Great: 5, Good: 4, Okay: 3, Tired: 2, Stressed: 1 };
