@@ -64,6 +64,7 @@ export default async function handler(req, res) {
       estimatedDurationMinutes: t.estimated_duration_minutes,
       status: t.status,
       phaseLabel: t.phase_label,
+      toolHint: t.tool_hint || null,
     })),
     notes: project.notes,
   });

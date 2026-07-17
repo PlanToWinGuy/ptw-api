@@ -1415,6 +1415,7 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
     </div>
     <div class="section-sub" style="text-align:left">NOTES</div>
     <div id="td-notes" style="background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:14px;padding:14px 16px;text-align:left;margin-top:8px"></div>
+    <div id="td-paired" style="display:none;text-align:left;margin-top:14px"></div>
     <button id="td-primary-action-btn" class="btn-p filled" style="display:none;width:100%;margin-top:16px;font-size:15px;padding:14px" onclick="launchTaskDetailTool()">Start</button>
   </div>
   <div style="display:flex;justify-content:center;padding:16px 0 calc(40px + var(--sb))">
@@ -4270,10 +4271,76 @@ async function renderTaskDetailToolTip(task, pk, toolHint) {
     ? `<div style="border-left:3px solid ${p?.color||'var(--blue)'};padding-left:12px"><strong style="color:var(--text)">Tip:</strong> <span style="color:var(--text);font-size:13px;line-height:1.7">${tip}</span></div>`
     : '<div style="color:var(--muted);font-size:13px">No notes for this task.</div>';
 }
+// The "slot ↔ plan" pairing the whole schedule is meant to feel like: an "Eat lunch"
+// task shows the actual Lunch entry from your saved meal plans, a "Workout B" task shows
+// the actual plan (name + exercises) it'll start -- so the task card is a real pointer
+// into your own plan, not a generic label. Matched deterministically (meal type / plan
+// name), rendered async into #td-paired after the screen is already up.
+async function renderTaskDetailPairing(task, toolHint) {
+  const holder=document.getElementById('td-paired');
+  if(!holder) return;
+  if(toolHint==='meal') {
+    if(!Object.keys(mealPlansCache).length) {
+      const data=await req('GET','/metrics?pillar_id='+PILLARS.diet.id+'&log_type=meal_plan');
+      (data?.logs||[]).forEach(pl=>{ mealPlansCache[pl.id]=pl.data; });
+    }
+    if(S.taskDetailTask!==task) return;
+    const mealType=inferMealTypeFromText(task.name);
+    const matchId=Object.keys(mealPlansCache).find(id=>(mealPlansCache[id]?.mealType||'').toLowerCase()===mealType.toLowerCase());
+    if(!matchId) return;
+    const d=mealPlansCache[matchId];
+    S.taskDetailPairedMealPlanId=Number(matchId);
+    holder.style.display='';
+    holder.innerHTML=`<div class="section-sub" style="text-align:left">FROM YOUR MEAL PLAN</div>
+      <div class="rm-goal-card" style="margin-top:8px;cursor:pointer" onclick="viewMealPlanDetail(${matchId})">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text)">${d.name||'Meal Plan'} <span style="color:var(--stone);font-size:11px">›</span></span>
+          <span style="font-size:11px;color:var(--stone)">${d.calories||0} kcal</span>
+        </div>
+        <div style="font-size:12px;color:var(--stone);margin-top:4px">${d.mealType||'Meal'} · P:${d.protein_g||0} C:${d.carbs_g||0} F:${d.fat_g||0}</div>
+      </div>`;
+    const btn=document.getElementById('td-primary-action-btn');
+    if(btn) btn.textContent=`Log ${mealType}: ${d.name||'planned meal'}`;
+    return;
+  }
+  if(toolHint==='workout') {
+    if(!Object.keys(workoutPlansCache).length) {
+      const data=await req('GET','/metrics?pillar_id='+PILLARS.fitness.id+'&log_type=workout_plan');
+      (data?.logs||[]).forEach(pl=>{ workoutPlansCache[pl.id]=pl.data; });
+    }
+    if(S.taskDetailTask!==task) return;
+    const name=(task.name||'').toLowerCase();
+    const matchId=Object.keys(workoutPlansCache).find(id=>{
+      const pname=(workoutPlansCache[id]?.name||'').toLowerCase();
+      return pname && (name.includes(pname)||pname.includes(name));
+    })||Object.keys(workoutPlansCache)[0];
+    if(!matchId) return;
+    const d=workoutPlansCache[matchId];
+    S.taskDetailPairedWorkoutId=Number(matchId);
+    const exNames=(d.exercises||[]).map(e=>e.name);
+    holder.style.display='';
+    holder.innerHTML=`<div class="section-sub" style="text-align:left">TODAY'S WORKOUT</div>
+      <div class="rm-goal-card" style="margin-top:8px;cursor:pointer" onclick="viewWorkoutPlanDetail(${matchId})">
+        <div style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text)">${d.name||'Workout'} <span style="color:var(--stone);font-size:11px">›</span></div>
+        <div style="font-size:12px;color:var(--stone);margin-top:4px">${exNames.length} exercises${exNames.length?' · '+exNames.slice(0,3).join(', ')+(exNames.length>3?'…':''):''}</div>
+      </div>`;
+    const btn=document.getElementById('td-primary-action-btn');
+    if(btn) btn.textContent='Start '+(d.name||task.name||'Workout');
+  }
+}
 function launchTaskDetailTool() {
   const task=S.taskDetailTask;
   if(!task) return;
   S.pendingTaskId=task.taskId||task.id||null;
+  const toolHint=resolveTaskToolHint(task);
+  // A paired plan beats generic routing -- "Log Lunch: Chicken Wrap" should open the
+  // meal log PRE-FILLED with that exact planned meal, not a blank lunch form.
+  if(toolHint==='meal' && S.taskDetailPairedMealPlanId && mealPlansCache[S.taskDetailPairedMealPlanId]) {
+    logMealFromPlan(S.taskDetailPairedMealPlanId); return;
+  }
+  if(toolHint==='workout' && S.taskDetailPairedWorkoutId && workoutPlansCache[S.taskDetailPairedWorkoutId]) {
+    startWorkout(S.taskDetailPairedWorkoutId); return;
+  }
   openTaskByToolHint(task);
 }
 // The To-Do list and Task Detail's own Skip/Complete/Edit actions all read task.id
@@ -4305,6 +4372,10 @@ function openTaskDetail(task, returnScreen) {
   const durMin=task.estimated_duration_minutes!=null?task.estimated_duration_minutes:task.durationMinutes;
   document.getElementById('td-time').textContent='Time: '+formatHrsMins(durMin||0);
   const btn=document.getElementById('td-primary-action-btn');
+  const paired=document.getElementById('td-paired');
+  S.taskDetailPairedMealPlanId=null;
+  S.taskDetailPairedWorkoutId=null;
+  if(paired) { paired.style.display='none'; paired.innerHTML=''; }
   const toolHint=resolveTaskToolHint(task);
   if(toolHint) {
     // A goal-generated task (recurring "Logging" habit, or a "Simple"-kind sub-task) now
@@ -4315,6 +4386,7 @@ function openTaskDetail(task, returnScreen) {
     // now route here instead of calling openTaskByToolHint directly.
     document.getElementById('td-notes').innerHTML='<div style="color:var(--muted);font-size:13px">Loading tip...</div>';
     renderTaskDetailToolTip(task, pk, toolHint);
+    renderTaskDetailPairing(task, toolHint);
     if(btn) { btn.style.display=''; btn.textContent=primaryActionLabel(task, toolHint); }
   } else {
     if(btn) btn.style.display='none';
@@ -4938,6 +5010,7 @@ function openShuffleDay() {
 async function submitShuffleContext() {
   const selected=document.querySelector('#shuffle-context-options .q-opt.sel');
   const context=selected?selected.dataset.reason:null;
+  S.lastShuffleContext=context;
   closeModal('modal-shuffle-context');
   const result=await req('POST','/schedule/shuffle-day',{date:S.dailyDate, context});
   S.shuffleResult=result;
@@ -4963,9 +5036,82 @@ function showShuffleProposal(result) {
     <div class="rm-strategy" style="background:var(--bg3);color:var(--text);margin-top:8px">${summary.streak_protection_note||''}</div>
     <div class="section-sub" style="margin-top:18px">NEW SCHEDULE</div>
     ${schedule.length?schedule.map(t=>`<div class="sq-card"><div class="sq-info"><div class="sq-name">${formatTimeOfDay(t.startTime)} — ${t.name}</div></div></div>`).join(''):'<div class="empty-text" style="padding:0">Nothing to shuffle today.</div>'}
+    <div id="shuffle-suggestions"></div>
     <button class="btn-p filled" style="background:var(--blue);border-color:var(--blue);margin-top:18px" onclick="confirmShuffle()">✓ Accept & Update My Day</button>
     <button class="btn-p" style="border-color:transparent;color:var(--stone);margin-top:8px;margin-bottom:20px" onclick="showScreen('daily')">Discard</button>
   `;
+  loadShuffleSuggestions(S.lastShuffleContext);
+}
+
+// The reason someone gives for reshuffling says something about what their day now has
+// room for -- a social surprise means you're already out with someone (a saved "check
+// out that new cafe" to-do fits perfectly); a productive streak means a backlog item
+// could actually get done; a wiped-out day still has room for one small win. Same
+// suggest-then-one-tap-add pattern as the Personal pillar's identity prompts, sourced
+// from the person's OWN saved to-dos (never invented ones), matched deterministically.
+const SHUFFLE_SUGGESTION_RULES = {
+  'Social surprise / Change of plans': {
+    title: 'MAKE IT COUNT',
+    blurb: "Plans changed anyway — got a saved idea that fits? Do it together.",
+    pattern: /\bcaf(e|é)\b|coffee|restaurant|movie|museum|park\b|beach|hike|visit|check out|\btry\b|game\b|picnic|market|concert|arcade|bowling/i,
+    fallback: t=>t.priority==='Low',
+  },
+  "Feeling productive! Let's optimize": {
+    title: 'RIDE THE MOMENTUM',
+    blurb: 'Feeling sharp? One of these has been waiting for a day like this.',
+    pattern: null,
+    fallback: t=>['Urgent','High','Medium'].includes(t.priority),
+  },
+  'Low energy / Mental off-day': {
+    title: 'SOMETHING SMALL STILL COUNTS',
+    blurb: 'A tiny win beats a written-off day — these are all quick ones.',
+    pattern: null,
+    fallback: t=>(t.estimated_duration_minutes||0)>0 && (t.estimated_duration_minutes||0)<=30,
+  },
+  'Hungover or sick': {
+    title: 'SOMETHING SMALL STILL COUNTS',
+    blurb: 'No pressure today — but if you want one easy win, these are quick.',
+    pattern: null,
+    fallback: t=>(t.estimated_duration_minutes||0)>0 && (t.estimated_duration_minutes||0)<=30,
+  },
+  'Travel / Errands took longer': {
+    title: 'ALREADY OUT? BATCH AN ERRAND',
+    blurb: "While you're out — one of these saved errands could ride along.",
+    pattern: /\bbuy\b|pick up|\bstore\b|\bshop|grocer|\bbook\b|\bcall\b|\bmail\b|\bpost\b|\breturn\b|renew|drop off|pharmac|\bbank\b/i,
+    fallback: null,
+  },
+};
+
+async function loadShuffleSuggestions(context) {
+  const rule=context && SHUFFLE_SUGGESTION_RULES[context];
+  const holder=document.getElementById('shuffle-suggestions');
+  if(!rule || !holder) return;
+  const data=await req('GET','/simple-tasks');
+  const all=(Array.isArray(data)?data:(data?.data||[]));
+  // Only the person's own saved manual to-dos, still pending, and not already on
+  // today's plate -- the whole point is surfacing something they stashed for "someday".
+  const candidates=all.filter(t=>!t.parent_task_id && t.kind!=='project' && !t.goal_id && !t.routine_id
+    && (t.status==='Pending'||!t.status) && (!t.due_date || t.due_date.split('T')[0]!==S.dailyDate));
+  const matched=rule.pattern ? candidates.filter(t=>rule.pattern.test(t.name||'')) : [];
+  const filler=rule.fallback ? candidates.filter(t=>!matched.includes(t) && rule.fallback(t)) : [];
+  const picks=[...matched,...filler].slice(0,3);
+  if(!picks.length || !document.getElementById('shuffle-suggestions')) return;
+  document.getElementById('shuffle-suggestions').innerHTML=`
+    <div class="section-sub" style="margin-top:18px">${rule.title}</div>
+    <div style="font-size:12px;color:var(--stone);margin-bottom:8px">${rule.blurb}</div>
+    ${picks.map(t=>`<div class="sq-card" id="shuffle-sug-${t.id}">
+      <div class="sq-icon" style="background:rgba(196,184,168,.12)">${t.icon||'💡'}</div>
+      <div class="sq-info"><div class="sq-name">${t.name}</div><div class="sq-meta">${t.priority||'Low'} priority · saved to-do${t.estimated_duration_minutes?' · '+t.estimated_duration_minutes+' min':''}</div></div>
+      <button class="btn-p filled" style="width:auto;padding:8px 14px;font-size:12px;background:var(--blue);border-color:var(--blue)" onclick="event.stopPropagation();addShuffleSuggestedTask(${t.id})">+ Add</button>
+    </div>`).join('')}
+  `;
+}
+
+async function addShuffleSuggestedTask(taskId) {
+  await req('POST','/tasks/reschedule',{task_id:taskId, new_date:S.dailyDate});
+  const card=document.getElementById('shuffle-sug-'+taskId);
+  if(card) card.remove();
+  toast('Added to today ✓');
 }
 
 async function confirmShuffle() {
@@ -9030,13 +9176,27 @@ async function renderProjectDetail() {
 }
 
 function projectSubtaskRow(s,p) {
+  // A sub-task with a real tool behind it (a workout, a meal to log, a journal prompt)
+  // gets a launch affordance into the tip+action Task Detail screen -- inside a fitness
+  // project that's where "which workout is this?" actually gets answered (the paired
+  // plan card). The row itself stays a check-toggle, same as always.
+  const openBtn = (s.toolHint && s.status!=='Completed')
+    ? `<button class="icon-btn ghost" style="width:32px;height:32px;font-size:13px;color:${p.color}" onclick="event.stopPropagation();openProjectSubtaskTool(${s.subTaskId})" title="Open">▶</button>`
+    : '';
   return `<div class="sq-card" onclick="toggleProjectSubtaskCheck(${s.subTaskId})">
     <div class="sq-icon" style="background:${p.color}22;color:${p.color}">${s.status==='Completed'?'✓':'○'}</div>
     <div class="sq-info">
       <div class="sq-name" style="${s.status==='Completed'?'text-decoration:line-through;opacity:.6':''}">${s.name}</div>
       <div class="sq-meta">${s.estimatedDurationMinutes||0} min${s.phaseLabel?' · '+s.phaseLabel:''}</div>
     </div>
+    ${openBtn}
   </div>`;
+}
+
+function openProjectSubtaskTool(subTaskId) {
+  const s=(S.activeProjectData?.subTasks||[]).find(x=>x.subTaskId===subTaskId);
+  if(!s) return;
+  openTaskDetail({ id:s.subTaskId, taskId:s.subTaskId, name:s.name, toolHint:s.toolHint, pillar:S.activeProjectData.pillar, estimated_duration_minutes:s.estimatedDurationMinutes }, 'project-detail');
 }
 
 function renderProjectPreviewState(project,p) {
