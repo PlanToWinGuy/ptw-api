@@ -3253,6 +3253,15 @@ const TOOL_HINT_OPEN = {
 function openTaskByToolHint(t) {
   const fn=t.toolHint && TOOL_HINT_OPEN[t.toolHint];
   if(fn) { fn(t); return true; }
+  // A manually-created task (or an older row from before tool_hint was backfilled
+  // consistently) never got a stored tool_hint at all, so it fell all the way through to
+  // the generic per-pillar handler -- which for fitness is "start a workout", not the
+  // Steps Logger. Text-match the same way lib/scheduling.js's inferToolHint() already
+  // prioritizes 'steps' over 'workout' server-side, so a task literally named "Walk 8,000
+  // steps" opens the right tool regardless of whether tool_hint ever got set.
+  if(!t.toolHint && getPillarKey(t.pillar)==='fitness' && /\bsteps?\b/i.test(t.name||'')) {
+    openStepsLogger(t); return true;
+  }
   return false;
 }
 
@@ -5156,9 +5165,9 @@ function weekDayGroupedHtml(tasks) {
 // list-cycling) is built on this one primitive instead of hand-rolling the same
 // touchstart/touchmove/touchend threshold logic per screen.
 function detectSwipe(el, onSwipe, {minDist=70, ratio=1.5}={}) {
-  let sx=0, sy=0, st=0;
+  let sx=0, sy=0, st=0, startTarget=null;
   el.addEventListener('touchstart', e=>{
-    const t=e.touches[0]; sx=t.clientX; sy=t.clientY; st=Date.now();
+    const t=e.touches[0]; sx=t.clientX; sy=t.clientY; st=Date.now(); startTarget=e.target;
   }, {passive:true});
   el.addEventListener('touchend', e=>{
     const t=e.changedTouches[0];
@@ -5167,7 +5176,10 @@ function detectSwipe(el, onSwipe, {minDist=70, ratio=1.5}={}) {
     const dxDominant = Math.abs(dx)>minDist && Math.abs(dx)>Math.abs(dy)*ratio;
     const dyDominant = Math.abs(dy)>minDist && Math.abs(dy)>Math.abs(dx)*ratio;
     if(!dxDominant && !dyDominant) return;
-    onSwipe(dx, dy);
+    // startTarget lets a handler check scroll state on whatever element the gesture
+    // actually began on (e.g. Daily/Week's individual scrollable cards), not just a
+    // single fixed container -- see screen-daily's up handler.
+    onSwipe(dx, dy, startTarget);
   }, {passive:true});
 }
 
@@ -5178,13 +5190,13 @@ function detectSwipe(el, onSwipe, {minDist=70, ratio=1.5}={}) {
 function setupSwipeNav(elId, {left, right, up, down}, opts) {
   const el=document.getElementById(elId);
   if(!el) return;
-  detectSwipe(el, (dx, dy) => {
+  detectSwipe(el, (dx, dy, startTarget) => {
     if(Math.abs(dx)>Math.abs(dy)) {
-      if(dx>0 && right) right();
-      else if(dx<0 && left) left();
+      if(dx>0 && right) right(startTarget);
+      else if(dx<0 && left) left(startTarget);
     } else {
-      if(dy>0 && down) down();
-      else if(dy<0 && up) up();
+      if(dy>0 && down) down(startTarget);
+      else if(dy<0 && up) up(startTarget);
     }
   }, opts);
 }
@@ -5268,15 +5280,29 @@ setupSwipeNav('screen-profile', { left: ()=>showScreen('home') });
 // vs. the 70px/1.5x default) so an imperfectly-vertical scroll doesn't misfire as a
 // day change either.
 setupSwipeNav('screen-daily', {
-  up: ()=>{
-    const body=document.getElementById('daily-body');
-    if(body && body.scrollTop + body.clientHeight < body.scrollHeight - 4) return;
+  up: (startTarget)=>{
+    // Week mode's day cards each scroll independently (see loadWeekOverview's
+    // .rm-goal-card[data-date]) -- daily-body itself never scrolls vertically in that
+    // mode, so it always looked "already at the bottom" and let scrolling inside a card
+    // exit straight to Home instead of just scrolling further down that card. Check the
+    // specific card the gesture actually started on instead.
+    const card = S.overviewMode==='week' ? startTarget?.closest?.('.rm-goal-card[data-date]') : null;
+    const scroller = card || document.getElementById('daily-body');
+    if(scroller && scroller.scrollTop + scroller.clientHeight < scroller.scrollHeight - 4) return;
     showScreen('home');
   },
   left: ()=>{ if(S.overviewMode==='day') shiftOverview(1); },
   right: ()=>{ if(S.overviewMode==='day') shiftOverview(-1); },
 }, { minDist: 100, ratio: 2 });
-setupSwipeNav('screen-todo-routines', { down: ()=>showScreen('home') });
+// Entered from Home via a LEFT swipe, always landing on the To-Do tab first -- so the
+// reverse gesture (right) should step back the same way it stepped in: Routines -> To-Do
+// -> Home, one screen at a time, rather than jumping straight to Home from either tab.
+// Left continues forward the same direction that got you here, switching To-Do -> Routines.
+setupSwipeNav('screen-todo-routines', {
+  right: ()=>{ if(S.todoRoutinesTab==='routines') switchTodoRoutinesTab('todo'); else showScreen('home'); },
+  left: ()=>{ if(S.todoRoutinesTab==='todo') switchTodoRoutinesTab('routines'); },
+  down: ()=>showScreen('home'),
+});
 
 // Horizontal swipe between unlocked pillars on a pillar's own screen (3.4) --
 // cycles through S.unlocked only, wrapping around, skipping locked pillars entirely
@@ -6552,13 +6578,13 @@ async function loadFitnessMap() {
         <div class="section-sub">Weight</div>
         <div style="font-family:'Syne',sans-serif;font-size:17px;font-weight:800;color:var(--text);margin:2px 0 6px">${latestWeight?`${latestWeight.value} ${latestWeight.unit||'kg'}`:'—'}</div>
         ${weightTrendHtml(weightLogs?.logs||[], true)}
-        <div style="font-size:11px;color:${p.color};font-weight:700;margin-top:8px">+ Log Weight</div>
+        <div style="display:inline-block;font-size:11px;color:${p.color};font-weight:700;margin-top:8px;padding:4px 10px;border:1.5px solid ${p.color};border-radius:20px">+ Log Weight</div>
       </div>
       <div class="rm-goal-card" style="flex:1;background:${p.color};padding:12px" onclick="openStepsLogger(null)">
         <div class="section-sub" style="color:rgba(255,255,255,.75)">Steps Today</div>
         <div style="font-family:'Syne',sans-serif;font-size:17px;font-weight:800;color:#fff;margin:2px 0 6px">${stepsToday?stepsToday.toLocaleString():'0'}</div>
         <div style="font-size:11px;color:rgba(255,255,255,.85);line-height:1.4">Tap to log more steps</div>
-        <div style="font-size:11px;color:#fff;font-weight:700;margin-top:8px">+ Log Steps</div>
+        <div style="display:inline-block;font-size:11px;color:#fff;font-weight:700;margin-top:8px;padding:4px 10px;border:1.5px solid rgba(255,255,255,.7);border-radius:20px">+ Log Steps</div>
       </div>
     </div>
     <button class="view-log-btn" style="margin-top:10px" onclick="openWorkoutHub()">View Full Workout Hub</button>`;
