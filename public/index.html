@@ -1715,6 +1715,17 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
   </div>
 </div>
 
+<div class="modal-overlay" id="modal-change-password" onclick="closeModal('modal-change-password',event)">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-change-password')">×</button>
+    <h3>Change Password</h3>
+    <div class="field"><label>CURRENT PASSWORD</label><input type="password" id="cp-current" autocomplete="current-password"></div>
+    <div class="field"><label>NEW PASSWORD (8+ chars)</label><input type="password" id="cp-new" autocomplete="new-password"></div>
+    <div class="field"><label>CONFIRM NEW PASSWORD</label><input type="password" id="cp-confirm" autocomplete="new-password"></div>
+    <button class="btn-p filled" style="background:var(--blue);border-color:var(--blue);margin-top:8px" onclick="submitChangePassword()">Update Password</button>
+  </div>
+</div>
+
 <div id="screen-phase-detail" class="screen">
   <div class="pillar-top-bar">
     <button class="icon-btn ghost" onclick="showScreen('profile')">×</button>
@@ -2715,10 +2726,33 @@ function openAccountSecurity() {
   showScreen('account-security');
   document.getElementById('account-security-body').innerHTML = `
     <div class="section-sub" style="margin-top:14px">SECURITY</div>
-    ${settingsRow('🔑','Change Password',"toast('Password reset via email is coming soon')")}
+    ${settingsRow('🔑','Change Password',"openChangePassword()")}
     <div class="section-sub" style="margin-top:20px">ACCOUNT MANAGEMENT</div>
     ${settingsRow('🗑️','Delete Account',"openDeleteAccountModal()",'This action is permanent')}
   `;
+}
+
+function openChangePassword() {
+  ['cp-current','cp-new','cp-confirm'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('modal-change-password').classList.add('open');
+}
+async function submitChangePassword() {
+  const current=document.getElementById('cp-current').value;
+  const next=document.getElementById('cp-new').value;
+  const confirm=document.getElementById('cp-confirm').value;
+  if(!current) { toast('Enter your current password'); return; }
+  if(next.length<8) { toast('New password must be at least 8 characters'); return; }
+  if(next!==confirm) { toast('New passwords do not match'); return; }
+  const data=await req('POST','/change-password',{current_password:current, new_password:next});
+  if(!data) return; // req already toasted a network/timeout error
+  if(/updated successfully/i.test(data.message||'')) {
+    closeModal('modal-change-password');
+    toast('Password updated ✓');
+  } else {
+    // Surface the specific server-side validation message (wrong current password, etc.)
+    const firstErr=data.errors && Object.values(data.errors)[0]?.[0];
+    toast(firstErr||data.message||'Could not update password');
+  }
 }
 
 function openDeleteAccountModal() {
@@ -8915,8 +8949,62 @@ function renderJournalBody(entries) {
   const filtered = filter.startsWith('pillar:') ? entries.filter(e=>(e.data?.pillar||'personal')===filter.slice(7)) : entries;
   body.innerHTML = `<button class="btn-p filled" style="background:var(--personal);border-color:var(--personal);margin:12px 0" onclick="openJournalEntry()">+ New Entry</button>` +
     (filter==='Mood Trends'
-      ? `<div class="empty"><div class="empty-icon">📊</div><div class="empty-text">Mood trends are coming soon — they'll pull from your Take a Break check-ins.</div></div>`
+      ? `<div id="mood-trends-holder"><div class="spinner"></div></div>`
       : (filtered.length ? filtered.map(journalCard).join('') : `<div class="empty"><div class="empty-icon">📓</div><div class="empty-text">No journal entries yet.</div></div>`));
+  if(filter==='Mood Trends') loadMoodTrends();
+}
+
+// Real Mood Trends, sourced from the Take a Break mood check-ins (GET /mood-log). Renders
+// a compact bar strip of the most recent check-ins (oldest→newest, left→right) plus a
+// per-mood tally, so the pattern over time is visible at a glance without a chart library.
+const MOOD_META={
+  Great:{score:5,color:'#5A9460',emoji:'😄'}, Good:{score:4,color:'#5BA4DC',emoji:'🙂'},
+  Okay:{score:3,color:'#C9A832',emoji:'😐'}, Tired:{score:2,color:'#C4894A',emoji:'😴'},
+  Stressed:{score:1,color:'#C46882',emoji:'😣'},
+};
+async function loadMoodTrends() {
+  const holder=document.getElementById('mood-trends-holder');
+  if(!holder) return;
+  const data=await req('GET','/mood-log?limit=30');
+  if(!holder.isConnected) return;
+  const logs=data?.logs||[];
+  if(!logs.length) {
+    holder.innerHTML=`<div class="empty"><div class="empty-icon">📊</div><div class="empty-text">No mood check-ins yet. Tap the ☕ button on your home screen and log how you're feeling — your trend will build here.</div></div>`;
+    return;
+  }
+  const recent=[...logs].slice(0,14).reverse(); // oldest→newest for the strip
+  const avg=data.average||0;
+  const avgLabel = avg>=4.5?'Great':avg>=3.5?'Good':avg>=2.5?'Okay':avg>=1.5?'Tired':'Stressed';
+  const avgColor = (MOOD_META[avgLabel]||MOOD_META.Okay).color;
+  const bars=recent.map(l=>{
+    const m=MOOD_META[l.mood]||MOOD_META.Okay;
+    return `<div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:3px" title="${l.mood}">
+      <div style="width:100%;max-width:16px;height:${m.score*18}px;background:${m.color};border-radius:4px 4px 0 0"></div>
+    </div>`;
+  }).join('');
+  const counts=data.counts||{};
+  const tally=Object.keys(MOOD_META).map(k=>{
+    const n=counts[k]||0; const m=MOOD_META[k];
+    return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <span style="font-size:15px">${m.emoji}</span>
+      <span style="font-size:12px;color:var(--text);width:64px">${k}</span>
+      <div style="flex:1;height:8px;background:var(--bg4);border-radius:4px;overflow:hidden"><div style="height:100%;width:${data.total?Math.round(n/data.total*100):0}%;background:${m.color}"></div></div>
+      <span style="font-size:12px;color:var(--stone);width:20px;text-align:right">${n}</span>
+    </div>`;
+  }).join('');
+  holder.innerHTML=`
+    <div style="background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:16px;padding:16px;margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px">
+        <div style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text)">Recent moods</div>
+        <div style="font-size:12px;color:${avgColor};font-weight:600">Avg: ${avgLabel}</div>
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:4px;height:96px">${bars}</div>
+      <div style="font-size:10px;color:var(--muted);text-align:center;margin-top:6px">Last ${recent.length} check-ins</div>
+    </div>
+    <div style="background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:16px;padding:16px">
+      <div style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text);margin-bottom:12px">How you've been feeling</div>
+      ${tally}
+    </div>`;
 }
 
 function journalCard(e) {

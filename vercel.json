@@ -19,6 +19,7 @@
     { "source": "/api/auth/google", "destination": "/api/auth?action=google" },
     { "source": "/api/profile-creation", "destination": "/api/profile?action=profile-creation" },
     { "source": "/api/valueprint", "destination": "/api/profile?action=valueprint" },
+    { "source": "/api/change-password", "destination": "/api/profile?action=change-password" },
     { "source": "/api/goals/generate", "destination": "/api/goals?action=generate" },
     { "source": "/api/metrics/scan-meal", "destination": "/api/metrics?action=scan-meal" },
     { "source": "/api/tasks/skip", "destination": "/api/tasks/update-completion?action=skip" },

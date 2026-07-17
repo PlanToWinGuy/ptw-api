@@ -1,6 +1,6 @@
 import { sql } from '../lib/db.js';
 import { cors } from '../lib/cors.js';
-import { getUserFromRequest } from '../lib/auth.js';
+import { getUserFromRequest, hashPassword, verifyPassword } from '../lib/auth.js';
 import { calculateBaseline } from '../lib/lifescore.js';
 import { createBookendRoutines } from '../lib/routines.js';
 
@@ -58,6 +58,24 @@ export default async function handler(req, res) {
       WHERE id = ${user.id}
     `;
     return res.status(200).json({ message: 'Valueprint saved', recommended_pillar: recommended });
+  }
+
+  if (action === 'change-password') {
+    const { current_password, new_password } = req.body || {};
+    // A Google-only account has no password_hash to verify against -- it can't "change" a
+    // password it never had, so guide it to keep using Google rather than fail cryptically.
+    if (!user.password_hash) {
+      return res.status(422).json({ message: 'This account signs in with Google, so it has no password to change.' });
+    }
+    if (!new_password || new_password.length < 8) {
+      return res.status(422).json({ message: 'Validation failed', errors: { new_password: ['New password must be at least 8 characters.'] } });
+    }
+    if (!current_password || !(await verifyPassword(current_password, user.password_hash))) {
+      return res.status(422).json({ message: 'Validation failed', errors: { current_password: ['Your current password is incorrect.'] } });
+    }
+    const password_hash = await hashPassword(new_password);
+    await sql`UPDATE users SET password_hash = ${password_hash} WHERE id = ${user.id}`;
+    return res.status(200).json({ message: 'Password updated successfully.' });
   }
 
   res.status(404).json({ message: 'Unknown profile action' });
