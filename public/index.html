@@ -3307,6 +3307,15 @@ function openCurrentTask() {
     return;
   }
   if(t.routineId) {
+    // Same real-tool routing as any other tool_hint-tagged task (openTaskByToolHint,
+    // used just below for taskType==='Logging') -- openRoutineFromLibrary already does
+    // this when tapping a routine from the Library list, but tapping the SAME routine's
+    // materialized instance via the CTA ring skipped it entirely, always opening the
+    // generic step-checklist even for a single-action routine like "Walk 8,000 steps
+    // daily" that has (or should route to) a real tool. Multi-step bookend routines
+    // (Morning/Wind-Down) have no tool_hint and no step-count in their name, so they
+    // still correctly fall through to the checklist below.
+    if(openTaskByToolHint(t)) return;
     if(routinesCache[t.routineId]) { openActiveRoutine(t.routineId, t.taskId); }
     else { req('GET','/routines').then(rs=>{ (rs||[]).forEach(r=>routinesCache[r.routineId]=r); openActiveRoutine(t.routineId, t.taskId); }); }
     return;
@@ -4613,7 +4622,7 @@ function dailyTaskCard(t) {
   // inferToolHint(), same as habits/routines already did) opens its exact tool on tap --
   // the same "everything you need for this task in one place" routing, not just for
   // Logging-kind and routine-kind tasks anymore.
-  const openCall = isCompleted ? '' : t.routineId ? `openDailyRoutineTask(${t.routineId},${t.taskId},${t.toolHint?`'${t.toolHint}'`:'null'},'${(t.name||'').replace(/'/g,"\\'")}')`
+  const openCall = isCompleted ? '' : t.routineId ? `openDailyRoutineTask(${t.routineId},${t.taskId},${t.toolHint?`'${t.toolHint}'`:'null'},'${(t.name||'').replace(/'/g,"\\'")}','${t.pillar||''}')`
     : isProject ? `openProjectDetail(${t.taskId},'daily')`
     : (t.isAntiGoal && t.antiGoalType==='progressive') ? `openLogAntiGoal(${t.taskId})`
     : (t.taskType==='Logging') ? `openDailyLoggingTask(${t.taskId})`
@@ -4687,8 +4696,12 @@ function openDailyLoggingTask(taskId) {
 
 // Same tool_hint-first dispatch as openRoutineFromLibrary(), for the Daily Overview
 // card's tap target -- a goal-generated recurring task (workout, meal, etc.) opens its
-// real tool instead of the generic routine checklist.
-function openDailyRoutineTask(routineId, taskId, toolHint, name) {
+// real tool instead of the generic routine checklist. Steps-count text is checked before
+// the stored toolHint for the same reason as openTaskByToolHint()/openRoutineFromLibrary()
+// -- an older routine can have 'workout' baked in from before inferToolHint() started
+// prioritizing 'steps'.
+function openDailyRoutineTask(routineId, taskId, toolHint, name, pillar) {
+  if(getPillarKey(pillar)==='fitness' && /\bsteps?\b/i.test(name||'')) { openStepsLogger({name}); return; }
   if(toolHint && TOOL_HINT_OPEN[toolHint]) { TOOL_HINT_OPEN[toolHint]({name}); return; }
   openActiveRoutineFromCard(routineId, taskId);
 }
@@ -4970,6 +4983,13 @@ let routineTimerInterval=null, routineStepSecondsLeft=0, routineActiveStepIdx=-1
 
 async function openRoutineFromLibrary(routineId) {
   const r=routinesCache[routineId];
+  // Same steps-before-workout text override as openTaskByToolHint() -- this is a
+  // SEPARATE dispatch (routine cards in the Library list don't go through that function
+  // at all), confirmed live to be the actual bug behind guest2's "Walk 8,000 steps daily"
+  // routine opening the Workout Hub: its stored tool_hint is 'workout' (baked in before
+  // inferToolHint() started prioritizing 'steps'), and TOOL_HINT_OPEN.workout is
+  // literally openWorkoutHub().
+  if(r && getPillarKey(r.category)==='fitness' && /\bsteps?\b/i.test(r.name||'')) { openStepsLogger({name:r.name}); return; }
   // A goal-generated routine (single recurring action, e.g. a daily workout) has a real
   // tool it should open instead of the generic step-checklist -- same TOOL_HINT_OPEN
   // dispatch every other tool_hint-tagged task already uses.
