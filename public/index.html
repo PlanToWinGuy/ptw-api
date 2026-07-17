@@ -8326,6 +8326,10 @@ async function switchPersonalHubTab(tab) {
   // it was really about (see openJournalEntry's pillarKey param), not just Personal.
   const data=await req('GET','/metrics?log_type=journal_entry');
   S.journalCache=(data?.logs||[]).sort((a,b)=>new Date(b.logged_at)-new Date(a.logged_at));
+  // Re-render now that real data exists -- switchPersonalHubTab's own subfilter call
+  // fires before this fetch even starts, so the pillar chips it computed only ever saw
+  // whatever S.journalCache held from the PREVIOUS load, always one fetch behind.
+  renderPersonalSubfilter('journal');
   renderJournalBody(S.journalCache);
 }
 
