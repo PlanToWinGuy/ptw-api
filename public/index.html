@@ -42,7 +42,11 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
    keep their white text/overlays untouched in both themes since the pillar color
    itself doesn't change. */
 :root[data-theme="light"] .chip.sel{background:rgba(0,0,0,.05)}
-#app{max-width:430px;margin:0 auto;height:100dvh;display:flex;flex-direction:column;position:relative;overflow:hidden;background:var(--bg)}
+/* width/height are pre-shrunk by dividing out --text-scale, so that after the
+   zoom below scales the whole box back up, the rendered footprint lands exactly on
+   the real viewport again instead of overflowing it (see applyTextScale()). At the
+   default scale of 1 this is identical to the old fixed max-width:430px behavior. */
+#app{width:calc(min(100vw,430px) / var(--text-scale,1));margin:0 auto;height:calc(100dvh / var(--text-scale,1));display:flex;flex-direction:column;position:relative;overflow:hidden;background:var(--bg)}
 
 /* ── SCREENS ── */
 .screen{position:absolute;inset:0;display:none;flex-direction:column;overflow:hidden;background:var(--bg)}
@@ -198,7 +202,12 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
    HOME LAUNCHER
 ══════════════════════════════════ */
 #screen-home{flex-direction:column}
-.home-body{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 20px;position:relative}
+.home-body{flex:1;display:flex;flex-direction:column;padding:0 20px;position:relative}
+/* The CTA ring + its sub-row stay centered in whatever space is left after the
+   reshuffle banner (below), rather than the banner itself being swept into a single
+   justify-content:center group with the ring -- that used to make the ring visibly
+   shift position every time the banner appeared/disappeared. */
+.home-center{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;min-height:0}
 
 /* CTA Circle */
 #cta-ring{
@@ -718,39 +727,43 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
   </div>
 
   <div class="home-body">
-    <div id="cta-reshuffle-banner" style="display:none;flex-direction:column;gap:10px;background:var(--bg3);border:1px solid rgba(196,184,168,.15);border-radius:12px;padding:12px;margin:0 20px 14px;position:relative">
-      <button class="icon-btn ghost" style="width:24px;height:24px;position:absolute;top:8px;right:8px" onclick="dismissReshufflePrompt()">×</button>
-      <div style="font-size:12px;color:var(--text);line-height:1.4;padding-right:26px">Today's plan has slipped by a few hours — want to reshuffle from now?</div>
-      <button class="btn-p filled" style="padding:8px 12px;font-size:12px;width:100%" onclick="dismissReshufflePrompt();openShuffleDay()">Reshuffle</button>
+    <!-- A slim, low-key inline nudge (not a bordered alert card) -- sits in a fixed
+         slot right below the top bar so the CTA ring below never shifts position when
+         this shows/hides (see .home-center). -->
+    <div id="cta-reshuffle-banner" style="display:none;align-items:center;gap:10px;background:rgba(196,184,168,.08);border-radius:10px;padding:9px 10px;margin:10px 0 0;width:100%">
+      <div style="flex:1;font-size:11.5px;color:var(--stone);line-height:1.35">Running behind today — <span style="color:var(--text);font-weight:700;text-decoration:underline;text-underline-offset:2px;cursor:pointer" onclick="dismissReshufflePrompt();openShuffleDay()">reshuffle?</span></div>
+      <button class="icon-btn ghost" style="width:20px;height:20px;flex-shrink:0" onclick="dismissReshufflePrompt()">×</button>
     </div>
 
-    <div id="cta-ring" class="active" onclick="handleCtaClick()">
-      <!-- pointer-events:none is the fix here -- a position:absolute element always
-           paints (and hit-tests) above the ring's static in-flow children regardless of
-           DOM order, so this purely-decorative arc was silently swallowing every tap on
-           the ✓/✏ micro-buttons underneath whenever it was visible (i.e. the whole time
-           any task -- scheduled or manually-started -- had a running timer). -->
-      <svg id="cta-timer-svg" viewBox="0 0 210 210" style="position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg);display:none;pointer-events:none">
-        <circle id="cta-timer-arc" cx="105" cy="105" r="101" fill="none" stroke="var(--blue)" stroke-width="3" stroke-linecap="round" stroke-dasharray="634.6" stroke-dashoffset="0"/>
-      </svg>
-      <div class="cta-inner">
-        <div class="cta-glyph" id="cta-glyph">∞</div>
-        <div class="cta-time-range" id="cta-time-range"></div>
-        <div class="cta-name" id="cta-label">Loading...</div>
-        <div class="cta-timer-label" id="cta-timer-label" style="display:none"></div>
+    <div class="home-center">
+      <div id="cta-ring" class="active" onclick="handleCtaClick()">
+        <!-- pointer-events:none is the fix here -- a position:absolute element always
+             paints (and hit-tests) above the ring's static in-flow children regardless of
+             DOM order, so this purely-decorative arc was silently swallowing every tap on
+             the ✓/✏ micro-buttons underneath whenever it was visible (i.e. the whole time
+             any task -- scheduled or manually-started -- had a running timer). -->
+        <svg id="cta-timer-svg" viewBox="0 0 210 210" style="position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg);display:none;pointer-events:none">
+          <circle id="cta-timer-arc" cx="105" cy="105" r="101" fill="none" stroke="var(--blue)" stroke-width="3" stroke-linecap="round" stroke-dasharray="634.6" stroke-dashoffset="0"/>
+        </svg>
+        <div class="cta-inner">
+          <div class="cta-glyph" id="cta-glyph">∞</div>
+          <div class="cta-time-range" id="cta-time-range"></div>
+          <div class="cta-name" id="cta-label">Loading...</div>
+          <div class="cta-timer-label" id="cta-timer-label" style="display:none"></div>
+        </div>
+        <div class="cta-btns">
+          <button class="cta-micro" onclick="event.stopPropagation();openTaskCompletion()" title="Complete">✓</button>
+          <button class="cta-micro" onclick="event.stopPropagation();openTaskActionsMenu()" title="Options">✏</button>
+        </div>
       </div>
-      <div class="cta-btns">
-        <button class="cta-micro" onclick="event.stopPropagation();openTaskCompletion()" title="Complete">✓</button>
-        <button class="cta-micro" onclick="event.stopPropagation();openTaskActionsMenu()" title="Options">✏</button>
-      </div>
-    </div>
 
-    <div class="cta-sub">
-      <button class="grid-btn" onclick="openEssentialApps()">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-      </button>
-      <div class="next-txt" id="next-txt">Next... Nothing planned</div>
-      <button class="plus-fab" onclick="openAddTask()">+</button>
+      <div class="cta-sub">
+        <button class="grid-btn" onclick="openEssentialApps()">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        </button>
+        <div class="next-txt" id="next-txt">Next... Nothing planned</div>
+        <button class="plus-fab" onclick="openAddTask()">+</button>
+      </div>
     </div>
   </div>
 
@@ -2074,7 +2087,16 @@ applyTheme(localStorage.getItem('ptw_theme')||'dark');
 // ════════════════════════════════════════
 function applyTextScale(scale) {
   const app=document.getElementById('app');
-  if(app) app.style.zoom=scale;
+  if(!app) return;
+  // #app's width/height are calc()'d against this variable (see #app CSS) so the
+  // post-zoom rendered footprint always lands back on the real viewport size instead
+  // of overflowing it -- see #app CSS comment for the full explanation.
+  app.style.setProperty('--text-scale', scale);
+  app.style.zoom=scale;
+  // syncAppHeightToViewport() sets an inline height that overrides the CSS calc() above,
+  // so it has to be re-run here with the new scale or it'll silently reintroduce the
+  // exact vertical overflow this function exists to prevent (see its own comment).
+  syncAppHeightToViewport();
 }
 function setTextScale(scale) {
   localStorage.setItem('ptw_text_scale', scale);
@@ -2238,20 +2260,25 @@ window.addEventListener('popstate', (e)=>{
 // while the keyboard covers the bottom of it, so a bottom-anchored input row (AI Coach's
 // chat box, for example) ends up rendered underneath the keyboard instead of above it.
 // visualViewport.height is the one measurement that's reliably keyboard-aware everywhere,
-// so it drives #app's real height directly instead of trusting dvh alone.
-if (window.visualViewport) {
+// so it drives #app's real height directly instead of trusting dvh alone -- divided by the
+// current text-scale, since this inline height always wins over the CSS calc() (see #app
+// CSS) and would otherwise silently reintroduce vertical overflow at Large/Extra Large text.
+// A plain function declaration (not a const) so it's hoisted and safely callable from
+// applyTextScale(), which runs earlier in the file at initial load.
+function syncAppHeightToViewport() {
+  if (!window.visualViewport) return;
   const appEl = document.getElementById('app');
-  const syncAppHeightToViewport = () => {
-    // A momentarily-0 or unavailable reading (seen during very early load, or in some
-    // embedded/preview contexts) must never win -- locking #app's height at 0px via
-    // inline style permanently breaks the whole layout, since inline styles override
-    // the 100dvh CSS fallback with nothing to recover it. Only apply a real value.
-    const vh = window.visualViewport.height;
-    if (vh > 0) appEl.style.height = vh + 'px';
-  };
-  window.visualViewport.addEventListener('resize', syncAppHeightToViewport);
-  syncAppHeightToViewport();
+  // A momentarily-0 or unavailable reading (seen during very early load, or in some
+  // embedded/preview contexts) must never win -- locking #app's height at 0px via
+  // inline style permanently breaks the whole layout, since inline styles override
+  // the 100dvh CSS fallback with nothing to recover it. Only apply a real value.
+  const vh = window.visualViewport.height;
+  if (vh <= 0) return;
+  const scale = parseFloat(appEl.style.getPropertyValue('--text-scale')) || 1;
+  appEl.style.height = (vh / scale) + 'px';
 }
+if (window.visualViewport) window.visualViewport.addEventListener('resize', syncAppHeightToViewport);
+syncAppHeightToViewport();
 
 // ════════════════════════════════════════
 // AUTH
@@ -3812,7 +3839,7 @@ async function enterFocusMode() {
   // timer arc are then guaranteed pixel-identical to Home, since it's literally the
   // same DOM node running the same setInterval-driven updates, not a second copy that
   // could ever drift out of sync. Positioned at its own real on-screen coordinates
-  // first (captured before the move, since .home-body and the overlay aren't the same
+  // first (captured before the move, since .home-center and the overlay aren't the same
   // height) so it doesn't visibly jump the instant Focus Mode opens.
   const realRing=document.getElementById('cta-ring');
   const rect=realRing.getBoundingClientRect();
@@ -3842,8 +3869,8 @@ function exitFocusMode() {
     realRing.style.position=''; realRing.style.top=''; realRing.style.left='';
     realRing.style.margin=''; realRing.style.filter=''; realRing.style.pointerEvents='';
     delete realRing.dataset.focusMode;
-    const homeBody=document.querySelector('.home-body');
-    homeBody.insertBefore(realRing, homeBody.firstChild); // its original position
+    const homeCenter=document.querySelector('.home-center');
+    homeCenter.insertBefore(realRing, homeCenter.firstChild); // its original position
   }
   document.getElementById('focus-overlay').classList.remove('open');
 }
