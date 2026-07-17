@@ -15,9 +15,12 @@ const SYSTEM = `You make a small, targeted edit to someone's existing goal plan 
   "summary": "<1 sentence, second person, what you changed and why>",
   "removeActions": ["<exact text of an existing phase action to remove, copied verbatim from the plan below>"],
   "addActions": [{"text": "<new action, same style/specificity as the existing plan>", "phaseLabel": "<an existing phase label to add it under, or null for a new 'Refinements' phase>"}],
+  "removeTips": ["<exact text of an existing tip to remove, copied verbatim from the tips list below>"],
+  "addTips": ["<new tip text>"],
   "dailyAnchorReplacement": "<new daily anchor text>" or null if the daily anchor isn't what they're asking to change
 }
-removeActions must be copied EXACTLY (verbatim) from the actions list provided, or removal will silently fail to match. Keep changes minimal -- if they want to remove one exercise, only touch that one action, don't restructure the whole plan. If their request doesn't map to anything in the current plan, return empty removeActions/addActions and explain why in summary.`;
+removeActions/removeTips must be copied EXACTLY (verbatim) from the lists provided, or removal will silently fail to match. Keep changes minimal -- if they want to remove one exercise, only touch that one action, don't restructure the whole plan.
+addActions must ONLY be concrete, schedulable things that belong on a calendar at a specific time. If their request is really a general awareness rule, if-then habit reminder, or situational heads-up (e.g. "remind me to log purchases over $20 before I leave the store") rather than something to schedule, put it in addTips instead -- never in addActions. If their request doesn't map to anything actionable or tip-worthy, return everything empty and explain why in summary.`;
 
 export default async function handler(req, res) {
   if (cors(req, res)) return;
@@ -54,6 +57,7 @@ export default async function handler(req, res) {
           `Daily anchor: ${goal.daily_anchor || '(none)'}`,
           `Current phase actions:\n${(goal.phases || []).map(ph => `[${ph.label}]\n` + (ph.actions || []).map(a => `- ${a}`).join('\n')).join('\n')}`,
           allActionTexts.length ? '' : '(this goal has no discrete phase actions to edit -- only the daily anchor, if relevant)',
+          `Current tips:\n${(goal.tips || []).map(t => `- ${t}`).join('\n') || '(none yet)'}`,
           `Their refinement request: "${refinementRequest}"`,
         ].filter(Boolean).join('\n') }],
       }),
@@ -68,6 +72,8 @@ export default async function handler(req, res) {
 
   const removeActions = Array.isArray(parsed.removeActions) ? parsed.removeActions : [];
   const addActions = Array.isArray(parsed.addActions) ? parsed.addActions : [];
+  const removeTips = Array.isArray(parsed.removeTips) ? parsed.removeTips : [];
+  const addTips = Array.isArray(parsed.addTips) ? parsed.addTips.filter(t => typeof t === 'string' && t.trim()) : [];
   const dailyAnchorReplacement = typeof parsed.dailyAnchorReplacement === 'string' && parsed.dailyAnchorReplacement.trim() ? parsed.dailyAnchorReplacement.trim() : null;
 
   const pillarKey = (PILLARS[goal.pillar_id] || '').toLowerCase();
@@ -144,8 +150,15 @@ export default async function handler(req, res) {
     targetPhase.actions = [...(targetPhase.actions || []), action.text];
   }
 
+  // Tips get the same real edit treatment as phase actions -- just against goals.tips
+  // instead of goals.phases, and with no tasks/routines to touch since a tip was never
+  // scheduled in the first place.
+  let tips = [...(goal.tips || [])];
+  if (removeTips.length) tips = tips.filter(t => !removeTips.includes(t));
+  tips.push(...addTips);
+
   await sql`
-    UPDATE goals SET phases = ${JSON.stringify(phases)}::jsonb, daily_anchor = ${dailyAnchorReplacement || goal.daily_anchor}
+    UPDATE goals SET phases = ${JSON.stringify(phases)}::jsonb, daily_anchor = ${dailyAnchorReplacement || goal.daily_anchor}, tips = ${JSON.stringify(tips)}::jsonb
     WHERE id = ${goal_id}
   `;
 
@@ -153,6 +166,8 @@ export default async function handler(req, res) {
     summary: parsed.summary || 'Updated your plan.',
     removedCount,
     addedCount,
+    addedTipsCount: addTips.length,
+    removedTipsCount: removeTips.length,
     dailyAnchorChanged: !!dailyAnchorReplacement,
   });
 }

@@ -177,7 +177,11 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
 .icon-btn:active{background:var(--bg4)}
 .icon-btn.ghost{background:transparent}
 .ptw-badge{
-  width:50px;height:50px;border-radius:50%;background:var(--bg2);
+  width:50px;height:50px;border-radius:50%;
+  /* Always dark, not var(--bg2) -- the logo mark inside is hardcoded near-white
+     (#F2EDE6) since it's a fixed brand logo, not theme-aware text. Following the theme
+     variable made it invisible in light mode once --bg2 turned light cream. */
+  background:#181614;
   border:1.5px solid var(--blue);display:flex;align-items:center;justify-content:center;
   font-family:'Syne',sans-serif;font-size:8px;font-weight:800;color:var(--blue);text-align:center;line-height:1.2;
   cursor:pointer;
@@ -362,7 +366,8 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
 /* To-Do List (4.6) swipeable card -- swipe right = quick-complete, swipe left =
    reveals a Delete button underneath via translateX on the inner layer. */
 .todo-card{position:relative;border-radius:14px;margin-bottom:10px;overflow:hidden}
-.todo-card-delete-bg{position:absolute;inset:0;background:#C46882;display:flex;align-items:center;justify-content:flex-end;padding-right:18px}
+.todo-card-delete-bg{position:absolute;inset:0;background:#C46882;display:flex;align-items:center;justify-content:flex-end;padding-right:18px;opacity:0}
+.todo-card-complete-bg{position:absolute;inset:0;background:#5A9460;display:flex;align-items:center;justify-content:flex-start;padding-left:18px;opacity:0;color:#fff;font-weight:700}
 .todo-card-inner{position:relative;background:var(--bg3);border-radius:14px;padding:14px 16px;display:flex;align-items:center;gap:12px;border-left:3px solid var(--muted);transition:transform .2s ease}
 
 /* View log button */
@@ -713,10 +718,10 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
   </div>
 
   <div class="home-body">
-    <div id="cta-reshuffle-banner" style="display:none;align-items:center;gap:10px;background:var(--bg3);border:1px solid rgba(196,184,168,.15);border-radius:12px;padding:10px 12px;margin:0 20px 14px">
-      <div style="font-size:12px;color:var(--text);flex:1;line-height:1.4">Today's plan has slipped by a few hours — want to reshuffle from now?</div>
-      <button class="btn-p filled" style="padding:8px 12px;font-size:12px;white-space:nowrap" onclick="dismissReshufflePrompt();openShuffleDay()">Reshuffle</button>
-      <button class="icon-btn ghost" style="width:26px;height:26px" onclick="dismissReshufflePrompt()">×</button>
+    <div id="cta-reshuffle-banner" style="display:none;flex-direction:column;gap:10px;background:var(--bg3);border:1px solid rgba(196,184,168,.15);border-radius:12px;padding:12px;margin:0 20px 14px;position:relative">
+      <button class="icon-btn ghost" style="width:24px;height:24px;position:absolute;top:8px;right:8px" onclick="dismissReshufflePrompt()">×</button>
+      <div style="font-size:12px;color:var(--text);line-height:1.4;padding-right:26px">Today's plan has slipped by a few hours — want to reshuffle from now?</div>
+      <button class="btn-p filled" style="padding:8px 12px;font-size:12px;width:100%" onclick="dismissReshufflePrompt();openShuffleDay()">Reshuffle</button>
     </div>
 
     <div id="cta-ring" class="active" onclick="handleCtaClick()">
@@ -766,11 +771,14 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
   <div class="swipe-hint" id="swipe-hint-right" style="position:absolute;top:0;left:0;bottom:0;width:130px;pointer-events:none;opacity:0;background:linear-gradient(to right, rgba(91,164,220,.4), transparent);display:flex;align-items:center;justify-content:flex-start;padding-left:18px;z-index:50">
     <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:13px;color:#fff;letter-spacing:1px;writing-mode:vertical-rl">PROFILE</div>
   </div>
+  <div class="swipe-hint" id="swipe-hint-left" style="position:absolute;top:0;right:0;bottom:0;width:130px;pointer-events:none;opacity:0;background:linear-gradient(to left, rgba(91,164,220,.4), transparent);display:flex;align-items:center;justify-content:flex-end;padding-right:18px;z-index:50">
+    <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:13px;color:#fff;letter-spacing:1px;writing-mode:vertical-rl">TO-DO &amp; ROUTINES</div>
+  </div>
   <div class="swipe-hint" id="swipe-hint-down" style="position:absolute;left:0;right:0;top:0;height:130px;pointer-events:none;opacity:0;background:linear-gradient(to bottom, rgba(91,164,220,.4), transparent);display:flex;align-items:flex-start;justify-content:center;padding-top:18px;z-index:50">
     <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:13px;color:#fff;letter-spacing:1px">DAILY OVERVIEW</div>
   </div>
   <div class="swipe-hint" id="swipe-hint-up" style="position:absolute;left:0;right:0;bottom:0;height:130px;pointer-events:none;opacity:0;background:linear-gradient(to top, rgba(91,164,220,.4), transparent);display:flex;align-items:flex-end;justify-content:center;padding-bottom:18px;z-index:50">
-    <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:13px;color:#fff;letter-spacing:1px">TO-DO &amp; ROUTINES</div>
+    <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:13px;color:#fff;letter-spacing:1px" id="swipe-hint-up-label">YOUR PILLARS</div>
   </div>
 </div>
 
@@ -779,12 +787,27 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
 ══════════════════════════════════ -->
 <div id="screen-task-completion" class="screen">
   <div class="scroll-body" style="padding:40px 24px 20px;text-align:center">
-    <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--text);margin-bottom:6px" id="tc-task-name">Task</div>
-    <div style="font-size:13px;color:var(--stone);margin-bottom:24px">How much did you complete?</div>
-    <div style="font-family:'Syne',sans-serif;font-size:44px;font-weight:800;color:var(--blue)" id="tc-pct-display">100%</div>
-    <input type="range" id="tc-slider" min="0" max="100" value="100" step="5" style="width:100%;margin:20px 0" oninput="document.getElementById('tc-pct-display').textContent=this.value+'%'">
-    <button class="btn-p filled" onclick="confirmTaskCompletion()">Confirm</button>
-    <button class="btn-p" style="border-color:transparent;color:var(--stone);margin-top:8px" onclick="cancelTaskCompletion()">Cancel</button>
+    <div id="tc-slider-view">
+      <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--text);margin-bottom:6px" id="tc-task-name">Task</div>
+      <div style="font-size:13px;color:var(--stone);margin-bottom:24px">How much did you complete?</div>
+      <div style="font-family:'Syne',sans-serif;font-size:44px;font-weight:800;color:var(--blue)" id="tc-pct-display">100%</div>
+      <input type="range" id="tc-slider" min="0" max="100" value="100" step="5" style="width:100%;margin:20px 0" oninput="document.getElementById('tc-pct-display').textContent=this.value+'%'">
+      <button class="btn-p filled" onclick="confirmTaskCompletion()">Confirm</button>
+      <button class="btn-p" style="border-color:transparent;color:var(--stone);margin-top:8px" onclick="cancelTaskCompletion()">Cancel</button>
+    </div>
+    <!-- Every completion deserves a real moment, not just a passing toast -- reuses the
+         same vision-board success background the slider view already applies, so the
+         celebration and the "how much did you do" step feel like one continuous screen
+         instead of a flash-and-vanish. -->
+    <div id="tc-celebration-view" style="display:none">
+      <div style="font-size:44px;margin-bottom:10px">🎉</div>
+      <div style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--blue);margin-bottom:8px">Nice work!</div>
+      <div style="font-family:'Syne',sans-serif;font-size:17px;font-weight:700;color:var(--text);margin-bottom:20px" id="tc-cel-name">Task</div>
+      <div class="section-sub">REWARDS</div>
+      <div style="font-family:'Syne',sans-serif;font-size:36px;font-weight:800;color:var(--blue);margin:6px 0 10px" id="tc-cel-xp">+0 XP</div>
+      <div style="font-size:12px;color:var(--stone);margin-bottom:28px" id="tc-cel-note"></div>
+      <button class="btn-p filled" onclick="finishTaskCelebration()">Continue</button>
+    </div>
   </div>
 </div>
 
@@ -899,6 +922,18 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
 </div>
 
 <!-- ══════════════════════════════════
+     PROFILE PHOTO: SMALL OPTIONS POPUP
+══════════════════════════════════ -->
+<div class="modal-overlay" id="modal-avatar-options" onclick="closeModal('modal-avatar-options',event)">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-avatar-options')">×</button>
+    <h3>Profile Photo</h3>
+    <input type="file" accept="image/*" id="avatar-file-input" style="display:none" onchange="handleAvatarFileChosen(this)">
+    <div id="avatar-options-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:6px"></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
      TAKE A BREAK: FOLLOW-UP PROMPT
 ══════════════════════════════════ -->
 <div class="modal-overlay" id="modal-break-followup" onclick="closeModal('modal-break-followup',event)">
@@ -934,12 +969,12 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
 
 <div id="screen-meal-log" class="screen">
   <div class="pillar-top-bar">
-    <button class="icon-btn ghost" onclick="showScreen('meal-hub')">←</button>
+    <button class="icon-btn ghost" onclick="showScreen(S.logReturnScreen||'meal-hub')">←</button>
     <h2 id="meal-log-title">Log a Meal</h2>
     <span style="width:36px"></span>
   </div>
   <div class="scroll-body" style="padding:0 18px" id="meal-log-body"></div>
-  <div style="display:flex;justify-content:center;padding:12px 0 calc(12px + var(--sb))">
+  <div style="display:flex;justify-content:center;padding:12px 0 calc(40px + var(--sb))">
     <button class="grid-btn" onclick="openEssentialApps()">
       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
     </button>
@@ -964,12 +999,12 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
 
 <div id="screen-workout-log" class="screen">
   <div class="pillar-top-bar">
-    <button class="icon-btn ghost" onclick="showScreen('workout-hub')">←</button>
+    <button class="icon-btn ghost" onclick="showScreen(S.logReturnScreen||'workout-hub')">←</button>
     <h2 id="workout-log-header" style="font-size:14px">Workout</h2>
     <span style="width:36px"></span>
   </div>
   <div class="scroll-body" style="padding:0 18px" id="workout-log-body"></div>
-  <div style="display:flex;justify-content:center;padding:12px 0 calc(12px + var(--sb))">
+  <div style="display:flex;justify-content:center;padding:12px 0 calc(40px + var(--sb))">
     <button class="grid-btn" onclick="openEssentialApps()">
       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
     </button>
@@ -996,12 +1031,12 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
 
 <div id="screen-transaction-log" class="screen">
   <div class="pillar-top-bar">
-    <button class="icon-btn ghost" onclick="showScreen('finance-hub')">←</button>
+    <button class="icon-btn ghost" onclick="showScreen(S.logReturnScreen||'finance-hub')">←</button>
     <h2 style="font-size:15px">Log a Transaction</h2>
     <button class="icon-btn" style="background:var(--finances)" onclick="submitTransaction()">💾</button>
   </div>
   <div class="scroll-body" style="padding:0 18px" id="transaction-log-body"></div>
-  <div style="display:flex;justify-content:center;padding:12px 0 calc(12px + var(--sb))">
+  <div style="display:flex;justify-content:center;padding:12px 0 calc(40px + var(--sb))">
     <button class="grid-btn" onclick="openEssentialApps()">
       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
     </button>
@@ -1037,12 +1072,12 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
 
 <div id="screen-connection-log" class="screen">
   <div class="pillar-top-bar">
-    <button class="icon-btn ghost" onclick="showScreen('social-hub')">←</button>
+    <button class="icon-btn ghost" onclick="showScreen(S.logReturnScreen||'social-hub')">←</button>
     <h2 style="font-size:15px">Log a Social Activity</h2>
     <span style="width:36px"></span>
   </div>
   <div class="scroll-body" style="padding:0 18px" id="connection-log-body"></div>
-  <div style="display:flex;justify-content:center;padding:12px 0 calc(12px + var(--sb))">
+  <div style="display:flex;justify-content:center;padding:12px 0 calc(40px + var(--sb))">
     <button class="grid-btn" onclick="openEssentialApps()">
       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
     </button>
@@ -1088,12 +1123,12 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
 
 <div id="screen-log-session" class="screen">
   <div class="pillar-top-bar">
-    <button class="icon-btn ghost" onclick="showScreen('personal-hub')">←</button>
+    <button class="icon-btn ghost" onclick="showScreen(S.logReturnScreen||'personal-hub')">←</button>
     <h2 style="font-size:15px">Log a Session</h2>
     <span style="width:36px"></span>
   </div>
   <div class="scroll-body" style="padding:0 18px" id="log-session-body"></div>
-  <div style="display:flex;justify-content:center;padding:12px 0 calc(12px + var(--sb))">
+  <div style="display:flex;justify-content:center;padding:12px 0 calc(40px + var(--sb))">
     <button class="grid-btn" onclick="openEssentialApps()">
       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
     </button>
@@ -1137,12 +1172,12 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
 
 <div id="screen-log-work-session" class="screen">
   <div class="pillar-top-bar">
-    <button class="icon-btn ghost" onclick="showScreen('work-hub')">←</button>
+    <button class="icon-btn ghost" onclick="showScreen(S.logReturnScreen||'work-hub')">←</button>
     <h2 style="font-size:15px">Start Focus</h2>
     <span style="width:36px"></span>
   </div>
   <div class="scroll-body" style="padding:0 18px" id="log-work-session-body"></div>
-  <div style="display:flex;justify-content:center;padding:12px 0 calc(12px + var(--sb))">
+  <div style="display:flex;justify-content:center;padding:12px 0 calc(40px + var(--sb))">
     <button class="grid-btn" onclick="openEssentialApps()">
       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
     </button>
@@ -1330,7 +1365,7 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
     <div class="section-sub" style="text-align:left">STEPS</div>
     <div id="routine-active-body" style="margin-top:8px"></div>
   </div>
-  <div style="display:flex;justify-content:center;padding:16px 0 calc(16px + var(--sb))">
+  <div style="display:flex;justify-content:center;padding:16px 0 calc(40px + var(--sb))">
     <button class="grid-btn" onclick="openEssentialApps()">
       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
     </button>
@@ -1362,11 +1397,8 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
     </div>
     <div class="section-sub" style="text-align:left">NOTES</div>
     <div id="td-notes" style="background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:14px;padding:14px 16px;text-align:left;margin-top:8px"></div>
-    <div id="td-start-now-wrap" style="display:none;margin-top:16px">
-      <button class="btn-p" style="border-color:var(--blue);color:var(--blue)" onclick="startTaskNow()">⚡ Start Now — move to today, right now</button>
-    </div>
   </div>
-  <div style="display:flex;justify-content:center;padding:16px 0 calc(16px + var(--sb))">
+  <div style="display:flex;justify-content:center;padding:16px 0 calc(40px + var(--sb))">
     <button class="grid-btn" onclick="openEssentialApps()">
       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
     </button>
@@ -1419,7 +1451,7 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
     <div style="margin:4px 0 14px">
       <div style="display:grid;grid-template-columns:1fr auto 1fr;align-items:center">
         <div></div>
-        <div id="profile-avatar" style="justify-self:center;width:76px;height:76px;border-radius:50%;background:var(--bg3);border:2px solid var(--blue);display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-size:27px;font-weight:800;color:var(--blue)">?</div>
+        <div id="profile-avatar" onclick="openAvatarOptions()" style="cursor:pointer;justify-self:center;width:76px;height:76px;border-radius:50%;background:var(--bg3);border:2px solid var(--blue);display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-size:27px;font-weight:800;color:var(--blue);overflow:hidden">?</div>
         <!-- Its own card, not a badge stuck on the avatar -- centered in the gap between
              the avatar and the screen edge so it reads as a separate destination. -->
         <button class="vision-board-mini-card" onclick="openVisionBoard()" title="Vision Board">
@@ -1446,10 +1478,14 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
         <div class="ls-value" id="profile-lifescore" style="font-size:30px">—</div>
         <div class="ls-sub" id="profile-xp-total" style="font-size:10.5px">Total XP: —</div>
         <div style="height:5px;background:rgba(255,255,255,.3);border-radius:4px;overflow:hidden;margin-top:8px"><div id="profile-ls-fill" style="height:100%;background:#fff;width:0%"></div></div>
+        <!-- The actual point of this card: 77 isn't just a number, it's a 59 baseline plus
+             real, visible per-pillar contributions -- shown here instead of buried behind
+             a tap into a separate detail screen. -->
+        <div id="profile-ls-base" style="font-size:9px;color:rgba(255,255,255,.7);margin-top:8px">Base —</div>
+        <div id="profile-ls-breakdown" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px"></div>
         <div style="font-size:8.5px;color:rgba(255,255,255,.75);margin-top:6px;line-height:1.35">Motivational score from your logged habits — not a medical prediction.</div>
       </div>
     </div>
-    <div id="profile-ls-breakdown-inline" style="font-size:10.5px;color:var(--muted);text-align:center;margin-bottom:10px">—</div>
 
     <div id="profile-pillar-filter" style="display:flex;gap:8px;margin-bottom:10px;overflow-x:auto"></div>
 
@@ -1853,6 +1889,12 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
     </div>
     <div class="field"><label>DUE DATE (OPTIONAL)</label><input type="date" id="t-due-date"></div>
     <div class="field"><label>DUE TIME (OPTIONAL)</label><input type="time" id="t-due-time"></div>
+    <div class="field" id="task-startnow-field">
+      <div style="display:flex;align-items:center;gap:10px">
+        <label class="toggle-switch"><input type="checkbox" id="t-start-now"><span class="toggle-slider"></span></label>
+        <span style="font-size:12px;color:var(--stone)">Start this right now, instead of its scheduled time</span>
+      </div>
+    </div>
     <div class="field" id="task-repeat-field">
       <label>REPEAT</label>
       <div style="display:flex;align-items:center;gap:10px">
@@ -2025,6 +2067,23 @@ function setTheme(theme) {
 applyTheme(localStorage.getItem('ptw_theme')||'dark');
 
 // ════════════════════════════════════════
+// TEXT SIZE (accessibility) -- almost every font-size in this file is a fixed px value,
+// not rem-based, so retrofitting every single one wasn't realistic. `zoom` scales the
+// whole #app column (text AND layout together, proportionally) with one line, and is
+// supported on both iOS Safari and Chrome/Android -- the two real targets for this PWA.
+// ════════════════════════════════════════
+function applyTextScale(scale) {
+  const app=document.getElementById('app');
+  if(app) app.style.zoom=scale;
+}
+function setTextScale(scale) {
+  localStorage.setItem('ptw_text_scale', scale);
+  applyTextScale(scale);
+  if(document.getElementById('screen-settings')?.classList.contains('active')) renderSettingsBody();
+}
+applyTextScale(localStorage.getItem('ptw_text_scale')||'1');
+
+// ════════════════════════════════════════
 // API
 // ════════════════════════════════════════
 async function req(method, path, body) {
@@ -2134,7 +2193,20 @@ async function req(method, path, body) {
 // leaving the PWA entirely -- there was no history.pushState anywhere before this, so
 // "back" had nothing of ours to go back to and fell through to actually exiting.
 let suppressHistoryPush=false;
+// These 6 logging screens all hardcoded their own back button to their pillar hub,
+// regardless of where they were actually opened from (a task tap, a notification, Daily
+// Overview, etc.) -- landing back on the hub instead of wherever the user really came
+// from. Tracked generically here (instead of threading a returnScreen param through
+// every one of their many entry points) by snapshotting whatever screen was active right
+// before one of these becomes active; re-entering the same log screen from within itself
+// (e.g. re-rendering mid-flow) doesn't overwrite the original origin.
+const LOGGING_SCREENS = new Set(['meal-log','workout-log','transaction-log','connection-log','log-session','log-work-session']);
 function showScreen(name) {
+  if(LOGGING_SCREENS.has(name)) {
+    const activeBefore=document.querySelector('.screen.active');
+    const prevId=activeBefore ? activeBefore.id.replace(/^screen-/,'') : null;
+    if(prevId && !LOGGING_SCREENS.has(prevId)) S.logReturnScreen=prevId;
+  }
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   const el = document.getElementById('screen-'+name) || document.getElementById(name);
   if(el) el.classList.add('active');
@@ -2458,11 +2530,18 @@ function renderSettingsBody() {
     + settingsRow('🔑','Account & Security',"openAccountSecurity()");
 
   const currentTheme=localStorage.getItem('ptw_theme')||'dark';
+  const currentTextScale=localStorage.getItem('ptw_text_scale')||'1';
   html += `<div class="section-sub" style="margin-top:20px">APP PREFERENCES</div>`
     + `<div class="settings-row"><div class="sr-label">🌗 Theme</div>
         <div style="display:flex;gap:6px">
           <button type="button" class="chip${currentTheme==='dark'?' sel':''}" onclick="setTheme('dark')">Dark</button>
           <button type="button" class="chip${currentTheme==='light'?' sel':''}" onclick="setTheme('light')">Light</button>
+        </div></div>`
+    + `<div class="settings-row" style="flex-wrap:wrap;row-gap:8px"><div class="sr-label">🔠 Text Size</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button type="button" class="chip${currentTextScale==='1'?' sel':''}" onclick="setTextScale('1')">Default</button>
+          <button type="button" class="chip${currentTextScale==='1.15'?' sel':''}" onclick="setTextScale('1.15')">Large</button>
+          <button type="button" class="chip${currentTextScale==='1.3'?' sel':''}" onclick="setTextScale('1.3')">Extra Large</button>
         </div></div>`
     + settingsRow('🔔','Notification Settings',"openNotificationSettings()")
     + settingsRow('📏','Measurement Units',"openMeasurementUnits()")
@@ -2995,7 +3074,7 @@ function applyCtaState() {
     }
   }
   updateCtaTimerRing();
-  checkForHeavilyMissedSchedule(pending, nowStr);
+  checkForHeavilyMissedSchedule(pending, nowStr, current?.taskId);
 }
 
 // Real-time re-check every 20s -- task boundaries are minute-granularity, no need for a
@@ -3010,12 +3089,16 @@ setInterval(()=>{
 // few minutes late"), the honest move is to surface a real reshuffle offer rather than
 // silently leaving a stale, hours-overdue task sitting in the center ring. One prompt per
 // calendar day (dismiss or act on it), not a recurring nag.
-function checkForHeavilyMissedSchedule(pending, nowStr) {
+// currentTaskId is excluded from the check -- a task that's still locked as "current" and
+// simply running into overtime is a real, supported state (the ring waits on you rather
+// than silently moving on), not evidence the day fell apart. Only some OTHER task sitting
+// hours-overdue and untouched means the day has genuinely slipped.
+function checkForHeavilyMissedSchedule(pending, nowStr, currentTaskId) {
   const today=new Date().toISOString().split('T')[0];
   const dismissedFor=localStorage.getItem('ptw_shuffle_prompt_dismissed_date');
   if(dismissedFor===today) return;
   const HEAVY_MISS_MINUTES=120;
-  const worstMissed=pending.find(t=>t.endTime && t.endTime<nowStr &&
+  const worstMissed=pending.find(t=>t.taskId!==currentTaskId && t.endTime && t.endTime<nowStr &&
     ((new Date('1970-01-01T'+nowStr) - new Date('1970-01-01T'+t.endTime)) / 60000) >= HEAVY_MISS_MINUTES);
   const banner=document.getElementById('cta-reshuffle-banner');
   if(!banner) return;
@@ -3183,7 +3266,7 @@ function openCurrentTask() {
     if(openTaskByToolHint(t)) return;
     (LOGGING_TASK_OPEN[pk]||(()=>showPillarScreen(pk)))(t);
   } else if(t.taskType==='ProjectTask') {
-    openProjectDetail(t.taskId, 'home');
+    openProjectTaskDetail(t.taskId, 'home', t.name);
   } else {
     showPillarScreen(pk);
   }
@@ -3222,6 +3305,8 @@ function openTaskCompletion(task, returnTo) {
   S.subtaskCompletionId=null;
   S.taskCompletionReturnTo=returnTo||null;
   showScreen('task-completion');
+  document.getElementById('tc-slider-view').style.display='';
+  document.getElementById('tc-celebration-view').style.display='none';
   document.getElementById('tc-task-name').textContent=S.currentTask.name;
   document.getElementById('tc-slider').value=100;
   document.getElementById('tc-pct-display').textContent='100%';
@@ -3274,7 +3359,6 @@ async function confirmTaskCompletion() {
   }
   const result=await req('POST','/tasks/update-completion',{task_id:S.currentTask.taskId, completion_percentage:pct, actual_minutes_spent:actualMinutesSpent});
   const xp=result?.data?.xp_gained||0;
-  toast('+'+xp+' XP! ⚡'+(result?.data?.remainder_task?' — rest rescheduled':''));
   // Captured before S.currentTask is cleared -- used below for the cross-pillar
   // "log an expense?" prompt, which needs the name/pillar of what was just completed.
   const completedName=S.currentTask.name, completedPillar=S.currentTask.pillar;
@@ -3282,10 +3366,22 @@ async function confirmTaskCompletion() {
   // resurrect the ring right back onto a task that was just marked done.
   if(isManual) S.manualTaskOverride=null;
   S.currentTask=null;
-  const returnTo=S.taskCompletionReturnTo; S.taskCompletionReturnTo=null;
-  if(returnTo==='todo-routines') { showScreen('todo-routines'); await switchTodoRoutinesTab('todo'); }
-  else { showScreen('home'); await loadHomeData(); }
-  maybePromptExpenseLog(completedName, completedPillar);
+  S.pendingCelebrationNav={returnTo:S.taskCompletionReturnTo, completedName, completedPillar};
+  S.taskCompletionReturnTo=null;
+  document.getElementById('tc-slider-view').style.display='none';
+  document.getElementById('tc-celebration-view').style.display='';
+  document.getElementById('tc-cel-name').textContent=completedName;
+  document.getElementById('tc-cel-xp').textContent='+'+xp+' XP';
+  document.getElementById('tc-cel-note').textContent=result?.data?.remainder_task ? 'The rest has been rescheduled.' : '';
+}
+function finishTaskCelebration() {
+  const nav=S.pendingCelebrationNav||{};
+  S.pendingCelebrationNav=null;
+  (async ()=>{
+    if(nav.returnTo==='todo-routines') { showScreen('todo-routines'); await switchTodoRoutinesTab('todo'); }
+    else { showScreen('home'); await loadHomeData(); }
+    maybePromptExpenseLog(nav.completedName, nav.completedPillar);
+  })();
 }
 
 // A task like "Go grocery shopping" or "Buy a birthday gift" often costs money, but it
@@ -3965,22 +4061,8 @@ function openTaskDetail(task, returnScreen) {
   document.getElementById('td-notes').innerHTML = notes.length
     ? '<ul style="margin:0;padding-left:18px;color:var(--text);font-size:13px;line-height:1.8">'+notes.map(n=>`<li>${n}</li>`).join('')+'</ul>'
     : '<div style="color:var(--muted);font-size:13px">No notes for this task.</div>';
-  // Start Now only makes sense for a genuinely manual, ad-hoc task -- a goal-plan or
-  // routine-derived task already has its own real place in the schedule that a project's
-  // Plan Shift / the routine engine manages; moving it here would fight that.
-  document.getElementById('td-start-now-wrap').style.display = (!task.goal_id && !task.routine_id) ? 'block' : 'none';
   showScreen('task-detail');
   renderTaskDetailTimerUI();
-}
-async function startTaskNow() {
-  const task=S.taskDetailTask;
-  if(!task) return;
-  const result=await req('POST','/simple-tasks/'+task.id+'/start-now');
-  if(!result || result.shiftedCount===undefined) { toast(result?.message||'Could not start now — too much of today would need to move'); return; }
-  toast(result.shiftedCount ? `Started now — ${result.shiftedCount} task${result.shiftedCount===1?'':'s'} shifted later ⚡` : 'Started now ⚡');
-  S.taskDetailTask={...task, due_date:result.due_date, start_time:result.start_time};
-  await loadHomeData();
-  showScreen('home');
 }
 const PLAY_ICON_SVG='<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
 const PAUSE_ICON_SVG='<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>';
@@ -4108,6 +4190,7 @@ function todoTaskCard(t) {
   const icon=t.icon||p.emoji;
   const dueStr=t.due_date?new Date(t.due_date).toLocaleDateString('en-US',{month:'short',day:'numeric'}):'';
   return `<div class="todo-card" data-task-id="${t.id}">
+    <div class="todo-card-complete-bg">✓ Complete</div>
     <div class="todo-card-delete-bg"><button class="pt-btn" style="background:#fff;color:#C46882" onclick="deleteTodoTask(${t.id})">Delete</button></div>
     <div class="todo-card-inner" style="border-left-color:${accent}" onclick="openTodoCardTap(event,${t.id})">
       <div class="pt-icon" style="font-size:22px">${icon}</div>
@@ -4165,6 +4248,12 @@ async function deleteTodoTask(id) {
     if(!dragging) return;
     const clamped=Math.max(-90, Math.min(140, dx));
     inner.style.transform='translateX('+clamped+'px)';
+    // Only the background matching the direction actually being dragged should show --
+    // both used to sit on top of each other at opacity 1 all the time, so a rightward
+    // (complete) drag revealed the red Delete layer underneath instead of a green one.
+    const completeBg=card.querySelector('.todo-card-complete-bg'), deleteBg=card.querySelector('.todo-card-delete-bg');
+    completeBg.style.opacity = dx>0 ? '1' : '0';
+    deleteBg.style.opacity = dx<0 ? '1' : '0';
   }, {passive:true});
   body.addEventListener('touchend', e=>{
     if(!card) return;
@@ -4174,6 +4263,7 @@ async function deleteTodoTask(id) {
     inner.style.transition='transform .2s ease';
     const taskId=Number(card.dataset.taskId);
     inner.dataset.dragged=dragging?'1':'0';
+    const completeBg=card.querySelector('.todo-card-complete-bg'), deleteBg=card.querySelector('.todo-card-delete-bg');
     if(dragging && dx>90) {
       inner.style.transform='translateX(400px)';
       inner.style.opacity='0';
@@ -4182,6 +4272,8 @@ async function deleteTodoTask(id) {
       inner.style.transform='translateX(-90px)';
     } else {
       inner.style.transform='translateX(0)';
+      completeBg.style.opacity='0';
+      deleteBg.style.opacity='0';
     }
     card=null; inner=null;
   });
@@ -4265,13 +4357,17 @@ async function loadWeekOverview() {
       const isToday=d.toDateString()===todayStr;
       const dayName=d.toLocaleDateString('en-US',{weekday:'short'});
       const dateStr=d.toISOString().split('T')[0];
-      return `<div class="rm-goal-card" data-date="${dateStr}" style="min-width:260px;max-width:260px;flex-shrink:0;min-height:68%;max-height:100%;box-sizing:border-box;overflow-y:auto;cursor:pointer;${isToday?'border:1.5px solid var(--blue)':''}" onclick="jumpToDay('${dateStr}')">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:${dayTasks.length?'12px':'0'}">
+      // Wider and not forced tall -- a light day's card no longer stretches into an
+      // oddly skinny-but-tall shape just to hit a fixed min-height percentage; height
+      // now follows real content, capped so a genuinely packed day still scrolls
+      // internally instead of blowing out the row.
+      return `<div class="rm-goal-card" data-date="${dateStr}" style="min-width:300px;max-width:300px;flex-shrink:0;max-height:92%;box-sizing:border-box;overflow-y:auto;cursor:pointer;${isToday?'border:1.5px solid var(--blue)':''}" onclick="jumpToDay('${dateStr}')">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:${dayTasks.length?'4px':'0'}">
           <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:${isToday?'var(--blue)':'var(--text)'}">${dayName} ${d.getDate()}</div>
           ${isToday?'<span style="font-size:10px;color:var(--blue);background:rgba(91,164,220,.15);padding:2px 8px;border-radius:10px">TODAY</span>':''}
           <span style="margin-left:auto;font-size:11px;color:var(--stone)">${dayTasks.length} task${dayTasks.length!==1?'s':''}</span>
         </div>
-        ${dayTasks.map(weekTaskChip).join('') || (isToday?'<div style="font-size:12px;color:var(--muted)">Nothing planned</div>':'')}
+        ${weekDayGroupedHtml(dayTasks) || (isToday?'<div style="font-size:12px;color:var(--muted);margin-top:8px">Nothing planned</div>':'')}
       </div>`;
     }).join('') + `</div>`;
 
@@ -4994,11 +5090,37 @@ function weekTaskChip(t) {
   const pk=getPillarKey(t.category||t.pillar);
   const p=PILLARS[pk]||PILLARS.personal;
   const name=t.task_name||t.name||t.task||'Task';
-  return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid rgba(196,184,168,.07)">
-    <span style="width:8px;height:8px;border-radius:50%;background:${p.color};flex-shrink:0"></span>
-    <span style="font-size:13px;color:var(--text);flex:1">${name}</span>
-    <span style="font-size:16px">${p.emoji}</span>
+  const isDone=t.status==='Completed';
+  return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid rgba(196,184,168,.07)${isDone?';opacity:.5':''}">
+    <span style="width:7px;height:7px;border-radius:50%;background:${p.color};flex-shrink:0"></span>
+    <span style="font-size:11px;color:var(--stone);flex-shrink:0;min-width:44px">${t.startTime?formatTimeOfDay(t.startTime):''}</span>
+    <span style="font-size:13px;color:var(--text);flex:1;${isDone?'text-decoration:line-through':''}">${name}</span>
+    <span style="font-size:14px;flex-shrink:0">${p.emoji}</span>
   </div>`;
+}
+
+// Groups a day's tasks by rough time-of-day instead of one long flat list -- same full
+// detail (every task still shows, with its real time), but broken into digestible
+// chunks so a busy day reads as "here's your morning, here's your afternoon" instead of
+// one intimidating wall of rows. Unscheduled tasks (no startTime) get their own group
+// at the end rather than being sorted arbitrarily among timed ones.
+function groupTasksByTimeOfDay(tasks) {
+  const groups={Morning:[], Afternoon:[], Evening:[], Unscheduled:[]};
+  tasks.forEach(t=>{
+    if(!t.startTime) { groups.Unscheduled.push(t); return; }
+    const hour=Number(String(t.startTime).slice(0,2));
+    if(hour<12) groups.Morning.push(t);
+    else if(hour<17) groups.Afternoon.push(t);
+    else groups.Evening.push(t);
+  });
+  return groups;
+}
+function weekDayGroupedHtml(tasks) {
+  const groups=groupTasksByTimeOfDay(tasks);
+  return Object.entries(groups).filter(([,items])=>items.length).map(([label,items])=>`
+    <div style="font-size:9.5px;color:var(--muted);letter-spacing:.4px;margin-top:10px">${label.toUpperCase()}</div>
+    ${items.map(weekTaskChip).join('')}
+  `).join('');
 }
 
 // Shared low-level swipe detector: calls onSwipe(dx, dy) once a fast (<600ms),
@@ -5043,7 +5165,15 @@ function setupSwipeNav(elId, {left, right, up, down}, opts) {
 // Home: right → Profile, down → Daily Overview, up → To-Do List. Reverse swipes let
 // you swipe back the way you came from each of those screens, same as tapping their
 // back button (Profile previously had no back-to-Home gesture or button at all).
-setupSwipeNav('screen-home', { right: openProfile, down: openDailyOverview, up: openTodoRoutines });
+// left/up use all 4 directions meaningfully: left opens To-Do/Routines (moved off up),
+// up opens whichever pillar (and sub-tab) you were last looking at -- so the bottom
+// pillar-nav row and this gesture both land you in the same place instead of up being a
+// dead direction with nothing real behind it.
+function openLastPillar() {
+  const key=S.activePillar || S.unlocked[0];
+  if(key) showPillarScreen(key, true);
+}
+setupSwipeNav('screen-home', { right: openProfile, down: openDailyOverview, left: openTodoRoutines, up: openLastPillar });
 
 // Live swipe-in-progress feedback for Home's 3 hidden destinations -- a first-time user
 // has no way to know these gestures exist at all. As a swipe actually happens (not
@@ -5055,7 +5185,7 @@ setupSwipeNav('screen-home', { right: openProfile, down: openDailyOverview, up: 
 (function setupHomeSwipeHint(){
   const home=document.getElementById('screen-home');
   if(!home) return;
-  const hints={ right:document.getElementById('swipe-hint-right'), down:document.getElementById('swipe-hint-down'), up:document.getElementById('swipe-hint-up') };
+  const hints={ right:document.getElementById('swipe-hint-right'), left:document.getElementById('swipe-hint-left'), down:document.getElementById('swipe-hint-down'), up:document.getElementById('swipe-hint-up') };
   const fadeIds=['home-top-bar','cta-ring','pillar-apps'];
   const MAX_DRAG=130;
   let sx=0, sy=0, tracking=false;
@@ -5075,6 +5205,11 @@ setupSwipeNav('screen-home', { right: openProfile, down: openDailyOverview, up: 
   home.addEventListener('touchstart', e=>{
     const t=e.touches[0]; sx=t.clientX; sy=t.clientY; tracking=true;
     [...Object.values(hints), ...fadeIds.map(id=>document.getElementById(id))].forEach(el=>{ if(el) el.style.transition='none'; });
+    // Up's destination is whichever pillar was last viewed -- relabel the hint at the
+    // start of each gesture so it names the actual pillar you'll land on, not a generic
+    // "pillars" placeholder.
+    const upLabel=document.getElementById('swipe-hint-up-label');
+    if(upLabel) { const key=S.activePillar||S.unlocked[0]; upLabel.textContent = key ? (PILLARS[key]?.label||'').toUpperCase() : 'YOUR PILLARS'; }
   }, {passive:true});
 
   home.addEventListener('touchmove', e=>{
@@ -5082,7 +5217,7 @@ setupSwipeNav('screen-home', { right: openProfile, down: openDailyOverview, up: 
     const t=e.touches[0];
     const dx=t.clientX-sx, dy=t.clientY-sy;
     let dir=null, dist=0;
-    if(Math.abs(dx)>Math.abs(dy)) { if(dx>15) { dir='right'; dist=dx; } }
+    if(Math.abs(dx)>Math.abs(dy)) { if(dx>15) { dir='right'; dist=dx; } else if(dx<-15) { dir='left'; dist=-dx; } }
     else if(dy>15) { dir='down'; dist=dy; }
     else if(dy<-15) { dir='up'; dist=-dy; }
     applyProgress(dir, dir ? Math.min(1, dist/MAX_DRAG) : 0);
@@ -5123,13 +5258,18 @@ setupSwipeNav('screen-todo-routines', { down: ()=>showScreen('home') });
 (function setupPillarSwipe(){
   const el=document.getElementById('screen-pillar');
   detectSwipe(el, (dx, dy) => {
-    if(!(Math.abs(dx)>Math.abs(dy))) return;
-    const list=S.unlocked;
-    if(list.length<2) return;
-    const idx=list.indexOf(S.activePillar);
-    if(idx===-1) return;
-    const nextIdx = dx<0 ? (idx+1)%list.length : (idx-1+list.length)%list.length;
-    showPillarScreen(list[nextIdx]);
+    if(Math.abs(dx)>Math.abs(dy)) {
+      const list=S.unlocked;
+      if(list.length<2) return;
+      const idx=list.indexOf(S.activePillar);
+      if(idx===-1) return;
+      const nextIdx = dx<0 ? (idx+1)%list.length : (idx-1+list.length)%list.length;
+      showPillarScreen(list[nextIdx], true);
+    } else if(dy>0) {
+      // Swipe down from any pillar screen -- same intuitive "go back home" gesture
+      // already used everywhere else in the app (Profile, To-Do/Routines, Daily).
+      showScreen('home');
+    }
   });
 })();
 
@@ -5145,7 +5285,10 @@ function renderProfile() {
   const u = S.userData || {};
   const name = u.username || S.user?.name || 'You';
   document.getElementById('profile-name').textContent = name;
-  document.getElementById('profile-avatar').textContent = name.charAt(0).toUpperCase();
+  const avatarEl=document.getElementById('profile-avatar');
+  avatarEl.innerHTML = u.profilePicUrl
+    ? `<img src="${u.profilePicUrl}" style="width:100%;height:100%;object-fit:cover">`
+    : name.charAt(0).toUpperCase();
 
   // Phase block
   document.getElementById('profile-phase').textContent = u.phase || 'Phase 1: Come Up';
@@ -5163,10 +5306,60 @@ function renderProfile() {
   const baseline=u.lifescore_baseline||50;
   const lsPct=Math.max(0,Math.min(100, Math.round((u.lifeScore-baseline)/(99-baseline)*100)));
   document.getElementById('profile-ls-fill').style.width=lsPct+'%';
-  document.getElementById('profile-ls-breakdown-inline').textContent = (u.lifescore_breakdown||[]).filter(b=>b.years_contributed>0).map(b=>`${capitalize(b.pillar)}: +${b.years_contributed}`).join(' | ') || 'No pillar contributions yet';
+  document.getElementById('profile-ls-base').textContent = `Base ${baseline} + your pillars below =`;
+  // Every pillar shows, not just ones with a nonzero contribution yet -- a real 0 is
+  // still real information ("nothing logged here yet"), and hiding it entirely read as
+  // the whole feature being broken rather than a pillar just not having data yet.
+  const breakdown=u.lifescore_breakdown||[];
+  document.getElementById('profile-ls-breakdown').innerHTML = breakdown.length ? breakdown.map(b=>{
+    const pk=PILLARS[b.pillar];
+    const icon=pk?pk.icon:'🎯'; // 'antiGoals' isn't a real pillar key -- falls back to a generic icon
+    const label=pk?pk.label:'Discipline';
+    const has=b.years_contributed>0;
+    return `<div style="display:flex;align-items:center;gap:3px;background:rgba(255,255,255,${has?.22:.1});border-radius:8px;padding:3px 7px;font-size:9.5px;color:rgba(255,255,255,${has?1:.6})" title="${label}"><span>${icon}</span><span>+${b.years_contributed||0}</span></div>`;
+  }).join('') : '<div style="font-size:10px;color:rgba(255,255,255,.6)">No pillar contributions yet</div>';
 
   renderProfilePillarFilter();
   loadProfileMetrics();
+}
+
+// ── Profile photo -- tap the avatar for a small Edit/Choose/Remove popup, same
+// small-options-modal pattern as the Fitness quick-add modal just above it in markup. ──
+function openAvatarOptions() {
+  const hasPhoto=!!S.userData?.profilePicUrl;
+  document.getElementById('avatar-options-list').innerHTML = `
+    <div class="sq-card" onclick="closeModal('modal-avatar-options');document.getElementById('avatar-file-input').click()">
+      <div class="sq-icon" style="background:var(--blue)22;color:var(--blue)">📷</div>
+      <div class="sq-info"><div class="sq-name">${hasPhoto?'Choose New Photo':'Choose Photo'}</div></div>
+    </div>
+    ${hasPhoto?`<div class="sq-card" onclick="removeAvatarPhoto()">
+      <div class="sq-icon" style="background:#C4688222;color:#C46882">🗑</div>
+      <div class="sq-info"><div class="sq-name">Remove Photo</div></div>
+    </div>`:''}`;
+  document.getElementById('modal-avatar-options').classList.add('open');
+}
+async function handleAvatarFileChosen(input) {
+  const file=input.files[0];
+  input.value='';
+  if(!file) return;
+  const fd=new FormData();
+  fd.append('image',file);
+  const h={};
+  if(S.token) h['Authorization']='Bearer '+S.token;
+  toast('Uploading...');
+  const r=await fetch(API+'/avatar/upload',{method:'POST',headers:h,body:fd});
+  const data=await r.json().catch(()=>null);
+  if(!r.ok) { toast(data?.message||'Upload failed'); return; }
+  toast('Profile photo updated ✓');
+  await loadUserData();
+  renderProfile();
+}
+async function removeAvatarPhoto() {
+  closeModal('modal-avatar-options');
+  await req('DELETE','/avatar/upload');
+  toast('Profile photo removed');
+  await loadUserData();
+  renderProfile();
 }
 
 function renderProfilePillarFilter() {
@@ -5682,11 +5875,16 @@ async function applyHomeBackground() {
 // ════════════════════════════════════════
 // PILLAR SCREENS
 // ════════════════════════════════════════
-async function showPillarScreen(pillarKey) {
+// preserveTab: swiping left/right between pillars should land on the same sub-tab you
+// were already looking at (Roadmap stays Roadmap, Map stays Map) instead of always
+// resetting to Map -- but tapping a pillar icon fresh from Home should still default to
+// Map, so this only kicks in for the swipe-cycling caller below.
+async function showPillarScreen(pillarKey, preserveTab) {
   const p=PILLARS[pillarKey];
   if(!p) return;
+  const tab = (preserveTab && S.activePillarTab) || 'map';
   S.activePillar=pillarKey;
-  S.activePillarTab='map';
+  S.activePillarTab=tab;
 
   // Set header
   document.getElementById('pillar-title').textContent=p.label+' Pillar';
@@ -5697,9 +5895,8 @@ async function showPillarScreen(pillarKey) {
   showScreen('pillar');
   renderPillarDots();
 
-  // Switch to map tab
-  switchPillarTab('map');
-  loadPillarMap(pillarKey);
+  switchPillarTab(tab);
+  if(tab==='map') loadPillarMap(pillarKey);
 }
 
 function renderPillarDots() {
@@ -6323,22 +6520,19 @@ async function loadFitnessMap() {
         <div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:#fff;margin:6px 0 14px">No plans yet</div>
         <button class="btn-p" style="border-color:rgba(255,255,255,.5);color:#fff" onclick="openWorkoutHub()">Build a Plan</button>`}
     </div>
-    <div class="rm-goal-card" style="margin-top:14px">
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <div>
-          <div class="section-sub">Current Weight</div>
-          <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:var(--text)">${latestWeight?`${latestWeight.value} ${latestWeight.unit||'kg'}`:'Not logged yet'}</div>
-        </div>
-        <button class="view-log-btn" style="width:auto" onclick="openLogWeight()">+ Log Weight</button>
+    <div style="display:flex;gap:10px;margin-top:14px">
+      <div class="rm-goal-card" style="flex:1;background:var(--bg2);padding:12px" onclick="openLogWeight()">
+        <div class="section-sub">Weight</div>
+        <div style="font-family:'Syne',sans-serif;font-size:17px;font-weight:800;color:var(--text);margin:2px 0 6px">${latestWeight?`${latestWeight.value} ${latestWeight.unit||'kg'}`:'—'}</div>
+        ${weightTrendHtml(weightLogs?.logs||[], true)}
+        <div style="font-size:11px;color:${p.color};font-weight:700;margin-top:8px">+ Log Weight</div>
       </div>
-      ${weightTrendHtml(weightLogs?.logs||[])}
-    </div>
-    <div class="rm-goal-card" style="margin-top:14px;display:flex;justify-content:space-between;align-items:center">
-      <div>
-        <div class="section-sub">Steps Today</div>
-        <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:var(--text)">${stepsToday?stepsToday.toLocaleString():'Not logged yet'}</div>
+      <div class="rm-goal-card" style="flex:1;background:${p.color};padding:12px" onclick="openStepsLogger(null)">
+        <div class="section-sub" style="color:rgba(255,255,255,.75)">Steps Today</div>
+        <div style="font-family:'Syne',sans-serif;font-size:17px;font-weight:800;color:#fff;margin:2px 0 6px">${stepsToday?stepsToday.toLocaleString():'0'}</div>
+        <div style="font-size:11px;color:rgba(255,255,255,.85);line-height:1.4">Tap to log more steps</div>
+        <div style="font-size:11px;color:#fff;font-weight:700;margin-top:8px">+ Log Steps</div>
       </div>
-      <button class="view-log-btn" style="width:auto" onclick="openStepsLogger(null)">+ Log Steps</button>
     </div>
     <button class="view-log-btn" style="margin-top:10px" onclick="openWorkoutHub()">View Full Workout Hub</button>`;
   container.innerHTML=html;
@@ -6415,7 +6609,7 @@ function startTodaysWorkout(planId) {
 // A single number ("74 kg") doesn't say whether that's progress -- the trend (gain or
 // loss over the last 30 days of logs, GET /metrics's default window) is the part that
 // actually matters for a weight-management goal. Needs at least 2 points to draw a line.
-function weightTrendHtml(logs) {
+function weightTrendHtml(logs, compact) {
   if(!logs || logs.length<2) return '';
   const points=[...logs].reverse(); // API returns newest-first; chart reads left-to-right chronologically
   const vals=points.map(l=>Number(l.value));
@@ -6430,9 +6624,11 @@ function weightTrendHtml(logs) {
   }).join(' ');
   const delta=vals[vals.length-1]-vals[0];
   const unit=points[points.length-1].unit||'kg';
-  const deltaLabel = delta===0 ? 'No change' : `${delta>0?'+':''}${delta.toFixed(1)} ${unit} over last ${points.length} logs`;
+  // The glanceable 50/50 dashboard card needs a short label ("-1.8 kg") -- the fuller
+  // "over last N logs" framing still shows on the standalone Weight Hub view.
+  const deltaLabel = delta===0 ? 'No change' : compact ? `${delta>0?'+':''}${delta.toFixed(1)} ${unit}` : `${delta>0?'+':''}${delta.toFixed(1)} ${unit} over last ${points.length} logs`;
   return `
-    <svg viewBox="0 0 ${w} ${h}" style="width:100%;height:44px;margin-top:12px;display:block" preserveAspectRatio="none">
+    <svg viewBox="0 0 ${w} ${h}" style="width:100%;height:${compact?28:44}px;margin-top:${compact?4:12}px;display:block" preserveAspectRatio="none">
       <polyline points="${coords}" fill="none" stroke="var(--fitness)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
     </svg>
     <div style="font-size:11px;color:var(--stone);margin-top:4px">${deltaLabel}</div>`;
@@ -8412,12 +8608,28 @@ async function submitProject() {
 // ─── UNIVERSAL PROJECT TASK DETAIL PAGE (4.13) — Preview / Active / Completed ───
 // One real page for any pillar's Project (kind='project' task), reached from the Home
 // "Current Task" button, Daily Overview, or a pillar Hub's Projects tab.
-async function openProjectDetail(id, returnScreen) {
+async function openProjectDetail(id, returnScreen, focusAddSubtask) {
   S.activeProjectId=id;
   S.projectDetailReturnScreen=returnScreen||'home';
   showScreen('project-detail');
   document.getElementById('project-detail-body').innerHTML='<div class="spinner"></div>';
   await renderProjectDetail();
+  if(focusAddSubtask) {
+    const input=document.getElementById('new-subtask-name');
+    if(input) { input.scrollIntoView({block:'center'}); input.focus(); }
+  }
+}
+
+// A project "kickoff" action like "Write down your first tasks for this project" isn't
+// really something to just check off -- the whole point is to actually populate the
+// project with real sub-tasks. Detecting that phrasing and landing straight in the
+// Add Sub-task input (instead of just the plain project view) means writing them down
+// IS adding them, instead of a separate disconnected step.
+function isPlanningSubtasksAction(text) {
+  return /\b(write down|list out|jot down|brainstorm|identify)\b.*\b(tasks?|to-?dos?|steps?|sub-?tasks?)\b/i.test(String(text||''));
+}
+function openProjectTaskDetail(taskId, returnScreen, taskName) {
+  openProjectDetail(taskId, returnScreen, isPlanningSubtasksAction(taskName));
 }
 
 async function renderProjectDetail() {
@@ -9016,12 +9228,18 @@ async function loadPillarRoadmap(pillarKey) {
     html += `<div class="rm-progress-bar"><div class="rm-progress-fill" style="width:${pct}%;background:${p.color}"></div></div>
     <div class="rm-progress-row"><span>${pct}% complete</span><span>Projected: ${projectedDate}</span></div>
     <div class="timeline">
-      <div class="tm-row"><div class="tm-col"><div class="tm-dot done" style="background:${p.color}"></div><div class="tm-line"></div></div><div class="tm-content"><div class="tm-label">START</div><div class="tm-name">Goal set</div></div></div>`;
+      <div class="tm-row"><div class="tm-col"><div class="tm-dot done" style="background:${p.color}"></div><div class="tm-line" style="background:${p.color}"></div></div><div class="tm-content"><div class="tm-label">START</div><div class="tm-name">Goal set</div></div></div>`;
     milestones.forEach((m,i)=>{
       const isLast=i===milestones.length-1;
       const isDone=i<milestonesDone, isHere=i===milestonesDone;
+      // The path fills up TO AND INCLUDING the "YOU ARE HERE" dot -- that dot gets the
+      // same done coloring (it was rendered as a locked/gray dot before, which read as
+      // "no progress yet" even at the exact point marking how far the user has come).
+      // The line leading OUT of it stays unfilled since that stretch hasn't been walked.
+      const dotColored=isDone||isHere;
+      const lineColored=isDone;
       html += `<div class="tm-row">
-        <div class="tm-col"><div class="tm-dot ${isDone?'done':'lock'}" style="${isDone?'background:'+p.color:''}"></div>${!isLast?'<div class="tm-line"></div>':''}</div>
+        <div class="tm-col"><div class="tm-dot ${dotColored?'done':'lock'}" style="${dotColored?'background:'+p.color:''}"></div>${!isLast?'<div class="tm-line" style="'+(lineColored?'background:'+p.color:'')+'"></div>':''}</div>
         <div class="tm-content">
           ${isHere?`<div class="tm-label" style="color:${p.color}">YOU ARE HERE</div>`:''}
           <div class="tm-label">${m.label||('M'+(i+1))}</div>
@@ -9034,14 +9252,21 @@ async function loadPillarRoadmap(pillarKey) {
   }
 
   if((g.phases||[]).length) {
+    // Defensive dedup: the dailyAnchor already gets its own "Daily anchor" card above and
+    // its own real routine -- if a phase action repeats it verbatim (older goals generated
+    // before the prompt explicitly forbade this), showing it a third time here reads as
+    // the same habit tracked three different ways instead of one.
+    const anchorNorm=(g.dailyAnchor||'').trim().toLowerCase();
     html += `<div class="section-title" style="margin-top:20px">Your ${p.label} Plan Includes</div>`;
     g.phases.forEach(ph=>{
+      const actions=(ph.actions||[]).filter(a=>!anchorNorm || String(a).trim().toLowerCase()!==anchorNorm);
+      if(!actions.length) return;
       html += `<div class="rm-goal-card" style="margin-bottom:10px">
         <div style="display:flex;justify-content:space-between;margin-bottom:6px">
           <span style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text)">${ph.label||''}</span>
           <span style="font-size:11px;color:var(--stone)">${ph.duration||''}</span>
         </div>
-        ${(ph.actions||[]).map(a=>`<div class="view-log-btn" style="justify-content:space-between;margin-top:6px;text-align:left">${a}${isRecurringActionText(a)?' <span style="color:'+p.color+';font-size:11px">🔁</span>':''} <span>›</span></div>`).join('')}
+        ${actions.map(a=>`<div class="view-log-btn" style="justify-content:space-between;margin-top:6px;text-align:left">${a}${isRecurringActionText(a)?' <span style="color:'+p.color+';font-size:11px">🔁</span>':''} <span>›</span></div>`).join('')}
       </div>`;
     });
   }
@@ -9257,6 +9482,8 @@ function openAddTask() {
   // Repeat is only offered on creation -- converting an existing task into a routine
   // mid-edit raises questions (what happens to the original task/its history?) that are
   // out of scope for a simple "make new things repeat" toggle.
+  document.getElementById('task-startnow-field').style.display='';
+  document.getElementById('t-start-now').checked=false;
   document.getElementById('task-repeat-field').style.display='';
   document.getElementById('t-repeat').checked=false;
   document.getElementById('task-repeat-days').style.display='none';
@@ -9298,6 +9525,7 @@ function openEditTask(task) {
   } else {
     iconCustomInput.value='';
   }
+  document.getElementById('task-startnow-field').style.display='none';
   document.getElementById('task-repeat-field').style.display='none';
   document.getElementById('modal-task').classList.add('open');
 }
@@ -9400,7 +9628,21 @@ async function submitTask() {
     toast(firstErr||data?.message||'Could not save task — try again');
     return;
   }
-  toast(S.editingTaskId?'Task updated ✓':'Task added! ✓');
+  // Start Now is only offered at creation -- immediately reschedules the brand-new task
+  // to right now and cascades any real conflicts later in the day (see the Simple Shift
+  // logic in api/simple-tasks/[taskId]/start-now.js), same effect as tapping the existing
+  // ▶ play button but without an extra trip through Task Detail first.
+  let startNowResult=null;
+  if(!S.editingTaskId && document.getElementById('t-start-now').checked && data.id) {
+    startNowResult=await req('POST','/simple-tasks/'+data.id+'/start-now');
+  }
+  if(startNowResult && startNowResult.shiftedCount!==undefined) {
+    toast(startNowResult.shiftedCount ? `Started now — ${startNowResult.shiftedCount} task${startNowResult.shiftedCount===1?'':'s'} shifted later ⚡` : 'Task added and started now ⚡');
+  } else if(startNowResult) {
+    toast(startNowResult.message||'Task added, but could not start now — too much of today would need to move');
+  } else {
+    toast(S.editingTaskId?'Task updated ✓':'Task added! ✓');
+  }
   closeModal('modal-task');
   document.getElementById('t-name').value='';
   S.editingTaskId=null;

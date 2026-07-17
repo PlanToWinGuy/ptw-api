@@ -13,6 +13,9 @@ export default async function handler(req, res) {
   const user = await getUserFromRequest(req);
   if (!user) return res.status(401).json({ message: 'Unauthenticated' });
 
+  const avatarRows = await sql`SELECT data FROM preferences WHERE user_id = ${user.id} AND scope = 'avatar'`;
+  const profilePicUrl = avatarRows[0]?.data?.url || null;
+
   const pillarState = await getPillarState(user);
   const { unlockedPillars, unlockedCount, standardPct, fastPct, canActivateNextPillar, activatedAtByPillar } = pillarState;
 
@@ -50,7 +53,7 @@ export default async function handler(req, res) {
   res.status(200).json({
     data: {
       username: user.username || user.name,
-      profilePicUrl: null,
+      profilePicUrl,
       // Edit Profile's autofill was silently broken for every field below -- it read
       // u.dob/u.height/u.weight/etc from this exact response, but none of them were ever
       // actually included, so the form always rendered blank regardless of what PUT
