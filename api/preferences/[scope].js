@@ -7,7 +7,7 @@ import { getUserFromRequest } from '../../lib/auth.js';
 // either a pillar name lowercase ('fitness', 'diet', ...) or 'units' | 'notifications'.
 // GET returns {} (an empty default) if nothing's been saved yet, not a 404 -- every
 // preferences page pre-fills a real form, it just starts blank/at defaults.
-const VALID_SCOPES = new Set(['fitness', 'diet', 'finances', 'relations', 'personal', 'work', 'units', 'notifications', 'daily_briefings', 'essential_apps', 'home_background']);
+const VALID_SCOPES = new Set(['fitness', 'diet', 'finances', 'relations', 'personal', 'work', 'units', 'notifications', 'daily_briefings', 'essential_apps', 'home_background', 'pillar_priority']);
 
 export default async function handler(req, res) {
   if (cors(req, res)) return;

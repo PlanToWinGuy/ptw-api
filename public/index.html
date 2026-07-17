@@ -102,6 +102,8 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
 }
 .splash-btn:active{background:rgba(196,184,168,.1);transform:scale(.97)}
 @keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+@keyframes celebPop{0%{transform:scale(.4);opacity:0}60%{transform:scale(1.15);opacity:1}100%{transform:scale(1)}}
+@keyframes celebFadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 
 /* ══════════════════════════════════
    AUTH SCREENS
@@ -730,7 +732,7 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
     <!-- A slim, low-key inline nudge (not a bordered alert card) -- sits in a fixed
          slot right below the top bar so the CTA ring below never shifts position when
          this shows/hides (see .home-center). -->
-    <div id="cta-reshuffle-banner" style="display:none;align-items:center;gap:10px;background:rgba(196,184,168,.08);border-radius:10px;padding:9px 10px;margin:10px 0 0;width:100%">
+    <div id="cta-reshuffle-banner" style="display:none;align-items:center;gap:10px;background:rgba(196,184,168,.5);border-radius:10px;padding:9px 10px;margin:10px 0 0;width:100%">
       <div style="flex:1;font-size:11.5px;color:var(--stone);line-height:1.35">Running behind today — <span style="color:var(--text);font-weight:700;text-decoration:underline;text-underline-offset:2px;cursor:pointer" onclick="dismissReshufflePrompt();openShuffleDay()">reshuffle?</span></div>
       <button class="icon-btn ghost" style="width:20px;height:20px;flex-shrink:0" onclick="dismissReshufflePrompt()">×</button>
     </div>
@@ -813,11 +815,11 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
          celebration and the "how much did you do" step feel like one continuous screen
          instead of a flash-and-vanish. -->
     <div id="tc-celebration-view" style="display:none">
-      <div style="font-size:44px;margin-bottom:10px">🎉</div>
-      <div style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--blue);margin-bottom:8px">Nice work!</div>
-      <div style="font-family:'Syne',sans-serif;font-size:17px;font-weight:700;color:var(--text);margin-bottom:20px" id="tc-cel-name">Task</div>
+      <div style="font-size:44px;margin-bottom:10px;animation:celebPop .5s cubic-bezier(.34,1.56,.64,1)">🎉</div>
+      <div style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--blue);margin-bottom:8px;animation:celebFadeUp .4s ease .1s backwards">Nice work!</div>
+      <div style="font-family:'Syne',sans-serif;font-size:17px;font-weight:700;color:var(--text);margin-bottom:20px;animation:celebFadeUp .4s ease .18s backwards" id="tc-cel-name">Task</div>
       <div class="section-sub">REWARDS</div>
-      <div style="font-family:'Syne',sans-serif;font-size:36px;font-weight:800;color:var(--blue);margin:6px 0 10px" id="tc-cel-xp">+0 XP</div>
+      <div style="font-family:'Syne',sans-serif;font-size:36px;font-weight:800;color:var(--blue);margin:6px 0 10px;animation:celebPop .5s cubic-bezier(.34,1.56,.64,1) .25s backwards" id="tc-cel-xp">+0 XP</div>
       <div style="font-size:12px;color:var(--stone);margin-bottom:28px" id="tc-cel-note"></div>
       <button class="btn-p filled" onclick="finishTaskCelebration()">Continue</button>
     </div>
@@ -1622,6 +1624,23 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
   <div class="scroll-body" style="padding:0 18px">
     <div style="font-size:12px;color:var(--stone);margin:14px 0 16px;line-height:1.5">Tell us which of these you actually use — Essential Apps suggestions (on Home, during breaks, and mid-task) will favor these first.</div>
     <div id="ea-prefs-body"></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     PILLAR PRIORITY -- which pillar leads (bottom nav order, swipe cycling, Profile
+     filter), independent of activation order. Defaults from the Valueprint reading's
+     own alignment gap when one exists; always editable by hand here.
+══════════════════════════════════ -->
+<div id="screen-pillar-priority" class="screen">
+  <div class="pillar-top-bar">
+    <button class="icon-btn ghost" onclick="openSettingsHub()">←</button>
+    <h2 style="font-size:15px">Pillar Priority</h2>
+    <button class="icon-btn ghost" onclick="savePillarPriority()" title="Save">✓</button>
+  </div>
+  <div class="scroll-body" style="padding:0 18px">
+    <div style="font-size:12px;color:var(--stone);margin:14px 0 16px;line-height:1.5">Your primary pillar leads everywhere order matters — the bottom nav, swiping between pillars, and Profile's filter. Starts from your Valueprint's own reading of where you need the most right now; reorder it however fits.</div>
+    <div id="pillar-priority-body"></div>
   </div>
 </div>
 
@@ -2590,6 +2609,7 @@ function renderSettingsBody() {
     + settingsRow('☀️','Daily Briefings',"openDailyBriefingsSettings()")
     + settingsRow('📅','Import a Schedule',"openScheduleImport()",'Upload a class, work, or practice schedule')
     + settingsRow('🧩','Preferred Quick-Add Apps',"openEssentialAppsPrefs()",'Which apps you actually use')
+    + settingsRow('🎯','Pillar Priority',"openPillarPriority()",'Which pillar leads the nav and swiping')
     + settingsRow('🖼️','Home Background',"showScreen('home-background');renderHomeBackgroundPresets()",'Photo or color behind your Home screen');
 
   // One section per pillar the user has actually unlocked -- no premium paywall/lock
@@ -3254,7 +3274,7 @@ const LOGGING_TASK_OPEN = {
 // e.g. a "journal about X" action opens Journal pre-filled, not a bare checkbox. Falls
 // back to the generic per-pillar routing above when there's no hint.
 const TOOL_HINT_OPEN = {
-  journal:      (t)=>openJournalEntry(t.name),
+  journal:      (t)=>openJournalEntry(t.name, getPillarKey(t.pillar)),
   session:      ()=>openLogSession(null),
   meal:         (t)=>openMealLog(inferMealTypeFromText(t.name)),
   workout:      ()=>openWorkoutHub(),
@@ -3438,6 +3458,12 @@ async function confirmTaskCompletion() {
   S.taskCompletionReturnTo=null;
   document.getElementById('tc-slider-view').style.display='none';
   document.getElementById('tc-celebration-view').style.display='';
+  // Real haptic feedback where the platform actually exposes it -- Android Chrome/
+  // WebView supports the Vibration API from a plain web app today; iOS Safari exposes
+  // no such API to web content at all (that's a native-only capability, off the table
+  // until this ships as an actual native wrapper). navigator.vibrate simply doesn't
+  // exist there, so this silently no-ops instead of erroring.
+  if(navigator.vibrate) navigator.vibrate([25,40,25]);
   document.getElementById('tc-cel-name').textContent=completedName;
   document.getElementById('tc-cel-xp').textContent='+'+xp+' XP';
   document.getElementById('tc-cel-note').textContent=result?.data?.remainder_task ? 'The rest has been rescheduled.' : '';
@@ -3445,9 +3471,16 @@ async function confirmTaskCompletion() {
 function finishTaskCelebration() {
   const nav=S.pendingCelebrationNav||{};
   S.pendingCelebrationNav=null;
+  // history.back() (not showScreen) -- same duplicate-history-entry bug as
+  // cancelTaskCompletion() used to have: showScreen() always pushState()s a NEW entry,
+  // so Continue was pushing an extra 'home'/'todo-routines' entry on top of the real
+  // screen/task-completion entries already on the stack instead of unwinding back to
+  // them, leaving a stale task-completion entry underneath for the next back-press to
+  // land on (rendering blank, since its fields were already cleared).
+  history.back();
   (async ()=>{
-    if(nav.returnTo==='todo-routines') { showScreen('todo-routines'); await switchTodoRoutinesTab('todo'); }
-    else { showScreen('home'); await loadHomeData(); }
+    if(nav.returnTo==='todo-routines') { await switchTodoRoutinesTab('todo'); }
+    else { await loadHomeData(); }
     maybePromptExpenseLog(nav.completedName, nav.completedPillar);
   })();
 }
@@ -3484,8 +3517,11 @@ function cancelTaskCompletion() {
     renderProjectDetail();
     return;
   }
-  const returnTo=S.taskCompletionReturnTo; S.taskCompletionReturnTo=null;
-  showScreen(returnTo==='todo-routines' ? 'todo-routines' : 'home');
+  S.taskCompletionReturnTo=null;
+  // Same fix as the subtask branch above -- history.back() unwinds to whichever real
+  // screen (Home, Task Detail, To-Do/Routines) actually preceded this one instead of
+  // pushing a fresh duplicate entry on top of it.
+  history.back();
 }
 
 // Pencil: the real "Skip Task" / "Add 10 Minutes" menu (2.12.3), replacing the old
@@ -5924,6 +5960,51 @@ async function saveEssentialAppsPrefs() {
   openSettingsHub();
 }
 
+// ─── PILLAR PRIORITY (Settings) ───
+// Which pillar leads the bottom nav / swipe-cycling / Profile's filter -- defaults from
+// the Valueprint reading's own alignment gap (see api/user.js's
+// derivePillarPriorityFromValueprint), always hand-editable here regardless of whether
+// that default exists yet.
+let pillarPriorityDraft=[];
+async function openPillarPriority() {
+  showScreen('pillar-priority');
+  if(!Array.isArray(S.userData?.pillar_priority_order)) await loadUserData();
+  pillarPriorityDraft = Array.isArray(S.userData?.pillar_priority_order) && S.userData.pillar_priority_order.length===6
+    ? [...S.userData.pillar_priority_order]
+    : ['fitness','diet','finances','relations','personal','work'];
+  renderPillarPriorityBody();
+}
+function renderPillarPriorityBody() {
+  const body=document.getElementById('pillar-priority-body');
+  body.innerHTML = pillarPriorityDraft.map((key,i)=>{
+    const p=PILLARS[key];
+    const isUnlocked=(S.unlocked||[]).includes(key);
+    return `<div class="sq-card" style="align-items:center">
+      <div class="sq-icon" style="background:${p.color}22;color:${p.color}">${p.icon}</div>
+      <div class="sq-info" style="flex:1">
+        <div class="sq-name">${p.label}${isUnlocked?'':' <span style="color:var(--muted);font-size:11px">(not active yet)</span>'}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:2px">
+        <button class="icon-btn ghost" style="width:28px;height:28px${i===0?';opacity:.3;pointer-events:none':''}" onclick="movePillarPriority(${i},-1)">▲</button>
+        <button class="icon-btn ghost" style="width:28px;height:28px${i===pillarPriorityDraft.length-1?';opacity:.3;pointer-events:none':''}" onclick="movePillarPriority(${i},1)">▼</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+function movePillarPriority(i, dir) {
+  const j=i+dir;
+  if(j<0||j>=pillarPriorityDraft.length) return;
+  [pillarPriorityDraft[i],pillarPriorityDraft[j]]=[pillarPriorityDraft[j],pillarPriorityDraft[i]];
+  renderPillarPriorityBody();
+}
+async function savePillarPriority() {
+  await req('PUT','/preferences/pillar_priority',{order:pillarPriorityDraft});
+  toast('Pillar priority saved ✓');
+  await loadUserData();
+  renderPillarApps();
+  openSettingsHub();
+}
+
 // ─── CUSTOM HOME BACKGROUND ───
 // Brand accent hues, same family as the pillar colors, rather than arbitrary art --
 // keeps a custom background feeling like part of this app rather than a random photo.
@@ -8241,8 +8322,9 @@ async function switchPersonalHubTab(tab) {
     return;
   }
 
-  // journal
-  const data=await req('GET','/metrics?pillar_id='+p.id+'&log_type=journal_entry');
+  // journal -- no pillar_id filter: a journal entry can be tagged with whichever pillar
+  // it was really about (see openJournalEntry's pillarKey param), not just Personal.
+  const data=await req('GET','/metrics?log_type=journal_entry');
   S.journalCache=(data?.logs||[]).sort((a,b)=>new Date(b.logged_at)-new Date(a.logged_at));
   renderJournalBody(S.journalCache);
 }
@@ -8254,9 +8336,19 @@ function renderPersonalSubfilter(tab) {
     const cur = tab==='focus' ? (S.personalFocusFilter||'All') : (S.personalHistoryFilter||'All');
     el.innerHTML=cats.map(c=>`<button class="chip${cur===c?' sel':''}" onclick="setPersonalFilter('${tab}','${c}')">${c}</button>`).join('');
   } else if(tab==='journal') {
-    const opts=['All Entries','Mood Trends'];
+    // Pillar chips only appear once there's real cross-pillar content to filter --
+    // entries tagged from a Fitness/Work journal-hint task alongside plain Personal
+    // ones (see openJournalEntry's pillarKey param). Older, untagged entries default to
+    // Personal, matching how they always behaved before this existed.
+    const pillarsPresent=[...new Set((S.journalCache||[]).map(e=>e.data?.pillar||'personal'))];
+    const opts=['All Entries','Mood Trends',...(pillarsPresent.length>1?pillarsPresent.map(k=>'pillar:'+k):[])];
     const cur=S.journalFilter||'All Entries';
-    el.innerHTML=opts.map(o=>`<button class="chip${cur===o?' sel':''}" onclick="setPersonalFilter('journal','${o}')">${o}</button>`).join('');
+    el.innerHTML=opts.map(o=>{
+      const isPillar=o.startsWith('pillar:');
+      const key=isPillar?o.slice(7):null;
+      const label=isPillar?(PILLARS[key]?.label||key):o;
+      return `<button class="chip${cur===o?' sel':''}" onclick="setPersonalFilter('journal','${o}')">${label}</button>`;
+    }).join('');
   } else {
     el.innerHTML='';
   }
@@ -8482,25 +8574,40 @@ async function submitLogSession() {
 function renderJournalBody(entries) {
   const body=document.getElementById('personal-hub-body');
   const filter=S.journalFilter||'All Entries';
+  const filtered = filter.startsWith('pillar:') ? entries.filter(e=>(e.data?.pillar||'personal')===filter.slice(7)) : entries;
   body.innerHTML = `<button class="btn-p filled" style="background:var(--personal);border-color:var(--personal);margin:12px 0" onclick="openJournalEntry()">+ New Entry</button>` +
     (filter==='Mood Trends'
       ? `<div class="empty"><div class="empty-icon">📊</div><div class="empty-text">Mood trends are coming soon — they'll pull from your Take a Break check-ins.</div></div>`
-      : (entries.length ? entries.map(journalCard).join('') : `<div class="empty"><div class="empty-icon">📓</div><div class="empty-text">No journal entries yet.</div></div>`));
+      : (filtered.length ? filtered.map(journalCard).join('') : `<div class="empty"><div class="empty-icon">📓</div><div class="empty-text">No journal entries yet.</div></div>`));
 }
 
 function journalCard(e) {
   const text=e.data?.text||'';
   const preview=text.length>120?text.slice(0,120)+'…':text;
   const date=e.logged_at?new Date(e.logged_at).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):'';
+  // A pillar badge only earns its place on the card once entries can genuinely come
+  // from more than one pillar -- for an all-Personal journal (the common case) it'd
+  // just be visual noise repeating "Personal" on every single card.
+  const pillarKey=e.data?.pillar||'personal';
+  const p=PILLARS[pillarKey];
+  const showBadge=pillarKey!=='personal' && p;
   return `<div class="sq-card" onclick="viewJournalEntry(${e.id})" style="flex-direction:column;align-items:stretch">
-    <div class="sq-name">${date}</div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <div class="sq-name" style="flex:1">${date}</div>
+      ${showBadge?`<span class="xp-tag" style="color:${p.color};background:${p.color}1f">${p.label}</span>`:''}
+    </div>
     <div class="sq-meta" style="margin-top:6px;white-space:pre-wrap">${preview}</div>
   </div>`;
 }
 
-function openJournalEntry(prompt) {
+function openJournalEntry(prompt, pillarKey) {
   S.journalEditId=null;
   S.journalEntrySource=prompt?'identity_reflection':null;
+  // A journal-tool_hint action generated under another pillar (e.g. Fitness's "Write a
+  // reflection at Day 66") tags its entry with that ORIGIN pillar rather than always
+  // hardcoding Personal -- so the entry is filterable by which pillar it was really
+  // about, not lumped in as generic Personal content it wasn't.
+  S.journalEntryPillar=pillarKey||'personal';
   showScreen('journal-entry');
   document.getElementById('journal-entry-title').textContent=prompt?'Identity Reflection':'New Entry';
   document.getElementById('journal-entry-body').innerHTML=`
@@ -8523,11 +8630,13 @@ function viewJournalEntry(id) {
 async function submitJournalEntry() {
   const text=document.getElementById('journal-text').value.trim();
   if(!text) { toast('Write something first'); return; }
-  const data = S.journalEntrySource ? {text, source:S.journalEntrySource} : {text};
-  const result=await req('POST','/metrics',{pillar_id:PILLARS.personal.id, log_type:'journal_entry', data});
+  const pillarKey=S.journalEntryPillar||'personal';
+  const data = { text, pillar:pillarKey, ...(S.journalEntrySource?{source:S.journalEntrySource}:{}) };
+  const result=await req('POST','/metrics',{pillar_id:PILLARS[pillarKey]?.id||PILLARS.personal.id, log_type:'journal_entry', data});
   toast(`+${result?.xp_gained||0} XP ⚡`);
   const returnTab = S.journalEntrySource==='identity_reflection' ? 'identity' : 'journal';
   S.journalEntrySource=null;
+  S.journalEntryPillar=null;
   showScreen('personal-hub');
   switchPersonalHubTab(returnTab);
 }

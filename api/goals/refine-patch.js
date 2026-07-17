@@ -71,9 +71,18 @@ export default async function handler(req, res) {
   }
 
   const removeActions = Array.isArray(parsed.removeActions) ? parsed.removeActions : [];
-  const addActions = Array.isArray(parsed.addActions) ? parsed.addActions : [];
   const removeTips = Array.isArray(parsed.removeTips) ? parsed.removeTips : [];
-  const addTips = Array.isArray(parsed.addTips) ? parsed.addTips.filter(t => typeof t === 'string' && t.trim()) : [];
+  // Same deterministic backstop as api/goals.js's original plan generation -- the
+  // SYSTEM prompt above already asks for tip-phrased requests to go in addTips, but
+  // that's prompt-only guidance with no code-level enforcement, so a tip-phrased
+  // addAction can still slip through here too.
+  const TIP_PHRASING_PATTERN = /\b(try |consider )?introduc(e|ing) (a |one |an )?(new|small|extra|optional)\b|\bwhen you can\b|\bif you (can|have time)\b|\bkeep in mind\b|\bconsider\b/i;
+  const rawAddActions = Array.isArray(parsed.addActions) ? parsed.addActions : [];
+  const addActions = rawAddActions.filter(a => !TIP_PHRASING_PATTERN.test(a?.text || ''));
+  const addTips = [
+    ...(Array.isArray(parsed.addTips) ? parsed.addTips.filter(t => typeof t === 'string' && t.trim()) : []),
+    ...rawAddActions.filter(a => TIP_PHRASING_PATTERN.test(a?.text || '')).map(a => a.text),
+  ];
   const dailyAnchorReplacement = typeof parsed.dailyAnchorReplacement === 'string' && parsed.dailyAnchorReplacement.trim() ? parsed.dailyAnchorReplacement.trim() : null;
 
   const pillarKey = (PILLARS[goal.pillar_id] || '').toLowerCase();

@@ -5,6 +5,28 @@ import { timeOfDayToClock, addMinutesToClock, addDays, inferToolHint, isRecurrin
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 
+// A deterministic backstop for the SYSTEM prompt's own actions-vs-tips instruction below
+// -- prompt-only guidance has no code-level enforcement, so a tip-phrased suggestion
+// ("Introduce one small challenge: a new exercise variation...") could still slip through
+// and get inserted as a real, schedulable checkbox sub-task instead of living in the
+// Roadmap's tips list where general awareness advice belongs. Confirmed live on the
+// guest2 account's Fitness project. Same no-AI-call cost-discipline precedent as
+// inferToolHint/isRecurringAction.
+const TIP_PHRASING_PATTERN = /\b(try |consider )?introduc(e|ing) (a |one |an )?(new|small|extra|optional)\b|\bwhen you can\b|\bif you (can|have time)\b|\bkeep in mind\b|\bconsider\b/i;
+function moveTipPhrasedActionsToTips(plan) {
+  const phases = plan.phases || [];
+  const tips = [...(plan.tips || [])];
+  const filteredPhases = phases.map(ph => {
+    const kept = [];
+    (ph.actions || []).forEach(a => {
+      if (TIP_PHRASING_PATTERN.test(a)) tips.push(a);
+      else kept.push(a);
+    });
+    return { ...ph, actions: kept };
+  });
+  return { ...plan, phases: filteredPhases, tips };
+}
+
 // Mirrors map-of-you's GOAL_PLAN_SYSTEM shape exactly, so a plan generated on the
 // Map site and one generated here are interchangeable.
 const SYSTEM = `You create a personalized goal plan from someone's pillar, goal type, and situation. The timeline depends on the goal type and starting point — not everything is 90 days. Return ONLY JSON:
@@ -376,7 +398,7 @@ async function generateGoal(req, res, user) {
       }
       const text = (data.content || []).map(b => (b.type === 'text' ? b.text : '')).join('\n');
       const parsed = JSON.parse(text.trim().replace(/^```json\n?/, '').replace(/```$/, ''));
-      if (parsed.title) plan = { ...plan, ...parsed };
+      if (parsed.title) plan = moveTipPhrasedActionsToTips({ ...plan, ...parsed });
     } catch (e) {
       // Falls back to the generic default plan above -- logged so a real failure (bad
       // JSON, truncation, API error) is diagnosable instead of silently invisible.
