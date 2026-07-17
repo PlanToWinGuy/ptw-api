@@ -4295,7 +4295,7 @@ async function renderTaskDetailPairing(task, toolHint) {
       <div class="rm-goal-card" style="margin-top:8px;cursor:pointer" onclick="viewMealPlanDetail(${matchId})">
         <div style="display:flex;justify-content:space-between;align-items:center">
           <span style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text)">${d.name||'Meal Plan'} <span style="color:var(--stone);font-size:11px">›</span></span>
-          <span style="font-size:11px;color:var(--stone)">${d.calories||0} kcal</span>
+          ${d.calories?`<span style="font-size:11px;color:var(--stone)">${d.calories} kcal</span>`:''}
         </div>
         <div style="font-size:12px;color:var(--stone);margin-top:4px">${d.mealType||'Meal'} · P:${d.protein_g||0} C:${d.carbs_g||0} F:${d.fat_g||0}</div>
       </div>`;
