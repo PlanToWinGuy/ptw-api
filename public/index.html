@@ -1476,14 +1476,21 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
     </div>
 
     <div style="display:flex;gap:12px;margin-bottom:12px;align-items:stretch">
-      <div class="rm-goal-card" style="cursor:pointer;margin-bottom:0;flex:1;min-width:0" onclick="openPhaseDetail()">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <div id="profile-phase" style="font-family:'Syne',sans-serif;font-weight:700;font-size:14px;color:var(--text)">—</div>
+      <div class="rm-goal-card" style="cursor:pointer;margin-bottom:0;flex:1;min-width:0;display:flex;flex-direction:column" onclick="openPhaseDetail()">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div class="section-sub" style="margin:0">PHASE</div>
           <span style="font-size:13px;color:var(--stone)">›</span>
         </div>
-        <div style="height:6px;background:var(--bg4);border-radius:4px;overflow:hidden;margin-bottom:6px"><div id="profile-phase-fill" style="height:100%;background:var(--blue);width:0%"></div></div>
-        <div id="profile-phase-sub" style="font-size:10.5px;color:var(--stone);line-height:1.4">—</div>
-        <div id="profile-phase-duration" style="font-size:10.5px;color:var(--muted);margin-top:2px">—</div>
+        <div id="profile-phase" style="font-family:'Syne',sans-serif;font-weight:800;font-size:15px;color:var(--text);margin-top:2px">—</div>
+        <!-- Mirrors the LifeScore card's own big-value-then-bar-then-breakdown structure
+             alongside it -- this used to be one dense line crammed with two tracked paths
+             and no clear "here's the headline number" the way its neighbor has, which read
+             as sparse/unfinished against a taller, richer card. -->
+        <div id="profile-phase-pct" style="font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:var(--blue);margin-top:8px">—%</div>
+        <div style="height:5px;background:var(--bg4);border-radius:4px;overflow:hidden;margin-top:6px"><div id="profile-phase-fill" style="height:100%;background:var(--blue);width:0%"></div></div>
+        <div id="profile-phase-sub" style="font-size:9.5px;color:var(--stone);line-height:1.6;margin-top:8px"></div>
+        <div style="flex:1"></div>
+        <div id="profile-phase-duration" style="font-size:9.5px;color:var(--muted);margin-top:8px">—</div>
       </div>
 
       <div class="ls-card" style="background:var(--blue);cursor:pointer;margin-bottom:0;flex:1;min-width:0;display:flex;flex-direction:column" onclick="openLifeScoreDetail()">
@@ -3071,7 +3078,14 @@ function applyCtaState() {
   // the task from `pending`, so it stops matching here on the next poll.
   let current = S.lockedTaskId ? pending.find(t=>t.taskId===S.lockedTaskId) : null;
   if(!current) {
-    current = pending.find(t=>!t.startTime || (t.startTime<=nowStr && (!t.endTime || t.endTime>=nowStr)));
+    // A Project's own "Main Goal" placeholder (shown on days with no specific sub-task
+    // due) has no start/end time of its own -- excluded here so it can never win the
+    // `!t.startTime` fallback and get permanently S.lockedTaskId'd with no end_time to
+    // ever release it. Real project work is represented by its scheduled sub-tasks (which
+    // DO have real start/end times and flow through normally) or by tapping into the
+    // project directly from its card; the placeholder itself was never meant to occupy
+    // the ring indefinitely.
+    current = pending.find(t=>t.taskType!=='ProjectTask' && (!t.startTime || (t.startTime<=nowStr && (!t.endTime || t.endTime>=nowStr))));
     if(current) S.lockedTaskId=current.taskId;
   }
   const nextUp=pending.find(t=>t!==current && t.startTime && t.startTime>nowStr) || pending.find(t=>t!==current);
@@ -3251,17 +3265,18 @@ const TOOL_HINT_OPEN = {
   work_review:      ()=>{ showScreen('work-hub'); switchWorkHubTab('analytics'); },
 };
 function openTaskByToolHint(t) {
-  const fn=t.toolHint && TOOL_HINT_OPEN[t.toolHint];
-  if(fn) { fn(t); return true; }
-  // A manually-created task (or an older row from before tool_hint was backfilled
-  // consistently) never got a stored tool_hint at all, so it fell all the way through to
-  // the generic per-pillar handler -- which for fitness is "start a workout", not the
-  // Steps Logger. Text-match the same way lib/scheduling.js's inferToolHint() already
-  // prioritizes 'steps' over 'workout' server-side, so a task literally named "Walk 8,000
-  // steps" opens the right tool regardless of whether tool_hint ever got set.
-  if(!t.toolHint && getPillarKey(t.pillar)==='fitness' && /\bsteps?\b/i.test(t.name||'')) {
+  // A fitness task/habit whose own text names a step count is checked BEFORE the stored
+  // tool_hint, not just as a fallback when tool_hint is missing -- a batch of rows
+  // generated before lib/scheduling.js's inferToolHint() started prioritizing 'steps'
+  // over 'workout' got 'workout' baked in permanently (confirmed live on the guest2
+  // account: "Walk 8,000 steps daily" stored with tool_hint='workout'), and a stored-but-
+  // wrong value needs the same override a missing one gets, or those older rows would
+  // stay broken forever regardless of how the text-match fallback below is written.
+  if(getPillarKey(t.pillar)==='fitness' && /\bsteps?\b/i.test(t.name||'')) {
     openStepsLogger(t); return true;
   }
+  const fn=t.toolHint && TOOL_HINT_OPEN[t.toolHint];
+  if(fn) { fn(t); return true; }
   return false;
 }
 
@@ -3438,9 +3453,17 @@ function cancelTaskCompletion() {
   if(S.subtaskCompletionId) {
     const isQuestContext=S.subtaskCompletionContext==='quest';
     S.subtaskCompletionId=null;
-    if(isQuestContext) { showScreen('side-quest-detail'); renderSideQuestDetail(); return; }
+    // history.back() (not showScreen) -- showScreen() always pushState()s a NEW entry
+    // when the target differs from the current one, so calling it here pushed a
+    // duplicate project-detail/side-quest-detail entry on top of task-completion instead
+    // of unwinding back to the one that already got pushed when this screen was first
+    // opened. That duplicate meant the NEXT back-press only popped the copy and landed
+    // back on the stale task-completion state (whose fields were already cleared above),
+    // rendering blank/black until backing out several more times. Going back through real
+    // history instead correctly lands on the original entry in one press.
+    history.back();
+    if(isQuestContext) { renderSideQuestDetail(); return; }
     S.activeProjectId=S.subtaskCompletionReturnProjectId;
-    showScreen('project-detail');
     renderProjectDetail();
     return;
   }
@@ -3951,7 +3974,15 @@ function updateCtaTimerRing() {
   } else {
     const frac=(end-now)/totalMs;
     arc.style.strokeDashoffset=String(CTA_RING_CIRCUMFERENCE*(1-frac));
-    arc.style.stroke = frac>0.5?'#5A9460':frac>0.2?'#C9A832':'#C46882';
+    // Same singular pillar-color-that-fades design as updateManualTaskCountdown() below
+    // -- this branch (scheduled tasks, including a Project's own work-session block) had
+    // been left on the old green/yellow/red traffic-light scheme from before that redesign,
+    // so a scheduled task's ring still looked like a different, older ring than a manually
+    // started one's.
+    const pk=getPillarKey(t.pillar);
+    const p=PILLARS[pk]||PILLARS.personal;
+    arc.style.stroke=p.color;
+    arc.style.opacity=String(0.25+0.75*frac);
     const remainMs=end-now;
     const mm=Math.floor(remainMs/60000), sec=Math.floor((remainMs%60000)/1000);
     countdownText=mm+':'+String(sec).padStart(2,'0');
@@ -5350,7 +5381,14 @@ function renderProfile() {
   const fast=prog.fast_track_path?.current_week_percent||0;
   const phasePct=Math.min(100, Math.round(Math.max(std/80, fast/95)*100));
   document.getElementById('profile-phase-fill').style.width=phasePct+'%';
-  document.getElementById('profile-phase-sub').textContent = `Standard: ${std}% (need 80%/3wk) · Fast Track: ${fast}% (need 95%/1wk)`;
+  document.getElementById('profile-phase-pct').textContent=phasePct+'%';
+  // Two real lines instead of one dense middot-joined string -- each path gets its own
+  // readable row, with the one currently ahead (driving the headline % above) bolded so
+  // it's clear which track is actually carrying the progress shown.
+  const stdLead=std/80>=fast/95;
+  document.getElementById('profile-phase-sub').innerHTML =
+    `<div style="${stdLead?'color:var(--text);font-weight:600':''}">Standard: ${std}% <span style="opacity:.7">(need 80% over 3 weeks)</span></div>`+
+    `<div style="${!stdLead?'color:var(--text);font-weight:600':''}">Fast Track: ${fast}% <span style="opacity:.7">(need 95% in 1 week)</span></div>`;
   updateProfileDurationLine();
 
   // LifeScore & XP block
@@ -5949,7 +5987,6 @@ async function showPillarScreen(pillarKey, preserveTab) {
   renderPillarDots();
 
   switchPillarTab(tab);
-  if(tab==='map') loadPillarMap(pillarKey);
 }
 
 function renderPillarDots() {
@@ -5971,6 +6008,12 @@ function switchPillarTab(tab) {
   });
 
   const p=PILLARS[S.activePillar];
+  // Always reload on tab switch (like roadmap/trophies below), not just on initial
+  // screen entry -- #pillar-tab-map is a single reused DOM container, so swiping to a
+  // different pillar while on another tab (preserveTab) left it holding the PREVIOUS
+  // pillar's colors/name until this ran, since only showPillarScreen() used to call it
+  // and only when the very first tab shown was 'map'.
+  if(tab==='map')                                   loadPillarMap(S.activePillar);
   if(tab==='quests' && !S.quests[S.activePillar])  loadPillarQuests(S.activePillar);
   if(tab==='roadmap')                               loadPillarRoadmap(S.activePillar);
   if(tab==='trophies')                              loadPillarTrophies(S.activePillar);

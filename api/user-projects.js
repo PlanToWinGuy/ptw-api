@@ -6,8 +6,21 @@ import { materializeRoutinesForDate } from '../lib/routines.js';
 import { applyPlanShiftForUser, notifyStrictDeadlineRisk, rescheduleMissedSimpleTasks } from '../lib/planShift.js';
 import { computeStreakDays } from '../lib/tasks.js';
 import { reconcileStreakTokens } from '../lib/streakTokens.js';
+import { findOpenSlot, addMinutesToClock } from '../lib/scheduling.js';
 
 const PRIORITY_FLAG = { High: '🚩', Medium: '🏳️', Low: '🏳️' };
+
+// A Project's own parent row carries its full remaining scope in
+// estimated_duration_minutes (real and correct -- that's the whole project, not a single
+// sitting), but on a day where it's the only thing representing that project (no specific
+// sub-task due -- see parentsRepresentedToday below), it used to show up with no
+// start/end time at all. With no end time, applyCtaState()'s "current task" fallback on
+// the frontend would lock onto it as if it were `!t.startTime`-eligible and never release
+// it -- reading as "the whole project just sits there taking up the whole day, forever."
+// A real, bounded work-session block (capped well under the full project scope) fixes
+// both: it now competes for a real calendar slot like anything else, and naturally expires
+// into the overtime state after a normal work session instead of staying locked forever.
+const PROJECT_SESSION_MINUTES = 120;
 
 function timeBlock(startTime) {
   if (!startTime) return null;
@@ -78,8 +91,23 @@ export default async function handler(req, res) {
   const parentsRepresentedToday = new Set(rows.filter(t => t.parent_task_id).map(t => t.parent_task_id));
   const visibleRows = rows.filter(t => !(t.kind === 'project' && parentsRepresentedToday.has(t.id)));
 
-  const data = visibleRows.map(t => {
-    const durationMin = t.estimated_duration_minutes || 20;
+  const data = await Promise.all(visibleRows.map(async t => {
+    // Only projects showing as their own "Main Goal" placeholder (no sub-task due today)
+    // need a synthesized slot -- a project WITH a sub-task due today is suppressed above
+    // in favor of that sub-task, which already carries its own real start/end time.
+    let startTime = t.start_time, endTime = t.end_time;
+    let durationMin = t.estimated_duration_minutes || 20;
+    // Caps regardless of whether a start_time already exists on the row -- an older
+    // project row can carry a stale multi-hour span from before this cap existed, not
+    // just a completely empty one, and both need the same real bounded session.
+    if (t.kind === 'project' && durationMin > PROJECT_SESSION_MINUTES) {
+      durationMin = PROJECT_SESSION_MINUTES;
+      if (!startTime) {
+        const slot = await findOpenSlot(sql, user.id, { earliestDate: targetDate, searchDays: 1, durationMinutes: durationMin });
+        startTime = slot.startTime;
+      }
+      endTime = addMinutesToClock(startTime, durationMin);
+    }
     return {
       taskId: t.id,
       routineId: t.routine_id || null,
@@ -87,13 +115,13 @@ export default async function handler(req, res) {
       description: (t.routine_id ? 'Routine' : t.kind === 'project' ? 'Main Goal' : t.goal_id ? (t.phase_label || 'Plan Action') : 'Quick Task') + ' | ' + durationMin + ' min',
       goalId: t.goal_id || null,
       phaseLabel: t.phase_label || null,
-      startTime: t.start_time,
-      endTime: t.end_time,
+      startTime,
+      endTime,
       durationMinutes: durationMin,
       taskType: taskType(t.kind),
       pillar: PILLARS[t.pillar_id] || null,
       priority: t.priority || null,
-      time_block: timeBlock(t.start_time),
+      time_block: timeBlock(startTime),
       status: t.status,
       xpValue: Math.round(durationMin * 1.5) + 20,
       customIcon: t.pillar_id ? (PILLARS[t.pillar_id] || '').toLowerCase() + '_icon' : (t.priority ? PRIORITY_FLAG[t.priority] : null),
@@ -104,12 +132,14 @@ export default async function handler(req, res) {
       toolHint: t.tool_hint || null,
       wasSkipped: t.was_skipped || false,
     };
-  });
+  }));
 
   const total_tasks = data.length;
   const completed = data.filter(d => d.status === 'Completed').length;
   const completion_percent = total_tasks ? Math.round((completed / total_tasks) * 100) : 0;
-  const totalMinutes = visibleRows.reduce((s, t) => s + (t.estimated_duration_minutes || 0), 0);
+  // From `data` (not visibleRows) so a Project placeholder's capped session length is
+  // what counts toward "scheduled today," not its full remaining project scope.
+  const totalMinutes = data.reduce((s, d) => s + (d.durationMinutes || 0), 0);
 
   // Real daily XP + streak, for the Wind-Down recap (no new endpoint needed --
   // 4.5.5's "Daily Summary" numbers just ride along on this same response).
