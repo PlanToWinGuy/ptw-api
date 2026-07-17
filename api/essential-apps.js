@@ -41,6 +41,8 @@ const CATALOG = {
   kindle:    { appName: 'Kindle',    iconName: 'notes_icon',     category: 'skill',        urlScheme: 'kindle://',              webFallback: 'https://read.amazon.com/' },
   audible:   { appName: 'Audible',   iconName: 'podcasts_icon',  category: 'skill',        urlScheme: 'audible://',             webFallback: 'https://www.audible.com/' },
   brilliant: { appName: 'Brilliant', iconName: 'duolingo_icon',  category: 'skill',        webFallback: 'https://brilliant.org/' },
+  maps:      { appName: 'Maps',      iconName: 'maps_icon',      category: 'utility',      urlScheme: 'maps://',                webFallback: 'https://maps.google.com/' },
+  phone:     { appName: 'Phone',     iconName: 'phone_icon',     category: 'utility',      urlScheme: 'tel:' },
 };
 
 const APPS_BY_PILLAR = {
@@ -66,6 +68,25 @@ const APPS_BY_TOOL_HINT = {
   weight:  ['health', 'notes'],
   transaction: ['calculator', 'notes', 'mail'],
 };
+
+// A plain manual task ("Drive to the beach") has no pillar and no tool_hint at all --
+// it used to fall straight to DEFAULT_KEYS (Mail/Calendar/Notes/Spotify/Calculator/
+// WhatsApp) regardless of what the task actually is, which is exactly why a driving
+// errand surfaced a calculator. Same deterministic keyword-match precedent as
+// inferToolHint()/isRecurringAction() -- no AI call, just matching what the task text
+// itself already says it is.
+const ACTIVITY_KEYWORD_RULES = [
+  [/\bdriv(e|ing|e to)\b|\bcommut(e|ing)\b|\broad ?trip\b/i, ['maps', 'spotify', 'podcasts', 'phone']],
+  [/\bwalk(ing)?\b/i, ['spotify', 'podcasts', 'health']],
+  [/\bcook(ing)?\b|\bmeal prep\b/i, ['spotify', 'podcasts', 'scan_food']],
+  [/\bclean(ing)?\b|\btidy(ing)?\b|\blaundry\b/i, ['spotify', 'podcasts']],
+  [/\bshop(ping)?\b|\bgroceries\b|\berrands?\b/i, ['maps', 'notes', 'calculator']],
+];
+function inferActivityKeys(name) {
+  const text = String(name || '');
+  for (const [re, keys] of ACTIVITY_KEYWORD_RULES) if (re.test(text)) return keys;
+  return null;
+}
 
 function resolveApps(keys) {
   return keys.map(k => CATALOG[k]).filter(Boolean);
@@ -184,7 +205,10 @@ export default async function handler(req, res) {
     const rows = await sql`SELECT * FROM tasks WHERE id = ${taskId} AND user_id = ${user.id}`;
     const task = rows[0];
     const pillarName = task ? PILLARS[task.pillar_id] : null;
-    const keys = padKeys(prioritize((task?.tool_hint && APPS_BY_TOOL_HINT[task.tool_hint]) || APPS_BY_PILLAR[pillarName] || DEFAULT_KEYS, preferredKeys));
+    const keys = padKeys(prioritize(
+      (task?.tool_hint && APPS_BY_TOOL_HINT[task.tool_hint]) || inferActivityKeys(task?.name) || APPS_BY_PILLAR[pillarName] || DEFAULT_KEYS,
+      preferredKeys
+    ));
     return res.status(200).json({ apps: resolveApps(keys), habitStack: null });
   }
 

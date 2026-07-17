@@ -1910,10 +1910,18 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
     <div class="field"><label>DUE DATE (OPTIONAL)</label><input type="date" id="t-due-date"></div>
     <div class="field"><label>DUE TIME (OPTIONAL)</label><input type="time" id="t-due-time"></div>
     <div class="field" id="task-startnow-field">
-      <div style="display:flex;align-items:center;gap:10px">
-        <label class="toggle-switch"><input type="checkbox" id="t-start-now"><span class="toggle-slider"></span></label>
-        <span style="font-size:12px;color:var(--stone)">Start this right now, instead of its scheduled time</span>
-      </div>
+      <!-- A whole tappable card instead of a slim inline row -- the toggle itself used to
+           be the only real hit target (42x24px), easy to miss and easy to fat-finger past.
+           The entire card is a single <label for="t-start-now">, so a tap anywhere on it
+           (not just the small switch) toggles the checkbox via native label behavior. -->
+      <label for="t-start-now" id="sn-toggle-row" style="display:flex;align-items:center;gap:12px;padding:13px 14px;border-radius:12px;border:1.5px solid rgba(196,184,168,.18);background:var(--bg3);cursor:pointer;transition:border-color .15s,background-color .15s">
+        <div style="font-size:22px;flex-shrink:0">▶️</div>
+        <div style="flex:1">
+          <div style="font-weight:700;font-size:13.5px;color:var(--text)">Start Right Now</div>
+          <div style="font-size:11px;color:var(--stone);margin-top:1px">Skip the schedule — begin the moment you save</div>
+        </div>
+        <span class="toggle-switch" style="transform:scale(1.4);flex-shrink:0;margin-right:4px"><input type="checkbox" id="t-start-now" onchange="updateStartNowRowStyle()"><span class="toggle-slider"></span></span>
+      </label>
     </div>
     <div class="field" id="task-repeat-field">
       <label>REPEAT</label>
@@ -5809,7 +5817,7 @@ function switchLifeScoreDetailTab(tab) {
 // falls back to a toast (no scheme = no real universal deep link, e.g. Camera) if
 // the app isn't installed or no scheme exists for it.
 // ════════════════════════════════════════
-const ESSENTIAL_ICONS = { mail_icon:'✉️', calendar_icon:'📅', notes_icon:'📝', spotify_icon:'♪', camera_icon:'📷', health_icon:'❤️', calculator_icon:'🧮', duolingo_icon:'🦉', podcasts_icon:'🎙️' };
+const ESSENTIAL_ICONS = { mail_icon:'✉️', calendar_icon:'📅', notes_icon:'📝', spotify_icon:'♪', camera_icon:'📷', health_icon:'❤️', calculator_icon:'🧮', duolingo_icon:'🦉', podcasts_icon:'🎙️', maps_icon:'🗺️', phone_icon:'📞' };
 let essentialAppsCache=[];
 let essentialAppsBreakType=null; // set when opened mid-break, so the back button returns there
 
@@ -9600,6 +9608,7 @@ function openAddTask() {
   // out of scope for a simple "make new things repeat" toggle.
   document.getElementById('task-startnow-field').style.display='';
   document.getElementById('t-start-now').checked=false;
+  updateStartNowRowStyle();
   document.getElementById('task-repeat-field').style.display='';
   document.getElementById('t-repeat').checked=false;
   document.getElementById('task-repeat-days').style.display='none';
@@ -9648,6 +9657,13 @@ function openEditTask(task) {
 
 function toggleTaskRepeat() {
   document.getElementById('task-repeat-days').style.display = document.getElementById('t-repeat').checked ? 'grid' : 'none';
+}
+function updateStartNowRowStyle() {
+  const row=document.getElementById('sn-toggle-row');
+  if(!row) return;
+  const checked=document.getElementById('t-start-now').checked;
+  row.style.borderColor = checked ? 'var(--blue)' : 'rgba(196,184,168,.18)';
+  row.style.backgroundColor = checked ? 'rgba(91,164,220,.12)' : 'var(--bg3)';
 }
 function toggleRepeatDay(btn) { btn.classList.toggle('sel'); }
 
@@ -9753,6 +9769,13 @@ async function submitTask() {
     startNowResult=await req('POST','/simple-tasks/'+data.id+'/start-now');
   }
   if(startNowResult && startNowResult.shiftedCount!==undefined) {
+    // Explicit "start THIS one right now" intent overrides whatever the ring was already
+    // showing -- without this, a still-active manual override (from an earlier ▶ tap on
+    // some other task) kept winning applyCtaState()'s very first check regardless of the
+    // brand-new task's real start_time, so the ring never visibly switched to it even
+    // though the backend had correctly rescheduled it to right now.
+    S.manualTaskOverride=null;
+    S.lockedTaskId=null;
     toast(startNowResult.shiftedCount ? `Started now — ${startNowResult.shiftedCount} task${startNowResult.shiftedCount===1?'':'s'} shifted later ⚡` : 'Task added and started now ⚡');
   } else if(startNowResult) {
     toast(startNowResult.message||'Task added, but could not start now — too much of today would need to move');
