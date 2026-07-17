@@ -14,6 +14,14 @@
 <link rel="apple-touch-icon" href="https://plantowin.app/apple-touch-icon.png">
 <link rel="manifest" href="/manifest.json">
 <title>Plan To Win</title>
+<script>
+// Register the service worker (offline shell + installability). Registers only in prod
+// where /sw.js is served from the app root; on a local dev server that has no sw.js it
+// just 404s quietly, so the .catch() keeps the console clean either way.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => {}); });
+}
+</script>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
@@ -3019,11 +3027,45 @@ async function savePillarPreferences() {
   openSettingsHub();
 }
 
-// ─── SUPPORT & LEGAL (static placeholder content) ───
+// ─── SUPPORT & LEGAL ───
+const FAQ_ITEMS=[
+  ['What is Plan To Win?', "Plan To Win is a life planner and scheduler that turns your goals into a real daily plan across six pillars — Fitness, Diet, Finances, Relations, Personal, and Work. The circle on your home screen always shows the one thing you should be doing right now."],
+  ['How do the pillars unlock?', "You start with the one pillar your Valueprint recommends. As you build consistency you move through phases, and each phase unlocks more pillars — so you're never asked to fix your whole life at once. You can also set your pillar priority in Settings."],
+  ['How does the AI build my plan?', "When you set a goal, the AI writes a real phased roadmap with scheduled tasks, habits, and tips tailored to your answers. You can refine any plan later without regenerating the whole thing — just tell it what to change."],
+  ['What is the Reshuffle / Shuffle Day button?', "Life happens. Tap it when your day goes sideways, tell it why, and it rebalances what's left — deferring, shortening, and protecting your streaks — and can suggest a saved to-do that now fits your changed day."],
+  ['What is LifeScore?', "LifeScore is a projected healthspan estimate in years that rises as you invest across your pillars. It's a motivational north star, not medical advice."],
+  ['Can I import my class or work schedule?', "Yes — in Settings, import a PDF or Word schedule and it becomes fixed commitments the planner schedules around."],
+  ['Is my data private?', "Your data is yours. See the Privacy Policy for details. We never sell your personal information."],
+  ['How do I get help?', "Email us anytime at support@plantowin.app — during the beta we read every message."],
+];
 const STATIC_PAGES={
-  help: {title:'Help & Support', body:"Need a hand? Reach out to us anytime at support@plantowin.app and we'll get back to you as soon as we can. A full FAQ is coming soon."},
-  terms: {title:'Terms of Service', body:'Our full Terms of Service are being finalized and will appear here soon. In the meantime, questions can be sent to support@plantowin.app.'},
-  privacy: {title:'Privacy Policy', body:'Our full Privacy Policy is being finalized and will appear here soon. In the meantime, questions can be sent to support@plantowin.app.'},
+  help: {title:'Help & FAQ', body:
+    FAQ_ITEMS.map(([q,a])=>`<div style="background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:14px;padding:14px 16px;margin-bottom:10px">
+      <div style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text);font-size:14px;margin-bottom:6px">${q}</div>
+      <div style="font-size:13px;color:var(--stone);line-height:1.65">${a}</div>
+    </div>`).join('')
+    + `<div style="text-align:center;margin:18px 0 24px"><button class="btn-p filled" style="background:var(--blue);border-color:var(--blue)" onclick="window.location.href='mailto:support@plantowin.app'">✉️ Email Support</button></div>`
+  },
+  terms: {title:'Terms of Service', body:
+    `<div style="font-size:13px;color:var(--text);line-height:1.7">
+      <p style="margin-bottom:12px"><strong>Beta software.</strong> Plan To Win is currently in beta. Features may change, and occasional bugs or downtime are expected. We're grateful you're here to help us improve it.</p>
+      <p style="margin-bottom:12px"><strong>Your account.</strong> You're responsible for keeping your login secure and for the activity on your account. Don't misuse the service or attempt to disrupt it for others.</p>
+      <p style="margin-bottom:12px"><strong>Not professional advice.</strong> Plan To Win provides general planning, wellness, and motivational guidance. It is not medical, financial, legal, or mental-health advice. Always consult a qualified professional for decisions in those areas.</p>
+      <p style="margin-bottom:12px"><strong>Your content.</strong> Goals, notes, logs, and images you add stay yours. You grant us only the permission needed to store and display them back to you within the app.</p>
+      <p style="margin-bottom:12px"><strong>Availability.</strong> We may update, pause, or discontinue features during the beta. We'll give reasonable notice of major changes where we can.</p>
+      <p>Questions? Email <strong>support@plantowin.app</strong>.</p>
+    </div>`
+  },
+  privacy: {title:'Privacy Policy', body:
+    `<div style="font-size:13px;color:var(--text);line-height:1.7">
+      <p style="margin-bottom:12px"><strong>What we collect.</strong> Your account details (name, email), the profile and Valueprint answers you provide, and the goals, tasks, logs, and images you create in the app — so we can build and show you your plan.</p>
+      <p style="margin-bottom:12px"><strong>How we use it.</strong> To generate your roadmap, schedule your day, track your progress, and improve the product. Some plan generation uses trusted AI providers to process the text of your goals; it isn't used to identify you.</p>
+      <p style="margin-bottom:12px"><strong>What we don't do.</strong> We don't sell your personal information. We don't post anything on your behalf.</p>
+      <p style="margin-bottom:12px"><strong>Your control.</strong> You can edit your profile any time and delete your account from Settings, which removes your data.</p>
+      <p style="margin-bottom:12px"><strong>Security.</strong> Data is stored on managed cloud infrastructure and transmitted over encrypted connections. No system is perfectly secure, but we take reasonable measures to protect it.</p>
+      <p>Privacy questions? Email <strong>support@plantowin.app</strong>.</p>
+    </div>`
+  },
 };
 function openStaticPage(key) {
   const page=STATIC_PAGES[key];
