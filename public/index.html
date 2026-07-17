@@ -821,6 +821,9 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
       <div class="section-sub">REWARDS</div>
       <div style="font-family:'Syne',sans-serif;font-size:36px;font-weight:800;color:var(--blue);margin:6px 0 10px;animation:celebPop .5s cubic-bezier(.34,1.56,.64,1) .25s backwards" id="tc-cel-xp">+0 XP</div>
       <div style="font-size:12px;color:var(--stone);margin-bottom:28px" id="tc-cel-note"></div>
+      <div id="tc-cel-vision-nudge" style="display:none;margin-bottom:16px">
+        <button class="btn-p" style="border-color:rgba(255,255,255,.5);color:#fff;font-size:12px;padding:9px 14px" onclick="finishTaskCelebration();openVisionBoard()">✨ Add photos to your Vision Board</button>
+      </div>
       <button class="btn-p filled" onclick="finishTaskCelebration()">Continue</button>
     </div>
   </div>
@@ -1412,6 +1415,7 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
     </div>
     <div class="section-sub" style="text-align:left">NOTES</div>
     <div id="td-notes" style="background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:14px;padding:14px 16px;text-align:left;margin-top:8px"></div>
+    <button id="td-primary-action-btn" class="btn-p filled" style="display:none;width:100%;margin-top:16px;font-size:15px;padding:14px" onclick="launchTaskDetailTool()">Start</button>
   </div>
   <div style="display:flex;justify-content:center;padding:16px 0 calc(40px + var(--sb))">
     <button class="grid-btn" onclick="openEssentialApps()">
@@ -3260,6 +3264,25 @@ async function openFitnessLogEntry() {
   openWorkoutHub();
 }
 
+// Called with a real task in hand (e.g. "Workout B Leg Day" from Task Detail's primary
+// action) -- fuzzy-matches the task's own name against saved plan names so tapping
+// "Start Workout B Leg Day" actually starts THAT workout, not just the plans picker.
+// Falls back to the first saved plan, then to the picker, same as openFitnessLogEntry.
+async function openWorkoutForTask(t) {
+  if(!Object.keys(workoutPlansCache).length) {
+    const data=await req('GET','/metrics?pillar_id='+PILLARS.fitness.id+'&log_type=workout_plan');
+    (data?.logs||[]).forEach(pl=>{ workoutPlansCache[pl.id]=pl.data; });
+  }
+  const name=(t?.name||'').toLowerCase();
+  const matchId=Object.keys(workoutPlansCache).find(id=>{
+    const pname=(workoutPlansCache[id]?.name||'').toLowerCase();
+    return pname && (name.includes(pname)||pname.includes(name));
+  });
+  if(matchId) { startWorkout(Number(matchId)); return; }
+  if(Object.keys(workoutPlansCache).length) { startWorkout(Number(Object.keys(workoutPlansCache)[0])); return; }
+  openWorkoutHub();
+}
+
 const LOGGING_TASK_OPEN = {
   fitness:   ()=>openFitnessLogEntry(),
   diet:      (t)=>openMealLog(inferMealTypeFromText(t?.name)),
@@ -3277,7 +3300,7 @@ const TOOL_HINT_OPEN = {
   journal:      (t)=>openJournalEntry(t.name, getPillarKey(t.pillar)),
   session:      ()=>openLogSession(null),
   meal:         (t)=>openMealLog(inferMealTypeFromText(t.name)),
-  workout:      ()=>openWorkoutHub(),
+  workout:      (t)=>openWorkoutForTask(t),
   steps:        (t)=>openStepsLogger(t),
   transaction:  ()=>openLogTransaction('expense'),
   connection:   ()=>openConnectionLog(null),
@@ -3292,18 +3315,22 @@ const TOOL_HINT_OPEN = {
   relations_review: ()=>{ showScreen('social-hub'); switchSocialHubTab('history'); },
   work_review:      ()=>{ showScreen('work-hub'); switchWorkHubTab('analytics'); },
 };
+// A fitness task/habit whose own text names a step count is checked BEFORE the stored
+// tool_hint, not just as a fallback when tool_hint is missing -- a batch of rows
+// generated before lib/scheduling.js's inferToolHint() started prioritizing 'steps'
+// over 'workout' got 'workout' baked in permanently (confirmed live on the guest2
+// account: "Walk 8,000 steps daily" stored with tool_hint='workout'), and a stored-but-
+// wrong value needs the same override a missing one gets, or those older rows would
+// stay broken forever regardless of how the text-match fallback below is written.
+function resolveTaskToolHint(t) {
+  const pillarVal=t.pillar_name||t.pillar||t.pillar_id;
+  if(getPillarKey(pillarVal)==='fitness' && /\bsteps?\b/i.test(t.name||'')) return 'steps';
+  return t.toolHint||t.tool_hint||null;
+}
 function openTaskByToolHint(t) {
-  // A fitness task/habit whose own text names a step count is checked BEFORE the stored
-  // tool_hint, not just as a fallback when tool_hint is missing -- a batch of rows
-  // generated before lib/scheduling.js's inferToolHint() started prioritizing 'steps'
-  // over 'workout' got 'workout' baked in permanently (confirmed live on the guest2
-  // account: "Walk 8,000 steps daily" stored with tool_hint='workout'), and a stored-but-
-  // wrong value needs the same override a missing one gets, or those older rows would
-  // stay broken forever regardless of how the text-match fallback below is written.
-  if(getPillarKey(t.pillar)==='fitness' && /\bsteps?\b/i.test(t.name||'')) {
-    openStepsLogger(t); return true;
-  }
-  const fn=t.toolHint && TOOL_HINT_OPEN[t.toolHint];
+  const hint=resolveTaskToolHint(t);
+  if(hint==='steps') { openStepsLogger(t); return true; }
+  const fn=hint && TOOL_HINT_OPEN[hint];
   if(fn) { fn(t); return true; }
   return false;
 }
@@ -3335,23 +3362,25 @@ function openCurrentTask() {
     return;
   }
   if(t.routineId) {
-    // Same real-tool routing as any other tool_hint-tagged task (openTaskByToolHint,
+    // Same real-tool routing as any other tool_hint-tagged task (resolveTaskToolHint,
     // used just below for taskType==='Logging') -- openRoutineFromLibrary already does
     // this when tapping a routine from the Library list, but tapping the SAME routine's
     // materialized instance via the CTA ring skipped it entirely, always opening the
     // generic step-checklist even for a single-action routine like "Walk 8,000 steps
     // daily" that has (or should route to) a real tool. Multi-step bookend routines
     // (Morning/Wind-Down) have no tool_hint and no step-count in their name, so they
-    // still correctly fall through to the checklist below.
-    if(openTaskByToolHint(t)) return;
+    // still correctly fall through to the checklist below. Now routes through Task
+    // Detail first (tip + explicit action button) instead of launching the tool
+    // straight off the tap -- see openTaskDetail.
+    if(resolveTaskToolHint(t)) { openTaskDetail(t, 'home'); return; }
     if(routinesCache[t.routineId]) { openActiveRoutine(t.routineId, t.taskId); }
     else { req('GET','/routines').then(rs=>{ (rs||[]).forEach(r=>routinesCache[r.routineId]=r); openActiveRoutine(t.routineId, t.taskId); }); }
     return;
   }
   const pk=getPillarKey(t.pillar);
   if(t.taskType==='Logging') {
+    if(resolveTaskToolHint(t)) { openTaskDetail(t, 'home'); return; }
     S.pendingTaskId=t.taskId;
-    if(openTaskByToolHint(t)) return;
     (LOGGING_TASK_OPEN[pk]||(()=>showPillarScreen(pk)))(t);
   } else if(t.taskType==='ProjectTask') {
     openProjectTaskDetail(t.taskId, 'home', t.name);
@@ -3362,20 +3391,32 @@ function openCurrentTask() {
 
 // Checkmark: opens the Task Completion Screen (2.12.4) instead of instant-completing.
 // Vision Board "Success Image" (4.3.5.4): a motivational background behind the Task
-// Completion Screen, pulled at random from the images the user tagged for this pillar.
-// Ships for all users for now -- the one future paywall hook, if ever needed, is
-// wrapping this call in `if (S.userData?.subscription_tier === 'premium')`.
+// Completion Screen, pulled at random from the images the user tagged for THIS pillar
+// specifically -- deliberately never borrows another pillar's photo (a Fitness win
+// showing a Finances vision would just be confusing). Ships for all users for now -- the
+// one future paywall hook, if ever needed, is wrapping this call in
+// `if (S.userData?.subscription_tier === 'premium')`.
 async function applySuccessImageBackground(pillarValue) {
   const screen=document.getElementById('screen-task-completion');
+  const nudge=document.getElementById('tc-cel-vision-nudge');
   screen.style.backgroundImage='';
+  if(nudge) nudge.style.display='none';
   if(!pillarValue) return;
-  const pillarName=PILLARS[getPillarKey(pillarValue)]?.label;
-  if(!pillarName) return;
-  const data=await req('GET','/vision-board/random-by-pillar?pillar='+encodeURIComponent(pillarName));
+  const pk=getPillarKey(pillarValue);
+  const p=PILLARS[pk];
+  if(!p) return;
+  const data=await req('GET','/vision-board/random-by-pillar?pillar='+encodeURIComponent(p.label));
   if(data?.imageUrl) {
     screen.style.backgroundImage=`linear-gradient(rgba(0,0,0,.55),rgba(0,0,0,.7)), url('${data.imageUrl}')`;
     screen.style.backgroundSize='cover';
     screen.style.backgroundPosition='center';
+  } else {
+    // Nothing tagged for this pillar yet -- a pillar-colored placeholder (not a blank
+    // screen) so the "there's a real image slot here" idea is visible even before anyone
+    // uploads a single photo, plus a direct nudge into Vision Board right at the moment
+    // it'd actually matter (a real win, with nowhere to put it).
+    screen.style.backgroundImage=`linear-gradient(rgba(0,0,0,.35),rgba(0,0,0,.55)), linear-gradient(160deg, ${p.color}, ${p.color}99)`;
+    if(nudge) { nudge.style.display=''; nudge.querySelector('button').style.borderColor=p.color; }
   }
 }
 
@@ -4166,21 +4207,122 @@ function updateManualTaskCountdown(homeScreen, svg, label, miniTimer, timeRangeE
 // ════════════════════════════════════════
 // SIMPLE TASK DETAIL
 // ════════════════════════════════════════
+// Per-tool_hint fallback tip, shown when the parent goal has no tips of its own yet
+// (or the task isn't linked to a goal at all -- e.g. a routine-only habit). Keeps the
+// Notes area useful even before any AI-generated tips exist for that pillar.
+const GENERIC_TASK_TIPS = {
+  meal:         'Be mindful while you eat -- no phone, no screen, chew slowly.',
+  workout:      'Spend 5 minutes warming up before your working sets.',
+  steps:        'A few short walks spread through the day beat one long one at the end.',
+  session:      'A few quiet minutes resets your focus for whatever comes next.',
+  transaction:  'Log it right after you spend -- you will forget the details later.',
+  connection:   'A short check-in counts. It does not need to be a whole conversation.',
+  work_session: 'Note what you actually got done, not just the time you spent.',
+  journal:      'Write whatever is true right now -- it does not need to be tidy.',
+  personal_review:  'A quick look back helps you spot patterns you would otherwise miss.',
+  diet_review:      'A quick look back helps you spot patterns you would otherwise miss.',
+  fitness_review:   'A quick look back helps you spot patterns you would otherwise miss.',
+  finance_review:   'A quick look back helps you spot patterns you would otherwise miss.',
+  relations_review: 'A quick look back helps you spot patterns you would otherwise miss.',
+  work_review:      'A quick look back helps you spot patterns you would otherwise miss.',
+};
+const TOOL_HINT_ACTION_LABEL = {
+  meal: 'Log Meal', steps: 'Log Steps', session: 'Start Session',
+  transaction: 'Log Transaction', connection: 'Log Connection', work_session: 'Start Work Session',
+  journal: 'Open Journal',
+  personal_review: 'View History', diet_review: 'View Meal History', fitness_review: 'View Workout History',
+  finance_review: 'View Finance History', relations_review: 'View Connection History', work_review: 'View Work Analytics',
+};
+function primaryActionLabel(task, toolHint) {
+  if(toolHint==='workout') return 'Start '+(task.name||'Workout');
+  return TOOL_HINT_ACTION_LABEL[toolHint] || ('Start '+(task.name||'Task'));
+}
+// One goal per pillar has real, AI-written tips (goals.tips) -- cached per pillar key
+// for the lifetime of the session since a goal's tip list rarely changes mid-session.
+async function ensurePillarGoalTips(pk) {
+  S.goalTipsCache=S.goalTipsCache||{};
+  if(S.goalTipsCache[pk]!==undefined) return S.goalTipsCache[pk];
+  const p=PILLARS[pk];
+  if(!p) { S.goalTipsCache[pk]=[]; return []; }
+  try {
+    const data=await req('GET','/goals?pillar_id='+p.id);
+    const tips=(data?.data||[])[0]?.tips||[];
+    S.goalTipsCache[pk]=tips;
+    return tips;
+  } catch(e) { S.goalTipsCache[pk]=[]; return []; }
+}
+// Deterministic (not random) so reopening the same task shows the same tip instead of
+// flickering to a different one each time.
+function pickTaskTip(task, toolHint, goalTips) {
+  if(goalTips && goalTips.length) {
+    let h=0; const name=task.name||'';
+    for(let i=0;i<name.length;i++) h=(h*31+name.charCodeAt(i))>>>0;
+    return goalTips[h % goalTips.length];
+  }
+  return GENERIC_TASK_TIPS[toolHint] || null;
+}
+async function renderTaskDetailToolTip(task, pk, toolHint) {
+  const tips=await ensurePillarGoalTips(pk);
+  if(S.taskDetailTask!==task) return;
+  const tip=pickTaskTip(task, toolHint, tips);
+  const p=PILLARS[pk];
+  document.getElementById('td-notes').innerHTML = tip
+    ? `<div style="border-left:3px solid ${p?.color||'var(--blue)'};padding-left:12px"><strong style="color:var(--text)">Tip:</strong> <span style="color:var(--text);font-size:13px;line-height:1.7">${tip}</span></div>`
+    : '<div style="color:var(--muted);font-size:13px">No notes for this task.</div>';
+}
+function launchTaskDetailTool() {
+  const task=S.taskDetailTask;
+  if(!task) return;
+  S.pendingTaskId=task.taskId||task.id||null;
+  openTaskByToolHint(task);
+}
+// The To-Do list and Task Detail's own Skip/Complete/Edit actions all read task.id
+// (snake_case shape from /simple-tasks), while the CTA ring/Daily Overview/routine
+// cards that now also route through here carry camelCase objects keyed by taskId
+// instead (see the summary in openTaskByToolHint et al.) -- normalize once at entry so
+// every downstream action in this screen works regardless of which shape arrived.
+function normalizeTaskDetailShape(t) {
+  return {
+    ...t,
+    id: t.id!=null ? t.id : t.taskId,
+    pillar_name: t.pillar_name || t.pillar,
+    estimated_duration_minutes: t.estimated_duration_minutes!=null ? t.estimated_duration_minutes : t.durationMinutes,
+    toolHint: t.toolHint || t.tool_hint,
+  };
+}
 function openTaskDetail(task, returnScreen) {
+  task=normalizeTaskDetailShape(task);
   S.taskDetailTask=task;
-  // Reached from two different places (the To-Do list, and tapping the Home CTA ring
-  // for the current task) with two different sensible "back" destinations -- same
-  // pattern as Project Detail's S.projectDetailReturnScreen.
+  // Reached from several places (the To-Do list, tapping the Home CTA ring for the
+  // current task, a Daily Overview card, a routine card) with different sensible "back"
+  // destinations -- same pattern as Project Detail's S.projectDetailReturnScreen.
   S.taskDetailReturnScreen=returnScreen||'todo-routines';
-  const pk=getPillarKey(task.pillar_name||task.pillar_id);
+  const pillarVal=task.pillar_name||task.pillar||task.pillar_id;
+  const pk=getPillarKey(pillarVal);
   const p=PILLARS[pk]||PILLARS.personal;
   document.getElementById('td-icon').innerHTML=task.icon||p.icon;
   document.getElementById('td-name').textContent=task.name;
-  document.getElementById('td-time').textContent='Time: '+formatHrsMins(task.estimated_duration_minutes||0);
-  const notes=(task.description||'').split('\n').map(l=>l.trim()).filter(Boolean);
-  document.getElementById('td-notes').innerHTML = notes.length
-    ? '<ul style="margin:0;padding-left:18px;color:var(--text);font-size:13px;line-height:1.8">'+notes.map(n=>`<li>${n}</li>`).join('')+'</ul>'
-    : '<div style="color:var(--muted);font-size:13px">No notes for this task.</div>';
+  const durMin=task.estimated_duration_minutes!=null?task.estimated_duration_minutes:task.durationMinutes;
+  document.getElementById('td-time').textContent='Time: '+formatHrsMins(durMin||0);
+  const btn=document.getElementById('td-primary-action-btn');
+  const toolHint=resolveTaskToolHint(task);
+  if(toolHint) {
+    // A goal-generated task (recurring "Logging" habit, or a "Simple"-kind sub-task) now
+    // shows a contextual tip + an explicit primary action button here FIRST, instead of
+    // launching straight into the real tool on tap -- gives the tip somewhere real to
+    // live and gives people context on what the task is actually asking before they jump
+    // into a logger. See openCurrentTask/openDailyLoggingTask/openDailyRoutineTask, which
+    // now route here instead of calling openTaskByToolHint directly.
+    document.getElementById('td-notes').innerHTML='<div style="color:var(--muted);font-size:13px">Loading tip...</div>';
+    renderTaskDetailToolTip(task, pk, toolHint);
+    if(btn) { btn.style.display=''; btn.textContent=primaryActionLabel(task, toolHint); }
+  } else {
+    if(btn) btn.style.display='none';
+    const notes=(task.description||'').split('\n').map(l=>l.trim()).filter(Boolean);
+    document.getElementById('td-notes').innerHTML = notes.length
+      ? '<ul style="margin:0;padding-left:18px;color:var(--text);font-size:13px;line-height:1.8">'+notes.map(n=>`<li>${n}</li>`).join('')+'</ul>'
+      : '<div style="color:var(--muted);font-size:13px">No notes for this task.</div>';
+  }
   showScreen('task-detail');
   renderTaskDetailTimerUI();
 }
@@ -4732,8 +4874,8 @@ async function submitLogAntiGoal() {
 function openDailyLoggingTask(taskId) {
   const t=(S.dailyAllTasks||[]).find(x=>x.taskId===taskId);
   if(!t) return;
+  if(resolveTaskToolHint(t)) { openTaskDetail(t, 'daily'); return; }
   S.pendingTaskId=taskId;
-  if(openTaskByToolHint(t)) return;
   const pk=getPillarKey(t.pillar);
   (LOGGING_TASK_OPEN[pk]||(()=>showPillarScreen(pk)))();
 }
@@ -4745,8 +4887,8 @@ function openDailyLoggingTask(taskId) {
 // -- an older routine can have 'workout' baked in from before inferToolHint() started
 // prioritizing 'steps'.
 function openDailyRoutineTask(routineId, taskId, toolHint, name, pillar) {
-  if(getPillarKey(pillar)==='fitness' && /\bsteps?\b/i.test(name||'')) { openStepsLogger({name}); return; }
-  if(toolHint && TOOL_HINT_OPEN[toolHint]) { TOOL_HINT_OPEN[toolHint]({name}); return; }
+  const effectiveHint = (getPillarKey(pillar)==='fitness' && /\bsteps?\b/i.test(name||'')) ? 'steps' : toolHint;
+  if(effectiveHint) { openTaskDetail({ id:taskId, taskId, name, toolHint:effectiveHint, pillar, routineId }, 'daily'); return; }
   openActiveRoutineFromCard(routineId, taskId);
 }
 
@@ -5033,11 +5175,15 @@ async function openRoutineFromLibrary(routineId) {
   // routine opening the Workout Hub: its stored tool_hint is 'workout' (baked in before
   // inferToolHint() started prioritizing 'steps'), and TOOL_HINT_OPEN.workout is
   // literally openWorkoutHub().
-  if(r && getPillarKey(r.category)==='fitness' && /\bsteps?\b/i.test(r.name||'')) { openStepsLogger({name:r.name}); return; }
+  const effectiveHint = (r && getPillarKey(r.category)==='fitness' && /\bsteps?\b/i.test(r.name||'')) ? 'steps' : r?.toolHint;
   // A goal-generated routine (single recurring action, e.g. a daily workout) has a real
-  // tool it should open instead of the generic step-checklist -- same TOOL_HINT_OPEN
-  // dispatch every other tool_hint-tagged task already uses.
-  if(r?.toolHint && TOOL_HINT_OPEN[r.toolHint]) { TOOL_HINT_OPEN[r.toolHint]({name:r.name}); return; }
+  // tool it should open instead of the generic step-checklist -- routes through Task
+  // Detail first (tip + explicit action button), same as every other tool_hint-tagged
+  // task now does.
+  if(effectiveHint && (effectiveHint==='steps' || TOOL_HINT_OPEN[effectiveHint])) {
+    openTaskDetail({ id:routineId, name:r.name, toolHint:effectiveHint, pillar:r.category, routineId }, 'todo-routines');
+    return;
+  }
   const today=new Date().toISOString().split('T')[0];
   const proj=await req('POST','/user-projects',{date:today}); // also lazily materializes today's routine tasks
   const match=(proj?.data||[]).find(t=>t.routineId===routineId);
