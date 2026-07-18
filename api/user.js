@@ -7,26 +7,6 @@ import { getPillarState, buildPillarStates } from '../lib/pillarState.js';
 const PHASE_NAMES = { 1: 'Phase 1: Come Up', 2: 'Phase 2: Traction', 3: 'Phase 3: Confidence', 4: 'Phase 4: Flow State' };
 const ALL_PILLAR_KEYS = ['fitness', 'diet', 'finances', 'relations', 'personal', 'work'];
 
-// Default pillar priority (before any explicit override saved via PUT
-// /preferences/pillar_priority) comes from the Valueprint reading's own per-pillar
-// alignment score, when one exists: the pillar where the person's stated values and
-// their current reality are LEAST aligned (lowest alignmentPct) ranks first, since
-// that's their real growth edge -- the pillar that matters most right now -- not just
-// whichever one happened to get activated first. Falls back to the fixed catalog order
-// when there's no Valueprint reading to draw from yet.
-function derivePillarPriorityFromValueprint(valueprint_data) {
-  const gap = Array.isArray(valueprint_data?.gap) ? valueprint_data.gap : null;
-  if (!gap || !gap.length) return null;
-  const withScore = gap
-    .map(g => ({ key: (g?.pillar || '').toLowerCase(), pct: Number(g?.alignmentPct) }))
-    .filter(g => ALL_PILLAR_KEYS.includes(g.key) && !Number.isNaN(g.pct));
-  if (!withScore.length) return null;
-  withScore.sort((a, b) => a.pct - b.pct);
-  const ordered = withScore.map(g => g.key);
-  ALL_PILLAR_KEYS.forEach(k => { if (!ordered.includes(k)) ordered.push(k); });
-  return ordered;
-}
-
 export default async function handler(req, res) {
   if (cors(req, res)) return;
   if (req.method !== 'GET') return res.status(405).json({ message: 'Method not allowed' });
@@ -48,8 +28,11 @@ export default async function handler(req, res) {
   const explicitOrder = Array.isArray(priorityRows[0]?.data?.order)
     ? priorityRows[0].data.order.filter(k => ALL_PILLAR_KEYS.includes(k))
     : null;
+  // Default order is the fixed catalog order (fitness, diet, finances, relations, personal,
+  // work) -- the user's stated preference. An explicit Settings > Pillar Priority order
+  // still wins when set; unlocked pillars then appear in that order (effectively activation
+  // order too, since only activated pillars are in the list).
   const pillarPriorityOrder = (explicitOrder && explicitOrder.length === ALL_PILLAR_KEYS.length ? explicitOrder : null)
-    || derivePillarPriorityFromValueprint(user.valueprint_data)
     || ALL_PILLAR_KEYS;
   const sortedUnlockedPillars = [...unlockedPillars].sort((a, b) => pillarPriorityOrder.indexOf(a) - pillarPriorityOrder.indexOf(b));
 

@@ -3265,9 +3265,21 @@ function maybeStartHomeTour(){
   if(!scr || !scr.classList.contains('active')) return;
   startCoachTour('home_v1', HOME_TOUR);
 }
+// First time a user opens ANY pillar Map -- teach the shared Map layout + the pillar's own
+// 5-tab bottom nav once. Fires from switchPillarTab('map').
+function maybeStartPillarMapTip(){
+  const scr=document.getElementById('screen-pillar');
+  if(!scr || !scr.classList.contains('active')) return;
+  if(coachTour || hasCoachSeen('pillar_map_v1')) return;
+  startCoachTour('pillar_map_v1', [
+    { target:'.pillar-map-body > div:first-child', title:'Your pillar dashboard', body:"Every pillar has a Map like this — the same ring-and-stats layout in that pillar's colour, showing where you stand at a glance." },
+    { target:'#pillar-nav', title:'Everything for this pillar', body:"Map is your dashboard. Side-Quests are optional challenges, Roadmap is your AI plan, Trophies are what you've earned. The centre + logs something for this pillar instantly." },
+  ]);
+}
 // Re-runnable from Help. Clears only the tour flags so tours replay; leaves one-off tips.
 function replayTutorial(){
-  seenCoach.delete('home_v1');
+  // Reset every tour/tip flag so the whole first-run experience can be seen again.
+  ['home_v1','pillar_map_v1'].forEach(id=>seenCoach.delete(id));
   localStorage.setItem(SEEN_COACH_KEY, JSON.stringify([...seenCoach]));
   showScreen('home');
   setTimeout(()=>startCoachTour('home_v1', HOME_TOUR, {force:true}), 300);
@@ -6633,7 +6645,7 @@ function switchPillarTab(tab) {
   // different pillar while on another tab (preserveTab) left it holding the PREVIOUS
   // pillar's colors/name until this ran, since only showPillarScreen() used to call it
   // and only when the very first tab shown was 'map'.
-  if(tab==='map')                                   loadPillarMap(S.activePillar);
+  if(tab==='map')                                 { loadPillarMap(S.activePillar); setTimeout(maybeStartPillarMapTip, 900); }
   if(tab==='quests' && !S.quests[S.activePillar])  loadPillarQuests(S.activePillar);
   if(tab==='roadmap')                               loadPillarRoadmap(S.activePillar);
   if(tab==='trophies')                              loadPillarTrophies(S.activePillar);
@@ -6771,6 +6783,30 @@ function macroBar(label, val, target, unit, color) {
     <div style="height:7px;background:var(--bg4);border-radius:4px;overflow:hidden"><div style="height:100%;width:${pct}%;background:${color};border-radius:4px;transition:width .5s ease"></div></div>
   </div>`;
 }
+// THE shared Map hero — one consistent structure across every pillar so each Map page is
+// instantly recognisable as "the Map," while the ring value, headline and stat pills stay
+// pillar-specific and the whole thing wears the pillar's own colour. Below this hero each
+// pillar renders its own detail cards (macros, workout, budget, etc.) — the hero unifies,
+// the body specialises.
+function pillarMapHero(o) {
+  const stats=(o.stats||[]).map(s=>heroStatPill(s.icon, s.val, s.label)).join('');
+  return `<div style="background:linear-gradient(150deg, ${o.color}, ${o.color}bb);border-radius:22px;padding:18px 20px;margin-bottom:14px">
+    <div style="display:flex;align-items:center;gap:16px">
+      <div style="position:relative;width:116px;height:116px;flex-shrink:0">
+        ${svgRing(o.ringPct, '#fff', {size:116, stroke:11})}
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;text-align:center;padding:0 6px">
+          <div style="font-family:'Syne',sans-serif;font-size:24px;font-weight:800;line-height:1">${o.ringCenter}</div>
+          <div style="font-size:9px;opacity:.85;text-transform:uppercase;letter-spacing:.4px;margin-top:2px">${o.ringLabel}</div>
+        </div>
+      </div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:10px;color:rgba(255,255,255,.8);letter-spacing:.6px;text-transform:uppercase;font-weight:700">${o.kicker}</div>
+        <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:800;color:#fff;line-height:1.2;margin:2px 0 12px">${o.headline}</div>
+        ${stats?`<div style="display:flex;gap:7px">${stats}</div>`:''}
+      </div>
+    </div>
+  </div>`;
+}
 
 async function loadDietMap() {
   const container=document.getElementById('pillar-tab-map');
@@ -6822,22 +6858,15 @@ async function loadDietMap() {
   const calPct = targets.calories ? calories/targets.calories : 0;
   const calRemaining = Math.max(0, Math.round(targets.calories - calories));
   const waterPct=Math.min(100,Math.round(water/3.0*100));
+  // Same shared hero as every pillar (ring + headline + stat pills), themed diet-gold, so
+  // this instantly reads as "the Map." The nutrition-specific detail (macro bars +
+  // hydration) then lives in its own card directly below the hero.
   const html=`
-    <div class="rm-goal-card" style="margin-bottom:14px;padding:18px">
-      <div style="display:flex;align-items:center;gap:18px;margin-bottom:16px">
-        <div style="position:relative;width:118px;height:118px;flex-shrink:0">
-          ${svgRing(calPct, p.color, {size:118, stroke:11, track:'var(--bg4)'})}
-          <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
-            <div style="font-family:'Syne',sans-serif;font-size:25px;font-weight:800;color:var(--text);line-height:1">${calories}</div>
-            <div style="font-size:9px;color:var(--stone);text-transform:uppercase;letter-spacing:.4px;margin-top:2px">of ${targets.calories} kcal</div>
-          </div>
-        </div>
-        <div style="flex:1;min-width:0">
-          <div style="font-size:10px;color:${p.color};letter-spacing:.6px;text-transform:uppercase;font-weight:700">Today's Nutrition</div>
-          <div style="font-family:'Syne',sans-serif;font-size:17px;font-weight:800;color:var(--text);margin:2px 0 4px">${calRemaining>0?`${calRemaining} kcal left`:'Target reached'}</div>
-          <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--stone)"><span style="color:${p.color}">🔥</span> ${streak}-day meal-log streak</div>
-        </div>
-      </div>
+    ${pillarMapHero({ color:p.color, ringPct:calPct, ringCenter:calories, ringLabel:`of ${targets.calories} kcal`, kicker:'Diet · Today',
+      headline: calRemaining>0?`${calRemaining} kcal left`:'Target reached',
+      stats:[{icon:'🔥',val:streak,label:'streak'},{icon:'💪',val:Math.round(protein)+'g',label:'protein'},{icon:'💧',val:water.toFixed(1)+'L',label:'water'}] })}
+    <div class="rm-goal-card" style="margin-bottom:14px">
+      <div class="section-sub" style="text-align:left;margin-bottom:10px">TODAY'S MACROS</div>
       ${macroBar('Protein', protein, targets.protein_g, 'g', p.color)}
       ${macroBar('Carbs', carbs, targets.carbs_g, 'g', p.color)}
       ${macroBar('Fat', fat, targets.fat_g, 'g', p.color)}
@@ -7291,26 +7320,8 @@ async function loadFitnessMap() {
     : metTarget ? "Target hit. Strong week." : "Let's move today.";
   const volDisplay = weeklyVolume>=1000 ? (weeklyVolume/1000).toFixed(1)+'k' : weeklyVolume.toLocaleString();
   const html=`
-    <div style="background:linear-gradient(150deg, ${p.color}, ${p.color}bb);border-radius:22px;padding:18px 20px;margin-bottom:14px">
-      <div style="display:flex;align-items:center;gap:16px">
-        <div style="position:relative;width:116px;height:116px;flex-shrink:0">
-          ${svgRing(wkPct, '#fff', {size:116, stroke:11})}
-          <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff">
-            <div style="font-family:'Syne',sans-serif;font-size:25px;font-weight:800;line-height:1">${ringCenter}</div>
-            <div style="font-size:9px;opacity:.85;text-transform:uppercase;letter-spacing:.4px;margin-top:2px">${ringLabel}</div>
-          </div>
-        </div>
-        <div style="flex:1;min-width:0">
-          <div style="font-size:10px;color:rgba(255,255,255,.8);letter-spacing:.6px;text-transform:uppercase;font-weight:700">Fitness</div>
-          <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:800;color:#fff;line-height:1.2;margin:2px 0 12px">${headline}</div>
-          <div style="display:flex;gap:7px">
-            ${heroStatPill('🔥', streak, 'streak')}
-            ${heroStatPill('🏋️', volDisplay, 'kg vol')}
-            ${heroStatPill('✨', prCount, 'PRs')}
-          </div>
-        </div>
-      </div>
-    </div>
+    ${pillarMapHero({ color:p.color, ringPct:wkPct, ringCenter, ringLabel, kicker:'Fitness',
+      headline, stats:[{icon:'🔥',val:streak,label:'streak'},{icon:'🏋️',val:volDisplay,label:'kg vol'},{icon:'✨',val:prCount,label:'PRs'}] })}
     <div class="rm-goal-card" style="text-align:center;margin-top:14px;border:1.5px solid ${todaysPlan?p.color:'rgba(196,184,168,.12)'}">
       ${todaysPlan ? `
         <div style="font-size:11px;color:${p.color};letter-spacing:.5px;font-weight:700">TODAY'S WORKOUT</div>
