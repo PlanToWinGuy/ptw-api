@@ -2204,7 +2204,7 @@ async function req(method, path, body) {
   // takes longer than a normal API call -- side-quests/custom + refine were left off this
   // list when their own max_tokens got raised for a truncation fix, so a real (slower but
   // successful) generation now silently aborted client-side at 12s with no visible error.
-  const timeout = path.includes('/goals') || path.includes('/metrics') || path.includes('/ai/chat') || path.includes('/side-quests') || path.includes('/essential-apps') ? 45000 : 12000;
+  const timeout = path.includes('/goals') || path.includes('/metrics') || path.includes('/ai/chat') || path.includes('/side-quests') || path.includes('/essential-apps') || path.includes('/fitness') ? 45000 : 12000;
   try {
     const r = await fetch(API + path, {method, headers:h, body:body?JSON.stringify(body):undefined, signal:AbortSignal.timeout(timeout)});
     if (r.status===401) { doLogout(); return null; }
@@ -7660,13 +7660,14 @@ function workoutPlanSummary(d) {
 // saved plan's Start button. Either way, freeform activity names are never a dead end.
 function openCreateWorkoutTemplate(mode) {
   mode = mode==='start' ? 'start' : 'save';
+  S.tplMode=mode;
   S.tplActivityType='strength';
   S.tplName='';
   S.tplRows=[{name:'',sets:3,reps:10,weight:0}];
   S.tplCardio={durationMin:20, distance:0, intensity:'Moderate'};
   S.tplHiit={rounds:8, workSeconds:30, restSeconds:15};
   S.tplMobility={durationMin:10, stretches:''};
-  openConfirm(mode==='start' ? 'What Are You Doing?' : 'Create Workout Template', mode==='start' ? 'Type any activity -- squash, a hike, a spontaneous run -- pick the closest type, and jump straight in.' : '', ()=>{});
+  openConfirm(mode==='start' ? 'What Are You Doing?' : 'Create Workout Template', mode==='start' ? 'Type anything -- shoulder HIIT, a hike, morning yoga -- and get a real workout, or fill it in yourself below.' : '', ()=>{});
   renderTemplateForm();
   const yesBtn=document.getElementById('confirm-yes-btn');
   yesBtn.textContent = mode==='start' ? 'Start Now' : 'Save Template';
@@ -7704,9 +7705,47 @@ function openCreateWorkoutTemplate(mode) {
 
 function setTplActivityType(type) { S.tplActivityType=type; renderTemplateForm(); }
 
+// A basic fitness-app-style search: type anything ("shoulder HIIT", "morning yoga
+// flow") and get back a real, ready-to-start plan instead of having to hand-fill sets/
+// reps/rounds yourself. Only shown in 'start' (spontaneous) mode -- Create Template is
+// already a deliberate manual build, not a quick "what am I doing right now" moment.
+function templateSearchBarHtml() {
+  if(S.tplMode!=='start') return '';
+  return `<div style="display:flex;gap:6px;margin-bottom:14px">
+    <input type="text" id="tpl-search-query" placeholder="Type anything -- shoulder HIIT, morning yoga..." style="flex:1;padding:10px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);outline:none" onkeydown="if(event.key==='Enter'){event.preventDefault();generateActivityFromSearch();}">
+    <button class="btn-p filled" id="tpl-search-btn" style="background:var(--fitness);border-color:var(--fitness);padding:0 16px" onclick="generateActivityFromSearch()">🔍</button>
+  </div>
+  <div class="section-sub" style="margin-bottom:10px">OR FILL IN MANUALLY</div>`;
+}
+
+async function generateActivityFromSearch() {
+  const query=(document.getElementById('tpl-search-query')?.value||'').trim();
+  if(!query) { toast('Type an activity first'); return; }
+  const btn=document.getElementById('tpl-search-btn');
+  if(btn) { btn.disabled=true; btn.textContent='...'; }
+  const result=await req('POST','/fitness/generate-activity',{query});
+  if(btn) { btn.disabled=false; btn.textContent='🔍'; }
+  const d=result?.data;
+  if(!d) { toast("Couldn't generate that -- try rephrasing, or fill it in below"); return; }
+  S.tplName=d.name||query;
+  S.tplActivityType=d.activityType||'strength';
+  if(d.activityType==='strength' && Array.isArray(d.exercises) && d.exercises.length) {
+    S.tplRows=d.exercises.map(e=>({name:e.name||'', sets:e.sets||3, reps:e.targetReps||10, weight:e.targetWeight||0}));
+  } else if(d.activityType==='cardio') {
+    S.tplCardio={durationMin:d.durationMin||20, distance:d.distance||0, intensity:d.intensity||'Moderate'};
+  } else if(d.activityType==='hiit') {
+    S.tplHiit={rounds:d.rounds||8, workSeconds:d.workSeconds||30, restSeconds:d.restSeconds||15};
+  } else if(d.activityType==='mobility' && Array.isArray(d.stretches) && d.stretches.length) {
+    S.tplMobility={durationMin:d.durationMin||10, stretches:d.stretches.join('\n')};
+  }
+  renderTemplateForm();
+  toast('Workout generated — review below, then Start Now');
+}
+
 function renderTemplateForm() {
   const body=document.getElementById('confirm-body');
   body.innerHTML=`
+    ${templateSearchBarHtml()}
     <div style="display:flex;gap:6px;margin-bottom:10px">
       ${ACTIVITY_TYPES.map(t=>`<button class="btn-p" style="flex:1;padding:8px 4px;font-size:11px;${S.tplActivityType===t.key?'background:var(--fitness);border-color:var(--fitness)':''}" onclick="setTplActivityType('${t.key}')">${t.icon} ${t.label}</button>`).join('')}
     </div>
@@ -8027,21 +8066,90 @@ function renderHiitDone() {
     <button class="btn-p filled" style="margin-top:16px;margin-bottom:20px;background:var(--fitness);border-color:var(--fitness)" onclick="finishWorkout()">Finish Workout</button>`;
 }
 
-// ── Mobility session: a check-off stretch list, no timer needed ──
+// ── Mobility session: active, not a static checklist -- a big countdown ring per pose
+// (readable mid-stretch, not a wall of small text to squint at), auto-advancing to the
+// next pose after a short breather so you never have to touch the phone mid-flow. Skip
+// is still there for a pose you want to cut short or a hold length that doesn't fit.
+const MOBILITY_HOLD_SECONDS=30;
+const MOBILITY_TRANSITION_SECONDS=3;
+
 function renderMobilitySession() {
   const w=activeWorkout;
-  document.getElementById('workout-log-header').textContent=w.planName+' · Mobility';
+  if(w.mobilityIdx===undefined) w.mobilityIdx=0;
+  if(w.mobilityIdx>=w.stretches.length) { renderMobilityDone(); return; }
+  const stretch=w.stretches[w.mobilityIdx];
+  document.getElementById('workout-log-header').textContent=`${w.planName} · Pose ${w.mobilityIdx+1} of ${w.stretches.length}`;
+  const circumference=2*Math.PI*100;
   document.getElementById('workout-log-body').innerHTML=`
-    <div class="section-sub" style="margin-top:14px">CHECK OFF AS YOU GO</div>
-    ${w.stretches.map((s,i)=>`<div class="rm-goal-card" style="margin-bottom:8px;display:flex;align-items:center;gap:10px;cursor:pointer" onclick="toggleMobilityStretch(${i})">
-      <span style="font-size:18px">${s.done?'✅':'⬜'}</span><span style="color:var(--text);${s.done?'text-decoration:line-through;opacity:.6':''}">${s.name}</span>
-    </div>`).join('')}
+    <div style="text-align:center;padding:16px 0">
+      <div style="font-family:'Syne',sans-serif;font-size:24px;font-weight:800;color:var(--text);margin-bottom:20px;padding:0 12px;line-height:1.3">${stretch.name}</div>
+      <div style="position:relative;width:220px;height:220px;margin:0 auto">
+        <svg viewBox="0 0 220 220" width="220" height="220" style="transform:rotate(-90deg)">
+          <circle cx="110" cy="110" r="100" fill="none" stroke="var(--bg4)" stroke-width="14"/>
+          <circle id="mobility-ring-arc" cx="110" cy="110" r="100" fill="none" stroke="var(--fitness)" stroke-width="14" stroke-linecap="round" stroke-dasharray="${circumference}" stroke-dashoffset="0" style="transition:stroke-dashoffset 1s linear"/>
+        </svg>
+        <div id="mobility-ring-number" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-size:56px;font-weight:800;color:var(--text)">${MOBILITY_HOLD_SECONDS}</div>
+      </div>
+      <div style="display:flex;justify-content:center;margin-top:22px">
+        <button class="btn-p filled" style="background:var(--fitness);border-color:var(--fitness);padding:10px 28px" onclick="skipMobilityStretch()">Skip Pose</button>
+      </div>
+    </div>`;
+  clearInterval(w.mobilityTimer);
+  let remaining=MOBILITY_HOLD_SECONDS;
+  w.mobilityTimer=setInterval(()=>{
+    remaining--;
+    const numEl=document.getElementById('mobility-ring-number');
+    const arcEl=document.getElementById('mobility-ring-arc');
+    if(!numEl||!arcEl) { clearInterval(w.mobilityTimer); return; }
+    if(remaining<=0) { clearInterval(w.mobilityTimer); stretch.done=true; advanceMobility(); return; }
+    numEl.textContent=remaining;
+    arcEl.setAttribute('stroke-dashoffset', circumference*(1-remaining/MOBILITY_HOLD_SECONDS));
+  },1000);
+}
+
+function advanceMobility() {
+  const w=activeWorkout;
+  w.mobilityIdx++;
+  if(w.mobilityIdx>=w.stretches.length) { renderMobilityDone(); return; }
+  renderMobilityTransition();
+}
+
+// A short 3-second breather between poses -- named next up so you know what's coming
+// before it starts, same "auto-advancing, don't need to touch the phone" flow.
+function renderMobilityTransition() {
+  const w=activeWorkout;
+  const next=w.stretches[w.mobilityIdx];
+  document.getElementById('workout-log-header').textContent=`${w.planName} · Pose ${w.mobilityIdx+1} of ${w.stretches.length}`;
+  let remaining=MOBILITY_TRANSITION_SECONDS;
+  document.getElementById('workout-log-body').innerHTML=`
+    <div style="text-align:center;padding:60px 0">
+      <div class="section-sub">NEXT UP</div>
+      <div style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:var(--fitness);margin:14px 0;padding:0 12px">${next.name}</div>
+      <div id="mobility-transition-count" style="font-size:14px;color:var(--stone)">Starting in ${remaining}...</div>
+    </div>`;
+  clearInterval(w.mobilityTimer);
+  w.mobilityTimer=setInterval(()=>{
+    remaining--;
+    const el=document.getElementById('mobility-transition-count');
+    if(!el) { clearInterval(w.mobilityTimer); return; }
+    if(remaining<=0) { clearInterval(w.mobilityTimer); renderMobilitySession(); return; }
+    el.textContent=`Starting in ${remaining}...`;
+  },1000);
+}
+
+function skipMobilityStretch() {
+  clearInterval(activeWorkout.mobilityTimer);
+  advanceMobility();
+}
+
+function renderMobilityDone() {
+  const w=activeWorkout;
+  const completedCount=w.stretches.filter(s=>s.done).length;
+  document.getElementById('workout-log-header').textContent=w.planName+' · Complete';
+  document.getElementById('workout-log-body').innerHTML=`
+    <div class="rm-goal-card" style="text-align:center;margin-top:14px"><div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:var(--fitness)">All ${completedCount} poses complete! 🧘</div></div>
     <textarea id="workout-session-notes" placeholder="Add Session Notes:" rows="2" style="width:100%;margin-top:14px;padding:12px;background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:10px;color:var(--text);font-size:13px;outline:none;resize:none">${w.sessionNotes}</textarea>
     <button class="btn-p filled" style="margin-top:16px;margin-bottom:20px;background:var(--fitness);border-color:var(--fitness)" onclick="finishWorkout()">Finish Workout</button>`;
-}
-function toggleMobilityStretch(i) {
-  activeWorkout.stretches[i].done=!activeWorkout.stretches[i].done;
-  renderMobilitySession();
 }
 
 function renderActiveWorkout() {

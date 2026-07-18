@@ -10,7 +10,8 @@
     "api/ai/chat.js": { "maxDuration": 45 },
     "api/side-quests/custom.js": { "maxDuration": 45 },
     "api/side-quests/[id]/refine.js": { "maxDuration": 45 },
-    "api/side-quest-suggestions/index.js": { "maxDuration": 45 }
+    "api/side-quest-suggestions/index.js": { "maxDuration": 45 },
+    "api/fitness/generate-activity.js": { "maxDuration": 45 }
   },
   "rewrites": [
     { "source": "/api/signup", "destination": "/api/auth?action=signup" },
