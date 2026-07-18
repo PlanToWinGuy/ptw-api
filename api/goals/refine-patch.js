@@ -1,7 +1,7 @@
 import { sql, PILLARS } from '../../lib/db.js';
 import { cors } from '../../lib/cors.js';
 import { getUserFromRequest } from '../../lib/auth.js';
-import { timeOfDayToClock, addDays, inferToolHint, isRecurringAction } from '../../lib/scheduling.js';
+import { timeOfDayToClock, addDays, inferToolHint, isRecurringAction, inferClockFromText } from '../../lib/scheduling.js';
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 
@@ -117,7 +117,7 @@ export default async function handler(req, res) {
       // doesn't silently stop appearing on Daily Overview when the goal timeline passes.
       await sql`
         INSERT INTO routines (user_id, goal_id, name, category, is_active, schedule_days, schedule_time, steps, tool_hint, end_date)
-        VALUES (${user.id}, ${goal_id}, ${action.text}, ${PILLARS[goal.pillar_id]}, true, ${[]}, ${clockStart}::time,
+        VALUES (${user.id}, ${goal_id}, ${action.text}, ${PILLARS[goal.pillar_id]}, true, ${[]}, ${inferClockFromText(action.text, clockStart)}::time,
                 ${JSON.stringify([{ name: action.text, durationMinutes: 30 }])}::jsonb, ${toolHint}, NULL)
       `;
     } else {
@@ -139,7 +139,7 @@ export default async function handler(req, res) {
     const toolHint = inferToolHint(pillarKey, dailyAnchorReplacement);
     await sql`
       INSERT INTO routines (user_id, goal_id, name, category, is_active, schedule_days, schedule_time, steps, tool_hint, end_date)
-      VALUES (${user.id}, ${goal_id}, ${dailyAnchorReplacement}, ${PILLARS[goal.pillar_id]}, true, ${[]}, ${clockStart}::time,
+      VALUES (${user.id}, ${goal_id}, ${dailyAnchorReplacement}, ${PILLARS[goal.pillar_id]}, true, ${[]}, ${inferClockFromText(dailyAnchorReplacement, clockStart)}::time,
               ${JSON.stringify([{ name: dailyAnchorReplacement, durationMinutes: 15 }])}::jsonb, ${toolHint}, NULL)
     `;
   }

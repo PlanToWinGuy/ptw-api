@@ -1,7 +1,7 @@
 import { sql, PILLARS, pillarIdFromName } from '../lib/db.js';
 import { cors } from '../lib/cors.js';
 import { getUserFromRequest } from '../lib/auth.js';
-import { timeOfDayToClock, addMinutesToClock, addDays, inferToolHint, isRecurringAction, parseTimelineDays, scheduleSubTasks, findOpenSlot } from '../lib/scheduling.js';
+import { timeOfDayToClock, addMinutesToClock, addDays, inferToolHint, isRecurringAction, parseTimelineDays, scheduleSubTasks, findOpenSlot, inferClockFromText } from '../lib/scheduling.js';
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 
@@ -443,7 +443,7 @@ async function generateGoal(req, res, user) {
       const toolHint = inferToolHint(pillarKey, plan.dailyAnchor);
       await sql`
         INSERT INTO routines (user_id, goal_id, name, category, is_active, schedule_days, schedule_time, steps, tool_hint, end_date)
-        VALUES (${user.id}, ${goal_id}, ${plan.dailyAnchor}, ${pillar_name}, true, ${[]}, ${clockStart}::time,
+        VALUES (${user.id}, ${goal_id}, ${plan.dailyAnchor}, ${pillar_name}, true, ${[]}, ${inferClockFromText(plan.dailyAnchor, clockStart)}::time,
                 ${JSON.stringify([{ name: plan.dailyAnchor, durationMinutes: 15 }])}::jsonb, ${toolHint}, NULL)
       `;
     }
@@ -471,7 +471,7 @@ async function generateGoal(req, res, user) {
       // still deactivates these routines when a plan is genuinely replaced.
       await sql`
         INSERT INTO routines (user_id, goal_id, name, category, is_active, schedule_days, schedule_time, steps, tool_hint, end_date)
-        VALUES (${user.id}, ${goal_id}, ${action.text}, ${pillar_name}, true, ${[]}, ${clockStart}::time,
+        VALUES (${user.id}, ${goal_id}, ${action.text}, ${pillar_name}, true, ${[]}, ${inferClockFromText(action.text, clockStart)}::time,
                 ${JSON.stringify([{ name: action.text, durationMinutes: 30 }])}::jsonb, ${toolHint}, NULL)
       `;
     }
