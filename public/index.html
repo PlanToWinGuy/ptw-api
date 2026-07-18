@@ -4273,7 +4273,11 @@ function updateCtaTimerRing() {
   const totalMs=end-start;
   const timeRangeText=t.endTime?(formatTimeOfDay(t.startTime)+' - '+formatTimeOfDay(t.endTime)):formatTimeOfDay(t.startTime);
   if(timeRangeEl) timeRangeEl.textContent=timeRangeText;
-  if(totalMs<=0) { svg.style.display='none'; label.style.display='block'; label.textContent=timeRangeText; if(miniTimer) miniTimer.textContent=timeRangeText; return; }
+  // With no live arc to draw, the pillar-coloured border IS the ring. When the arc DOES
+  // draw (below), the border is hidden instead so we never show two concentric rings --
+  // the arc alone is the ring, matching the manually-started task's countdown ring.
+  if(totalMs<=0) { svg.style.display='none'; label.style.display='block'; label.textContent=timeRangeText; if(miniTimer) miniTimer.textContent=timeRangeText;
+    const p0=PILLARS[getPillarKey(t.pillar)]||PILLARS.personal; document.getElementById('cta-ring').style.borderColor=p0.color; return; }
 
   const arc=document.getElementById('cta-timer-arc');
   arc.style.opacity='1'; // a manual task's fade-out effect must not leak into the scheduled ring
@@ -4312,6 +4316,9 @@ function updateCtaTimerRing() {
   }
   label.textContent=countdownText;
   svg.style.display='block';
+  // Arc is now the ring -- hide the solid pillar border so the two don't stack (the
+  // "doubled ring" on a scheduled/routine current task).
+  document.getElementById('cta-ring').style.borderColor='transparent';
   label.style.display='block';
   if(miniTimer) miniTimer.textContent=countdownText;
 }
