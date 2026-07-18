@@ -113,10 +113,12 @@ export default async function handler(req, res) {
     if (!action?.text) continue;
     if (isRecurringAction(action.text)) {
       const toolHint = inferToolHint(pillarKey, action.text);
+      // end_date NULL -> indefinite habit (matches api/goals.js) so a recurring action
+      // doesn't silently stop appearing on Daily Overview when the goal timeline passes.
       await sql`
         INSERT INTO routines (user_id, goal_id, name, category, is_active, schedule_days, schedule_time, steps, tool_hint, end_date)
         VALUES (${user.id}, ${goal_id}, ${action.text}, ${PILLARS[goal.pillar_id]}, true, ${[]}, ${clockStart}::time,
-                ${JSON.stringify([{ name: action.text, durationMinutes: 30 }])}::jsonb, ${toolHint}, ${goal.end_date})
+                ${JSON.stringify([{ name: action.text, durationMinutes: 30 }])}::jsonb, ${toolHint}, NULL)
       `;
     } else {
       const parentRows = await sql`SELECT id FROM tasks WHERE goal_id = ${goal_id} AND kind = 'project' LIMIT 1`;

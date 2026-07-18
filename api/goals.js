@@ -463,10 +463,16 @@ async function generateGoal(req, res, user) {
 
     for (const action of recurringActions) {
       const toolHint = inferToolHint(pillarKey, action.text);
+      // end_date NULL -> indefinite, same as the daily anchor above. A recurring action IS
+      // an ongoing habit ("log every purchase", "review what you logged daily"); tying it
+      // to the goal's own end_date made it silently stop materializing onto Daily Overview
+      // once the goal timeline passed, while still showing as active in the Routines Library
+      // -- the exact "shows in Routines but not Daily Overview" glitch. Retake/goal cleanup
+      // still deactivates these routines when a plan is genuinely replaced.
       await sql`
         INSERT INTO routines (user_id, goal_id, name, category, is_active, schedule_days, schedule_time, steps, tool_hint, end_date)
         VALUES (${user.id}, ${goal_id}, ${action.text}, ${pillar_name}, true, ${[]}, ${clockStart}::time,
-                ${JSON.stringify([{ name: action.text, durationMinutes: 30 }])}::jsonb, ${toolHint}, ${end_date})
+                ${JSON.stringify([{ name: action.text, durationMinutes: 30 }])}::jsonb, ${toolHint}, NULL)
       `;
     }
 
