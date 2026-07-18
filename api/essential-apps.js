@@ -221,7 +221,13 @@ export default async function handler(req, res) {
     const pillarName = task ? PILLARS[task.pillar_id] : null;
     const pinnedKey = await getPinnedKey(sql, user.id, task?.tool_hint);
     const baseKeys = (task?.tool_hint && APPS_BY_TOOL_HINT[task.tool_hint]) || inferActivityKeys(task?.name) || APPS_BY_PILLAR[pillarName] || DEFAULT_KEYS;
-    const keys = padKeys(prioritize(baseKeys, pinnedKey ? [pinnedKey, ...preferredKeys] : preferredKeys));
+    // A pin means "always this app, no exceptions" -- prioritize() only reorders by
+    // matching baseKeys' own relative order, so a pin could still lose to an unrelated
+    // preferredKey that simply appears earlier in the base list (confirmed live: pinning
+    // Health for steps tasks still put Spotify first because Spotify was already in
+    // preferredKeys and came first in baseKeys). Pin is forced to the front, unconditionally.
+    let keys = padKeys(prioritize(baseKeys, preferredKeys));
+    if (pinnedKey) keys = [pinnedKey, ...keys.filter(k => k !== pinnedKey)];
     return res.status(200).json({ apps: resolveApps(keys), habitStack: null, pinnedKey });
   }
 
