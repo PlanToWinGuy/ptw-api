@@ -1726,6 +1726,30 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
   </div>
 </div>
 
+<!-- ══════════════════════════════════
+     COACH-MARK / TUTORIAL OVERLAY
+     A spotlight (transparent hole punched through a dark scrim via the highlight box's
+     box-shadow) + a tooltip card. Drives both the first-run guided tour and one-off
+     "new feature" tips. See startCoachTour().
+══════════════════════════════════ -->
+<div id="coachmark-overlay" style="display:none;position:fixed;inset:0;z-index:4000">
+  <div id="coachmark-spot" style="position:absolute;border-radius:16px;box-shadow:0 0 0 9999px rgba(0,0,0,.74);border:2px solid var(--blue);transition:all .28s cubic-bezier(.4,0,.2,1);pointer-events:none"></div>
+  <div id="coachmark-card" style="position:absolute;width:300px;max-width:calc(100vw - 32px);background:var(--bg3);border:1px solid rgba(196,184,168,.18);border-radius:16px;padding:16px 18px;box-shadow:0 10px 34px rgba(0,0,0,.55)">
+    <div id="coachmark-title" style="font-family:'Syne',sans-serif;font-weight:800;font-size:15px;color:var(--text);margin-bottom:6px"></div>
+    <div id="coachmark-body" style="font-size:13px;color:var(--stone);line-height:1.6;margin-bottom:12px"></div>
+    <label id="coachmark-dontshow" style="display:none;align-items:center;gap:7px;font-size:12px;color:var(--muted);margin-bottom:12px;cursor:pointer">
+      <input type="checkbox" id="coachmark-dontshow-cb" style="width:15px;height:15px;accent-color:var(--blue)"> Don't show this again
+    </label>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+      <div id="coachmark-progress" style="font-size:11px;color:var(--muted)"></div>
+      <div style="display:flex;gap:8px">
+        <button id="coachmark-skip" class="btn-p" style="width:auto;padding:7px 12px;font-size:12px;border-color:transparent;color:var(--stone)" onclick="dismissCoachmark(true)">Skip</button>
+        <button id="coachmark-next" class="btn-p filled" style="width:auto;padding:7px 16px;font-size:12px;background:var(--blue);border-color:var(--blue)" onclick="coachmarkNext()">Next</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div id="screen-phase-detail" class="screen">
   <div class="pillar-top-bar">
     <button class="icon-btn ghost" onclick="showScreen('profile')">×</button>
@@ -3078,7 +3102,10 @@ const STATIC_PAGES={
       <div style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text);font-size:14px;margin-bottom:6px">${q}</div>
       <div style="font-size:13px;color:var(--stone);line-height:1.65">${a}</div>
     </div>`).join('')
-    + `<div style="text-align:center;margin:18px 0 24px"><button class="btn-p filled" style="background:var(--blue);border-color:var(--blue)" onclick="window.location.href='mailto:hello@plantowin.app'">✉️ Email Support</button></div>`
+    + `<div style="text-align:center;margin:18px 0 24px;display:flex;flex-direction:column;gap:10px">
+        <button class="btn-p" style="border-color:var(--blue);color:var(--blue)" onclick="replayTutorial()">🔄 Replay the app tour</button>
+        <button class="btn-p filled" style="background:var(--blue);border-color:var(--blue)" onclick="window.location.href='mailto:hello@plantowin.app'">✉️ Email Support</button>
+      </div>`
   },
   terms: {title:'Terms of Service', body:
     `<div style="font-size:13px;color:var(--text);line-height:1.7">
@@ -3120,6 +3147,9 @@ async function enterApp() {
   loadHomeData();
   applyHomeBackground();
   initBatteryIndicator();
+  // First-run guided tour -- fires once after Home has painted its pillars/CTA (so the
+  // spotlight has real elements to land on); no-ops on every later launch.
+  setTimeout(maybeStartHomeTour, 800);
 }
 
 // Battery Status API -- real support varies a lot (solid on Android Chrome/WebView,
@@ -3139,6 +3169,108 @@ async function initBatteryIndicator() {
   } catch(e) {
     el.style.display='none';
   }
+}
+
+// ════════════════════════════════════════
+// COACH-MARK / FIRST-RUN TUTORIAL ENGINE
+// Two modes, one renderer:
+//  • Tours — an ordered set of steps walked with Next (e.g. the first-login Home tour).
+//  • Tips  — a single callout for "here's a new thing," fired the first time a user
+//            reaches a screen/feature.
+// "Seen" state persists in localStorage so nothing nags twice. A tip/tour flagged
+// `complex:true` shows a "Don't show this again" checkbox instead of auto-dismissing
+// forever, so genuinely tricky features can re-teach until the user opts out.
+// ════════════════════════════════════════
+const SEEN_COACH_KEY='ptw_seen_coach';
+let seenCoach=(()=>{ try{ return new Set(JSON.parse(localStorage.getItem(SEEN_COACH_KEY)||'[]')); }catch(e){ return new Set(); } })();
+function hasCoachSeen(id){ return seenCoach.has(id); }
+function markCoachSeen(id){ seenCoach.add(id); localStorage.setItem(SEEN_COACH_KEY, JSON.stringify([...seenCoach])); }
+let coachTour=null, coachStepIdx=0;
+
+function positionCoachmark(target){
+  const spot=document.getElementById('coachmark-spot');
+  const card=document.getElementById('coachmark-card');
+  const el = target ? (typeof target==='string' ? document.querySelector(target) : target) : null;
+  const vw=window.innerWidth, vh=window.innerHeight;
+  if(!el || !el.getBoundingClientRect().width){
+    // No (visible) target -> centre the card, collapse the spotlight to nothing.
+    spot.style.width='0'; spot.style.height='0'; spot.style.left=(vw/2)+'px'; spot.style.top=(vh/2)+'px';
+    card.style.left=Math.max(16,(vw-300)/2)+'px'; card.style.top=Math.max(16,(vh-160)/2)+'px';
+    return;
+  }
+  const r=el.getBoundingClientRect(), pad=8;
+  spot.style.left=(r.left-pad)+'px'; spot.style.top=(r.top-pad)+'px';
+  spot.style.width=(r.width+pad*2)+'px'; spot.style.height=(r.height+pad*2)+'px';
+  const cardW=Math.min(300, vw-32);
+  card.style.width=cardW+'px';
+  card.style.left=Math.max(16, Math.min(r.left, vw-cardW-16))+'px';
+  // Prefer below the target; flip above when there's no room.
+  if(r.bottom+180 < vh) card.style.top=(r.bottom+12)+'px';
+  else card.style.top=Math.max(16, r.top-190)+'px';
+}
+function renderCoachStep(){
+  const step=coachTour.steps[coachStepIdx];
+  const last=coachStepIdx>=coachTour.steps.length-1;
+  document.getElementById('coachmark-title').textContent=step.title;
+  document.getElementById('coachmark-body').textContent=step.body;
+  document.getElementById('coachmark-progress').textContent = coachTour.steps.length>1 ? `${coachStepIdx+1} of ${coachTour.steps.length}` : '';
+  document.getElementById('coachmark-next').textContent = last ? 'Got it' : 'Next';
+  document.getElementById('coachmark-skip').style.display = (coachTour.steps.length>1 && !last) ? '' : 'none';
+  const ds=document.getElementById('coachmark-dontshow');
+  ds.style.display = (coachTour.complex && last) ? 'flex' : 'none';
+  if(coachTour.complex && last) document.getElementById('coachmark-dontshow-cb').checked=false;
+  positionCoachmark(step.target);
+}
+// Start a tour/tip. Returns false (and shows nothing) if already seen, unless force=true.
+function startCoachTour(id, steps, opts){
+  opts=opts||{};
+  if(!steps || !steps.length) return false;
+  if(hasCoachSeen(id) && !opts.force) return false;
+  if(coachTour) return false; // never stack tours
+  coachTour={id, steps, complex:!!opts.complex, onDone:opts.onDone}; coachStepIdx=0;
+  document.getElementById('coachmark-overlay').style.display='block';
+  // Let the target screen finish painting before we measure it.
+  requestAnimationFrame(()=>requestAnimationFrame(renderCoachStep));
+  return true;
+}
+function coachmarkNext(){
+  if(!coachTour) return;
+  if(coachStepIdx < coachTour.steps.length-1){ coachStepIdx++; renderCoachStep(); }
+  else dismissCoachmark(false);
+}
+function dismissCoachmark(skipped){
+  if(!coachTour) { document.getElementById('coachmark-overlay').style.display='none'; return; }
+  const dontShow=document.getElementById('coachmark-dontshow-cb').checked;
+  // Skipping, finishing a simple tour, or a complex tour where the user ticked the box:
+  // remember it. Finishing a complex tour WITHOUT ticking leaves it re-showable.
+  if(skipped || !coachTour.complex || dontShow) markCoachSeen(coachTour.id);
+  const cb=coachTour.onDone; coachTour=null;
+  document.getElementById('coachmark-overlay').style.display='none';
+  if(cb) cb();
+}
+// Reposition an in-progress coachmark if the viewport changes (rotation, keyboard).
+window.addEventListener('resize', ()=>{ if(coachTour) positionCoachmark(coachTour.steps[coachStepIdx].target); });
+
+// ── The tours themselves ──
+const HOME_TOUR=[
+  { target:'#cta-ring', title:'Your focus, right now', body:"This circle always shows the one thing to do next. Tap it to start, and the ring tracks your time. When nothing's scheduled it just says so — no pressure." },
+  { target:'.cta-sub .grid-btn', title:'Essential Apps', body:"One tap to the real apps a task needs — Maps for a drive, your music for a workout — suggested from what you're doing." },
+  { target:'.cta-sub .plus-fab', title:'Add anything', body:"Drop in a quick task or errand. Give it a time or just a priority and we'll slot it into your day for you." },
+  { target:'#pillar-apps', title:'Your life pillars', body:"Each active pillar lives here — Fitness, Diet, Work and more. Tap one to open its dashboard, plan and tools. You can also swipe left/right between them." },
+  { target:'.ptw-badge', title:'Your AI coach', body:"Stuck, off-track, or want to change a plan? Ask your coach in plain words — it can adjust your schedule and goals for you." },
+  { target:null, title:"That's the tour!", body:"Everything builds from that focus circle. Swipe up for your day, right for your profile. You've got this — let's plan to win." },
+];
+function maybeStartHomeTour(){
+  const scr=document.getElementById('screen-home');
+  if(!scr || !scr.classList.contains('active')) return;
+  startCoachTour('home_v1', HOME_TOUR);
+}
+// Re-runnable from Help. Clears only the tour flags so tours replay; leaves one-off tips.
+function replayTutorial(){
+  seenCoach.delete('home_v1');
+  localStorage.setItem(SEEN_COACH_KEY, JSON.stringify([...seenCoach]));
+  showScreen('home');
+  setTimeout(()=>startCoachTour('home_v1', HOME_TOUR, {force:true}), 300);
 }
 
 async function loadUserData() {
