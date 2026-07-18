@@ -1317,11 +1317,18 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
     <h3>Rebalance Your Day</h3>
     <div style="font-size:12px;color:var(--stone);margin:-10px 0 16px">What's going on? Your answer helps me create the best possible revised plan.</div>
     <div id="shuffle-context-options" style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
-      <button type="button" class="q-opt sel" data-reason="Low energy / Mental off-day" onclick="selectShuffleContext(this)" style="text-align:left">Low energy / Mental off-day</button>
+      <button type="button" class="q-opt sel" data-reason="Slept in / Starting late" onclick="selectShuffleContext(this)" style="text-align:left">😴 Slept in / Starting late</button>
+      <button type="button" class="q-opt" data-reason="Low energy / Mental off-day" onclick="selectShuffleContext(this)" style="text-align:left">Low energy / Mental off-day</button>
       <button type="button" class="q-opt" data-reason="Hungover or sick" onclick="selectShuffleContext(this)" style="text-align:left">Hungover or sick</button>
       <button type="button" class="q-opt" data-reason="Social surprise / Change of plans" onclick="selectShuffleContext(this)" style="text-align:left">Social surprise / Change of plans</button>
       <button type="button" class="q-opt" data-reason="Travel / Errands took longer" onclick="selectShuffleContext(this)" style="text-align:left">Travel / Errands took longer</button>
       <button type="button" class="q-opt" data-reason="Feeling productive! Let's optimize" onclick="selectShuffleContext(this)" style="text-align:left">Feeling productive! Let's optimize</button>
+    </div>
+    <!-- Only shown for the "Slept in" reason -- lets you re-anchor the whole day to a new
+         wake-up time. Defaults to now; blank = start from right now. -->
+    <div id="shuffle-wake-field" style="margin-bottom:16px">
+      <label style="font-size:11px;color:var(--stone);display:block;margin-bottom:6px">START MY DAY AT</label>
+      <input type="time" id="shuffle-new-wake" style="width:100%;padding:11px 12px;background:var(--bg3);border:1px solid rgba(196,184,168,.15);border-radius:10px;color:var(--text);font-size:15px;outline:none">
     </div>
     <button class="btn-p filled" style="background:var(--blue);border-color:var(--blue)" onclick="submitShuffleContext()">Rebalance My Day</button>
   </div>
@@ -3258,7 +3265,8 @@ const HOME_TOUR=[
   { target:'.cta-sub .plus-fab', title:'Add anything', body:"Drop in a quick task or errand. Give it a time or just a priority and we'll slot it into your day for you." },
   { target:'#pillar-apps', title:'Your life pillars', body:"Each active pillar lives here — Fitness, Diet, Work and more. Tap one to open its dashboard, plan and tools. You can also swipe left/right between them." },
   { target:'.ptw-badge', title:'Your AI coach', body:"Stuck, off-track, or want to change a plan? Ask your coach in plain words — it can adjust your schedule and goals for you." },
-  { target:null, title:"That's the tour!", body:"Everything builds from that focus circle. Swipe up for your day, right for your profile. You've got this — let's plan to win." },
+  { target:null, title:'Swipe to get around', body:"Home is the centre of a cross. Swipe DOWN for your full Daily Overview, LEFT for your To-Do & Routines, RIGHT for your Profile, and UP to jump back into your last pillar. A glow shows where you're headed as you drag." },
+  { target:null, title:"That's the tour!", body:"Everything builds from that focus circle. You've got this — let's plan to win." },
 ];
 function maybeStartHomeTour(){
   const scr=document.getElementById('screen-home');
@@ -3279,7 +3287,7 @@ function maybeStartPillarMapTip(){
 // Re-runnable from Help. Clears only the tour flags so tours replay; leaves one-off tips.
 function replayTutorial(){
   // Reset every tour/tip flag so the whole first-run experience can be seen again.
-  ['home_v1','pillar_map_v1'].forEach(id=>seenCoach.delete(id));
+  ['home_v1','pillar_map_v1','daily_v1'].forEach(id=>seenCoach.delete(id));
   localStorage.setItem(SEEN_COACH_KEY, JSON.stringify([...seenCoach]));
   showScreen('home');
   setTimeout(()=>startCoachTour('home_v1', HOME_TOUR, {force:true}), 300);
@@ -4839,6 +4847,17 @@ async function openDailyOverview() {
   S.overviewMode='day';
   showScreen('daily');
   switchOverviewMode('day');
+  setTimeout(maybeStartDailyTip, 900);
+}
+// First-time tip on the Daily Overview: how to move between days and the Day/Week/Month
+// toggle. Fires once (see coach engine).
+function maybeStartDailyTip(){
+  const scr=document.getElementById('screen-daily');
+  if(!scr || !scr.classList.contains('active') || coachTour || hasCoachSeen('daily_v1')) return;
+  startCoachTour('daily_v1', [
+    { target:'#ov-tab-day', title:'Day, week or month', body:"Zoom out to the week or month to see the shape of what's coming, then back to a single day to focus." },
+    { target:null, title:'Swipe between days', body:"Swipe left or right anywhere on the list to move to the next or previous day. Behind today? Tap the ⚡ shuffle button to rebalance everything that's left." },
+  ]);
 }
 
 function switchOverviewMode(mode) {
@@ -5224,15 +5243,33 @@ const SHUFFLE_CONTEXTS = [
 ];
 
 function openShuffleDay() {
+  // Reset selection to the first option and pre-fill the new-wake time with the current
+  // time, then sync the wake-field visibility to whichever reason is selected.
+  document.querySelectorAll('#shuffle-context-options .q-opt').forEach((b,i)=>b.classList.toggle('sel', i===0));
+  const now=new Date();
+  document.getElementById('shuffle-new-wake').value=`${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+  updateShuffleWakeField();
   document.getElementById('modal-shuffle-context').classList.add('open');
+}
+
+// The new-wake time input only makes sense for the "Slept in" reason -- hide it otherwise.
+function updateShuffleWakeField() {
+  const sel=document.querySelector('#shuffle-context-options .q-opt.sel');
+  const show = sel?.dataset.reason==='Slept in / Starting late';
+  document.getElementById('shuffle-wake-field').style.display = show ? '' : 'none';
 }
 
 async function submitShuffleContext() {
   const selected=document.querySelector('#shuffle-context-options .q-opt.sel');
   const context=selected?selected.dataset.reason:null;
   S.lastShuffleContext=context;
+  const body={date:S.dailyDate, context};
+  if(context==='Slept in / Starting late') {
+    const t=document.getElementById('shuffle-new-wake').value;
+    if(t) body.new_start_time=t;
+  }
   closeModal('modal-shuffle-context');
-  const result=await req('POST','/schedule/shuffle-day',{date:S.dailyDate, context});
+  const result=await req('POST','/schedule/shuffle-day',body);
   S.shuffleResult=result;
   showShuffleProposal(result);
 }
@@ -5240,6 +5277,7 @@ async function submitShuffleContext() {
 function selectShuffleContext(el) {
   document.querySelectorAll('#shuffle-context-options .q-opt').forEach(b=>b.classList.remove('sel'));
   el.classList.add('sel');
+  updateShuffleWakeField();
 }
 
 function showShuffleProposal(result) {

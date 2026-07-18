@@ -106,7 +106,7 @@ export default async function handler(req, res) {
   }
 
   if (action === 'shuffle-day') {
-    const { date, context } = req.body || {};
+    const { date, context, new_start_time } = req.body || {};
     const targetDate = date || new Date().toISOString().split('T')[0];
     const isToday = targetDate === new Date().toISOString().split('T')[0];
     let rows = await sql`
@@ -120,6 +120,7 @@ export default async function handler(req, res) {
                              // right after in some branches, so this can't be reconstructed later
     let streakNote = 'Your highest-priority tasks were kept in place.';
     let startDelayMinutes = 0;
+    let anchorClock = null; // "Slept in" only: re-anchor the whole day to this HH:MM
 
     // Real, deterministic per-context rules (no AI call -- these are simple enough to
     // be honest rules rather than something worth spending on a live model for).
@@ -149,6 +150,12 @@ export default async function handler(req, res) {
     } else if (context === 'Travel / Errands took longer') {
       startDelayMinutes = 60; // assume an hour of today's window is already gone
       streakNote = 'Your schedule was compressed to fit the remaining time today.';
+    } else if (context === 'Slept in / Starting late') {
+      // The whole day slides to start from the new wake-up time (or now) -- nothing is
+      // dropped by priority, everything just moves later in its existing order. The repack
+      // loop below still defers anything that no longer fits before the end of the day.
+      anchorClock = /^\d{2}:\d{2}$/.test(new_start_time || '') ? new_start_time : null;
+      streakNote = 'Your whole day was shifted to start from your new wake-up time — nothing was dropped, just moved later.';
     } else if (context === "Feeling productive! Let's optimize") {
       // parent_task_id IS NULL excludes Project sub-tasks -- those are never independently
       // scheduled, so they must never get pulled into today's list as if they were backlog.
@@ -159,6 +166,14 @@ export default async function handler(req, res) {
 
     let cursor = isToday ? new Date() : new Date(targetDate + 'T08:00:00');
     if (!isToday) cursor.setHours(8, 0, 0, 0);
+    // "Slept in": anchor to the chosen new wake time, but never earlier than the real
+    // current moment when it's today (you can't schedule into the past).
+    if (anchorClock) {
+      const [h, m] = anchorClock.split(':').map(Number);
+      const anchored = new Date(targetDate + 'T00:00:00');
+      anchored.setHours(h, m, 0, 0);
+      cursor = (isToday && anchored < new Date()) ? new Date() : anchored;
+    }
     if (startDelayMinutes) cursor = new Date(cursor.getTime() + startDelayMinutes * 60000);
 
     const proposed = [];
