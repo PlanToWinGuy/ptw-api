@@ -5017,6 +5017,7 @@ async function loadDailyOverview() {
 
   const proj=await req('POST','/user-projects',{date:S.dailyDate});
   S.dailyAllTasks=(proj?.data||[]).filter(t=>t.status!=='Skipped');
+  S.dailyMovedAway=proj?.movedAway||[];
   renderDailyFilterChips();
   applyDailyFilter();
 }
@@ -5036,8 +5037,9 @@ function setDailyFilter(key) {
 function applyDailyFilter() {
   const all=S.dailyAllTasks||[];
   const filtered = S.dailyFilter==='all' ? all : all.filter(t=>getPillarKey(t.pillar)===S.dailyFilter);
+  const movedAway = S.dailyFilter==='all' ? (S.dailyMovedAway||[]) : (S.dailyMovedAway||[]).filter(m=>getPillarKey(m.pillar)===S.dailyFilter);
   renderDailyStats(filtered);
-  renderDailyTaskList(filtered);
+  renderDailyTaskList(filtered, movedAway);
 }
 
 // "1.3 hrs" reads worse than a real clock duration -- "1 hr 15 mins" (or just "45 mins"
@@ -5059,11 +5061,30 @@ function renderDailyStats(tasks) {
   el.innerHTML = `<span>Tasks: ${total}</span><span>Complete: ${pct}%</span><span>Time: ${formatHrsMins(totalMin)}</span>`;
 }
 
-function renderDailyTaskList(tasks) {
+// A moved-away task never shows up in `tasks` for this day (its due_date now points
+// elsewhere) -- this is a read-only history card sourced from task_reschedule_log so a
+// past day still shows "this got moved," instead of the task just silently vanishing
+// from its original day the moment an auto-reschedule fires.
+function movedAwayCard(m) {
+  const pk=getPillarKey(m.pillar);
+  const p=PILLARS[pk]||PILLARS.personal;
+  return `<div class="sq-card" style="opacity:.6;cursor:${m.toDate?'pointer':'default'}"${m.toDate?` onclick="jumpToDay('${m.toDate}')"`:''}>
+    <div class="sq-icon" style="background:${p.color}22;color:${p.color}">↻</div>
+    <div class="sq-info">
+      <div class="sq-name">${m.taskName}</div>
+      <div class="sq-meta">${m.toDate?`Moved to ${formatShortDate(m.toDate)}`:'Moved to your backlog'}${m.reason?' · '+m.reason:''}</div>
+    </div>
+  </div>`;
+}
+function formatShortDate(dateStr) {
+  return new Date(dateStr+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'});
+}
+
+function renderDailyTaskList(tasks, movedAway) {
   const body=document.getElementById('daily-body');
   // Shuffle Day now lives as the screen's own corner FAB (see #screen-daily), not an
   // inline button here -- always in the same reachable spot regardless of list length.
-  if(!tasks.length) { body.innerHTML=`<div class="empty"><div class="empty-icon">🗓</div><div class="empty-text">Nothing planned for this day yet.</div></div>`; return; }
+  if(!tasks.length && !(movedAway&&movedAway.length)) { body.innerHTML=`<div class="empty"><div class="empty-icon">🗓</div><div class="empty-text">Nothing planned for this day yet.</div></div>`; return; }
   const groups={Morning:[],Afternoon:[],Evening:[],Unscheduled:[]};
   tasks.forEach(t=>{ groups[t.time_block||'Unscheduled'].push(t); });
   let html='';
@@ -5071,6 +5092,9 @@ function renderDailyTaskList(tasks) {
     if(!groups[g].length) return;
     html+=`<div class="section-sub" style="margin-top:14px">${g.toUpperCase()}</div>`+groups[g].map(dailyTaskCard).join('');
   });
+  if(movedAway && movedAway.length) {
+    html+=`<div class="section-sub" style="margin-top:14px">MOVED FROM THIS DAY</div>`+movedAway.map(movedAwayCard).join('');
+  }
   html+=`<div style="height:70px"></div>`;
   body.innerHTML=html;
 }
@@ -5142,7 +5166,7 @@ function dailyTaskCard(t) {
       ${isFirstStepHighlight?`<div style="font-size:10px;color:${p.color};font-weight:700;letter-spacing:.4px;margin-bottom:2px">🎯 YOUR FIRST STEP</div>`:''}
       ${isDoingNow?`<div style="font-size:10px;color:${p.color};font-weight:700;letter-spacing:.4px;margin-bottom:2px">▶ DOING NOW</div>`:''}
       <div class="sq-name"${isCompleted?' style="text-decoration:line-through"':''}>${t.startTime?formatTimeOfDay(t.startTime)+' — ':''}${t.name}</div>
-      <div class="sq-meta">${goalLabel} · ${t.durationMinutes||0} min${isCompleted?' · ✓ Done':''}${t.wasSkipped&&!isCompleted?' · <span style="color:var(--blue)">⏭ moved to later today</span>':''}</div>
+      <div class="sq-meta">${goalLabel} · ${t.durationMinutes||0} min${isCompleted?' · ✓ Done':''}${t.wasSkipped&&!isCompleted?' · <span style="color:var(--blue)">⏭ moved to later today</span>':''}${t.wasPartial&&!isCompleted?` · <span style="color:${p.color}">◐ ${t.partialCompletionPercentage}% done — continued</span>`:''}</div>
     </div>
     ${isCompleted||isProject?'':`<div style="display:flex;gap:4px">
       <button class="icon-btn ghost" style="width:30px;height:30px;font-size:13px" onclick="event.stopPropagation();openRescheduleTask(${t.taskId})" title="Reschedule">↻</button>
@@ -9595,20 +9619,22 @@ async function renderProjectDetail() {
 }
 
 function projectSubtaskRow(s,p) {
-  // A sub-task with a real tool behind it (a workout, a meal to log, a journal prompt)
-  // gets a launch affordance into the tip+action Task Detail screen -- inside a fitness
-  // project that's where "which workout is this?" actually gets answered (the paired
-  // plan card). The row itself stays a check-toggle, same as always.
-  const openBtn = (s.toolHint && s.status!=='Completed')
-    ? `<button class="icon-btn ghost" style="width:32px;height:32px;font-size:13px;color:${p.color}" onclick="event.stopPropagation();openProjectSubtaskTool(${s.subTaskId})" title="Open">▶</button>`
-    : '';
-  return `<div class="sq-card" onclick="toggleProjectSubtaskCheck(${s.subTaskId})">
-    <div class="sq-icon" style="background:${p.color}22;color:${p.color}">${s.status==='Completed'?'✓':'○'}</div>
+  // Tapping the row opens the same Task Detail screen as every other task card in the
+  // app (Daily Overview, To-Do, routines) -- consistent "tap to see/open it" behavior,
+  // whether or not this sub-task has a real tool_hint (openTaskDetail already handles
+  // the no-toolHint case with a plain notes view + the always-present Complete/Skip
+  // buttons). The checkmark circle is its own explicit tap target for "mark complete,"
+  // matching the checkbox convention used elsewhere. Previously the WHOLE row toggled
+  // straight into the Task Completion flow while a tiny, easy-to-miss ▶ button opened
+  // Task Detail -- two genuinely different screens depending on exactly where you
+  // tapped the same entry, with neither being the app's normal "tap = open" pattern.
+  const isDone = s.status==='Completed';
+  return `<div class="sq-card" onclick="openProjectSubtaskTool(${s.subTaskId})">
+    <div class="sq-icon" style="background:${p.color}22;color:${p.color}" onclick="event.stopPropagation();toggleProjectSubtaskCheck(${s.subTaskId})" title="${isDone?'Completed':'Mark complete'}">${isDone?'✓':'○'}</div>
     <div class="sq-info">
-      <div class="sq-name" style="${s.status==='Completed'?'text-decoration:line-through;opacity:.6':''}">${s.name}</div>
+      <div class="sq-name" style="${isDone?'text-decoration:line-through;opacity:.6':''}">${s.name}</div>
       <div class="sq-meta">${s.estimatedDurationMinutes||0} min${s.phaseLabel?' · '+s.phaseLabel:''}</div>
     </div>
-    ${openBtn}
   </div>`;
 }
 

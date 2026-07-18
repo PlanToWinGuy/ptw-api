@@ -367,3 +367,31 @@ CREATE TABLE IF NOT EXISTS fixed_commitments (
 -- Roadmap instead of cluttering the real schedule.
 ALTER TABLE goals
   ADD COLUMN IF NOT EXISTS tips JSONB NOT NULL DEFAULT '[]';
+
+-- Full-picture history for a past day (4.6 follow-up): a partial completion used to
+-- leave the original task looking exactly like an untouched one (status stays 'Pending',
+-- a separate "(continued)" row absorbs the leftover time) -- was_partial/
+-- partial_completion_percentage let that original row render its own real progress
+-- ("62% done -- continued to Thu") instead of looking identical to a task nobody touched.
+ALTER TABLE tasks
+  ADD COLUMN IF NOT EXISTS was_partial BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS partial_completion_percentage INTEGER;
+
+-- Auto-rescheduling (Plan Shift, the missed-simple-task sweep, Shuffle Day, a manual
+-- reschedule, or a Skip bump to tomorrow) silently moves a task's due_date forward --
+-- correct behavior for what happens NEXT, but it means the day the task was originally
+-- due shows nothing at all once you navigate back to it, as if it never existed. This log
+-- is a one-row-per-move audit trail so a past day's Daily Overview can show "moved to
+-- [date]" instead of the task just vanishing from that day's history.
+CREATE TABLE IF NOT EXISTS task_reschedule_log (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  task_name TEXT NOT NULL,
+  pillar_id INTEGER REFERENCES pillars(id),
+  from_date DATE NOT NULL,
+  to_date DATE,          -- null = deferred to undated backlog, not a specific new day
+  reason TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_task_reschedule_log_lookup ON task_reschedule_log(user_id, from_date);

@@ -131,6 +131,8 @@ export default async function handler(req, res) {
       targetValue: t.target_value,
       toolHint: t.tool_hint || null,
       wasSkipped: t.was_skipped || false,
+      wasPartial: t.was_partial || false,
+      partialCompletionPercentage: t.partial_completion_percentage ?? null,
     };
   }));
 
@@ -155,10 +157,35 @@ export default async function handler(req, res) {
   const pillarState = await getPillarState(user);
   const pillar_states = buildPillarStates(pillarState, user.recommended_pillar);
 
+  // A past day only -- looking at "today" or the future, every task still due here is
+  // already in `data` above; it's specifically a PAST day where an auto-reschedule (Plan
+  // Shift, the missed-simple-task sweep, Shuffle Day, a manual move, or a second Skip)
+  // can make a task vanish from the one day it actually shows in this endpoint's normal
+  // query. movedAway surfaces those as read-only "moved to [date]" entries so the day's
+  // real history stays visible instead of silently going blank.
+  let movedAway = [];
+  const todayStr = new Date().toISOString().split('T')[0];
+  if (targetDate < todayStr) {
+    const moved = await sql`
+      SELECT DISTINCT ON (task_id) task_id, task_name, pillar_id, to_date, reason, created_at
+      FROM task_reschedule_log
+      WHERE user_id = ${user.id} AND from_date = ${targetDate}
+      ORDER BY task_id, created_at DESC
+    `;
+    movedAway = moved.map(m => ({
+      taskId: m.task_id,
+      taskName: m.task_name,
+      pillar: PILLARS[m.pillar_id] || null,
+      toDate: m.to_date ? (m.to_date instanceof Date ? m.to_date.toISOString().split('T')[0] : String(m.to_date).split('T')[0]) : null,
+      reason: m.reason,
+    }));
+  }
+
   res.status(200).json({
     message: 'Projects and schedules retrieved successfully.',
     summary_stats: { total_tasks, completed_count: completed, completion_percent, total_scheduled_time: formatDuration(totalMinutes), xp_earned, streak_days },
     data,
+    movedAway,
     pillar_states,
   });
 }

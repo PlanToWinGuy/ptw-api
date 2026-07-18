@@ -434,19 +434,29 @@ async function generateGoal(req, res, user) {
   // one real action") without a second AI call -- it's just the first thing already in `plan`.
   let firstStep = plan.dailyAnchor ? { type: 'routine', name: plan.dailyAnchor } : null;
 
+  // The daily anchor is a routine, not a one-off task -- materializes every day via
+  // materializeRoutinesForDate() regardless of whether yesterday's instance was ever
+  // completed, instead of the old completion-gated regeneration that silently stopped
+  // forever the first time a day was missed. end_date null: habits are indefinite. This
+  // runs for EVERY goal_type -- a project/skill goal still names one keystone daily habit
+  // (the entire point of "dailyAnchor" in the AI schema) that must actually appear on the
+  // schedule, not just live as descriptive text on the Roadmap. Previously this only ran
+  // for goal_type 'habit'/'mindset', so a project-type goal's anchor (e.g. "log every
+  // purchase every evening," "write the next action before opening email") was generated,
+  // shown on the Roadmap, and then never materialized into any real task at all --
+  // confirmed live on Diet/Finance/Work goals, which had zero routines despite each having
+  // a stated daily anchor.
+  if (plan.dailyAnchor) {
+    const toolHint = inferToolHint(pillarKey, plan.dailyAnchor);
+    await sql`
+      INSERT INTO routines (user_id, goal_id, name, category, is_active, schedule_days, schedule_time, steps, tool_hint, end_date)
+      VALUES (${user.id}, ${goal_id}, ${plan.dailyAnchor}, ${pillar_name}, true, ${[]}, ${inferClockFromText(plan.dailyAnchor, clockStart)}::time,
+              ${JSON.stringify([{ name: plan.dailyAnchor, durationMinutes: 15 }])}::jsonb, ${toolHint}, NULL)
+    `;
+  }
+
   if (goal_type === 'habit' || goal_type === 'mindset') {
-    // The daily anchor is a routine, not a one-off task -- materializes every day via
-    // materializeRoutinesForDate() regardless of whether yesterday's instance was ever
-    // completed, instead of the old completion-gated regeneration that silently stopped
-    // forever the first time a day was missed. end_date null: habits are indefinite.
-    if (plan.dailyAnchor) {
-      const toolHint = inferToolHint(pillarKey, plan.dailyAnchor);
-      await sql`
-        INSERT INTO routines (user_id, goal_id, name, category, is_active, schedule_days, schedule_time, steps, tool_hint, end_date)
-        VALUES (${user.id}, ${goal_id}, ${plan.dailyAnchor}, ${pillar_name}, true, ${[]}, ${inferClockFromText(plan.dailyAnchor, clockStart)}::time,
-                ${JSON.stringify([{ name: plan.dailyAnchor, durationMinutes: 15 }])}::jsonb, ${toolHint}, NULL)
-      `;
-    }
+    // Anchor already handled above -- these types have no further phase-action processing.
   } else {
     // A project/skill goal becomes one real parent Project (kind='project', the thing
     // that shows up as a single "ProjectTask" block on the schedule) with its NON-recurring

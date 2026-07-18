@@ -1,7 +1,7 @@
 import { sql } from '../../lib/db.js';
 import { cors } from '../../lib/cors.js';
 import { getUserFromRequest } from '../../lib/auth.js';
-import { completeTask } from '../../lib/tasks.js';
+import { completeTask, logTaskReschedule } from '../../lib/tasks.js';
 import { materializeRoutinesForDate } from '../../lib/routines.js';
 
 // Consolidated task-instance actions -- one serverless function, dispatched by
@@ -38,10 +38,12 @@ export default async function handler(req, res) {
       const anchorDate = dueDateStr || today;
       const tomorrow = new Date(anchorDate + 'T00:00:00');
       tomorrow.setDate(tomorrow.getDate() + 1);
+      const tomorrowStr = tomorrow.toISOString().split('T')[0];
       await sql`
-        UPDATE tasks SET due_date = ${tomorrow.toISOString().split('T')[0]}, start_time = NULL, end_time = NULL, was_skipped = false, updated_at = now()
+        UPDATE tasks SET due_date = ${tomorrowStr}, start_time = NULL, end_time = NULL, was_skipped = false, updated_at = now()
         WHERE id = ${task_id} AND user_id = ${user.id}
       `;
+      await logTaskReschedule(sql, { userId: user.id, taskId: task.id, taskName: task.name, pillarId: task.pillar_id, fromDate: anchorDate, toDate: tomorrowStr, reason: 'Skipped a second time' });
       return res.status(200).json({ message: 'Task moved to tomorrow.' });
     }
 
@@ -94,6 +96,8 @@ export default async function handler(req, res) {
   if (action === 'reschedule') {
     const { task_id, new_date, new_start_time } = req.body || {};
     if (!task_id) return res.status(422).json({ message: 'task_id is required' });
+    const beforeRows = await sql`SELECT name, pillar_id, due_date FROM tasks WHERE id = ${task_id} AND user_id = ${user.id}`;
+    const before = beforeRows[0];
     await sql`
       UPDATE tasks SET
         due_date = COALESCE(${new_date || null}, due_date),
@@ -102,6 +106,10 @@ export default async function handler(req, res) {
         updated_at = now()
       WHERE id = ${task_id} AND user_id = ${user.id}
     `;
+    if (before && new_date) {
+      const oldDueStr = before.due_date ? (before.due_date instanceof Date ? before.due_date.toISOString().split('T')[0] : String(before.due_date).split('T')[0]) : null;
+      await logTaskReschedule(sql, { userId: user.id, taskId: task_id, taskName: before.name, pillarId: before.pillar_id, fromDate: oldDueStr, toDate: new_date, reason: 'Manually rescheduled' });
+    }
     return res.status(200).json({ message: 'Task successfully rescheduled.' });
   }
 
@@ -212,7 +220,11 @@ export default async function handler(req, res) {
       `;
     }
     if (Array.isArray(deferred_ids) && deferred_ids.length) {
+      const deferredRows = await sql`SELECT id, name, pillar_id FROM tasks WHERE id = ANY(${deferred_ids}) AND user_id = ${user.id}`;
       await sql`UPDATE tasks SET due_date = NULL, start_time = NULL, end_time = NULL WHERE id = ANY(${deferred_ids}) AND user_id = ${user.id}`;
+      for (const t of deferredRows) {
+        await logTaskReschedule(sql, { userId: user.id, taskId: t.id, taskName: t.name, pillarId: t.pillar_id, fromDate: date, toDate: null, reason: 'Shuffle Day (deferred to backlog)' });
+      }
     }
     return res.status(200).json({ message: 'Your schedule for the day has been successfully updated.' });
   }
