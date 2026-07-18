@@ -6788,6 +6788,16 @@ function macroBar(label, val, target, unit, color) {
 // pillar-specific and the whole thing wears the pillar's own colour. Below this hero each
 // pillar renders its own detail cards (macros, workout, budget, etc.) — the hero unifies,
 // the body specialises.
+// The prominent, consistent "open the full hub" button for every pillar Map -- pillar-
+// tinted, bordered, with a chevron, so it clearly reads as "there's a whole section in
+// here" instead of the old easy-to-miss flat-grey bar. Same slot (bottom of the Map) on
+// every pillar.
+function hubButton(label, color, onclick, icon) {
+  return `<button class="view-log-btn" style="margin-top:14px;background:${color}1a;border:1.5px solid ${color};color:${color};font-weight:700;padding:15px 16px;justify-content:space-between" onclick="${onclick}">
+    <span style="display:flex;align-items:center;gap:9px"><span style="font-size:15px">${icon||'📂'}</span> ${label}</span>
+    <span style="font-size:17px;line-height:1">›</span>
+  </button>`;
+}
 function pillarMapHero(o) {
   const stats=(o.stats||[]).map(s=>heroStatPill(s.icon, s.val, s.label)).join('');
   return `<div style="background:linear-gradient(150deg, ${o.color}, ${o.color}bb);border-radius:22px;padding:18px 20px;margin-bottom:14px">
@@ -6891,7 +6901,7 @@ async function loadDietMap() {
           <button class="btn-p" style="border-color:rgba(255,255,255,.5);color:#fff" onclick="openCreateMealPlan()">+ Create Plan</button>
         </div>`}
     </div>
-    <button class="view-log-btn" style="margin-top:14px" onclick="openMealHub()">View Full Meal Hub</button>`;
+    ${hubButton('View Full Meal Hub', p.color, 'openMealHub()', '🥗')}`;
   container.innerHTML=html;
 }
 
@@ -7351,7 +7361,7 @@ async function loadFitnessMap() {
         <div style="display:inline-block;font-size:11px;color:#fff;font-weight:700;margin-top:8px;padding:4px 10px;border:1.5px solid rgba(255,255,255,.7);border-radius:20px">+ Log Steps</div>
       </div>
     </div>
-    <button class="view-log-btn" style="margin-top:10px" onclick="openWorkoutHub()">View Full Workout Hub</button>`;
+    ${hubButton('View Full Workout Hub', p.color, 'openWorkoutHub()', '🏋️')}`;
   container.innerHTML=html;
 }
 
@@ -8181,18 +8191,17 @@ async function loadFinanceMap() {
   const budgetPct=budgetTarget?Math.min(100,Math.round(monthSpending/budgetTarget*100)):0;
   const topGoal=goals.sort((a,b)=>(Number(b.data?.current_amount)||0)/(Number(b.value)||1)-(Number(a.data?.current_amount)||0)/(Number(a.value)||1))[0];
 
+  const budgetLeft=Math.max(0, budgetTarget-monthSpending);
+  const topGoalPct=topGoal?Math.round((Number(topGoal.data?.current_amount)||0)/(Number(topGoal.value)||1)*100):0;
   const html=`
-    <div class="metric-row">
-      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">💰</div><div class="metric-val" style="color:#fff">$${netWorth.toLocaleString()}</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Net Worth</div></div>
-      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">📊</div><div class="metric-val" style="color:#fff">${budgetPct}%</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Budget Used</div><div class="metric-delta" style="color:rgba(255,255,255,.7)">$${monthSpending.toLocaleString()} / $${budgetTarget.toLocaleString()}</div></div>
-      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">🎯</div><div class="metric-val" style="color:#fff;font-size:15px">${topGoal?topGoal.data?.name:'—'}</div><div class="metric-label" style="color:rgba(255,255,255,.85)">${topGoal?Math.round((Number(topGoal.data?.current_amount)||0)/(Number(topGoal.value)||1)*100)+'% Complete':'No goals yet'}</div></div>
-      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">📈</div><div class="metric-val" style="color:#fff">${txns.length}</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Logged Transactions</div></div>
-    </div>
-    <div style="display:flex;gap:10px;margin-top:16px">
+    ${pillarMapHero({ color:p.color, ringPct:budgetTarget?monthSpending/budgetTarget:0, ringCenter:budgetPct+'%', ringLabel:'budget used', kicker:'Finances · This Month',
+      headline: budgetLeft>0?`$${budgetLeft.toLocaleString()} left to spend`:'Over budget this month',
+      stats:[{icon:'💰',val:'$'+(netWorth>=1000?(netWorth/1000).toFixed(1)+'k':netWorth),label:'net worth'},{icon:'🎯',val:topGoal?topGoalPct+'%':'—',label:'top goal'},{icon:'📈',val:txns.length,label:'logged'}] })}
+    <div style="display:flex;gap:10px;margin-top:2px">
       <button class="btn-p filled" style="background:var(--finances);border-color:var(--finances);flex:1" onclick="openLogTransaction('expense')">+ Log Expense</button>
-      <button class="btn-p" style="flex:1" onclick="openLogTransaction('income')">+ Log Income</button>
+      <button class="btn-p" style="flex:1;border-color:var(--finances);color:var(--finances)" onclick="openLogTransaction('income')">+ Log Income</button>
     </div>
-    <button class="view-log-btn" style="margin-top:10px" onclick="openFinanceHub()">View Full Financial Hub</button>`;
+    ${hubButton('View Full Financial Hub', p.color, 'openFinanceHub()', '💵')}`;
   container.innerHTML=html;
 }
 
@@ -8501,13 +8510,10 @@ async function loadRelationsMap() {
     : `You're all caught up ✨`;
 
   const html=`
-    <div class="metric-row">
-      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">⏱️</div><div class="metric-val" style="color:#fff">${socialTimeWeek.toFixed(1)}h</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Social Time This Week</div></div>
-      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">🔥</div><div class="metric-val" style="color:#fff">${streak}</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Connection Streak</div></div>
-      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">💞</div><div class="metric-val" style="color:#fff">${circleHealth}%</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Circle Health</div></div>
-      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">🏅</div><div class="metric-val" style="color:#fff">Lvl ${level}</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Friendships Level</div></div>
-    </div>
-    <div class="pillar-task-card" style="background:${p.color};margin-top:14px">
+    ${pillarMapHero({ color:p.color, ringPct:circleHealth/100, ringCenter:circleHealth+'%', ringLabel:'circle health', kicker:'Relations · This Week',
+      headline: nextTaskName,
+      stats:[{icon:'⏱️',val:socialTimeWeek.toFixed(1)+'h',label:'social'},{icon:'🔥',val:streak,label:'streak'},{icon:'🏅',val:'Lv'+level,label:'friends'}] })}
+    <div class="pillar-task-card" style="background:${p.color}">
       <div class="pt-icon">❤️</div>
       <div class="pt-info">
         <div class="pt-label">NEXT SOCIAL TASK</div>
@@ -8517,7 +8523,7 @@ async function loadRelationsMap() {
         <button class="pt-btn start" onclick="openConnectionLog(${mostOverdue?mostOverdue.id:'null'})">${mostOverdue?'Log':'Add'}</button>
       </div>
     </div>
-    <button class="view-log-btn" style="margin-top:14px" onclick="openSocialHub()">View Full Social Hub</button>`;
+    ${hubButton('View Full Social Hub', p.color, 'openSocialHub()', '👥')}`;
   container.innerHTML=html;
 }
 
@@ -8858,13 +8864,10 @@ async function loadPersonalMap() {
   const nextBtnLabel = nextProject ? 'Continue' : behind ? 'Start' : 'Add';
 
   const html=`
-    <div class="metric-row">
-      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">📚</div><div class="metric-val" style="color:#fff">${learningTimeWeek.toFixed(1)}h${targetHours?'/'+targetHours+'h':''}</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Learning Time This Week</div></div>
-      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">🙏</div><div class="metric-val" style="color:#fff">${streak}</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Mindful Streak</div></div>
-      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">🎯</div><div class="metric-val" style="color:#fff;font-size:14px">${skillLevel}</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Skill Level</div></div>
-      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">📈</div><div class="metric-val" style="color:#fff">${consistency}%</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Consistency</div></div>
-    </div>
-    <div class="pillar-task-card" style="background:${p.color};margin-top:14px">
+    ${pillarMapHero({ color:p.color, ringPct:consistency/100, ringCenter:consistency+'%', ringLabel:'consistency', kicker:'Personal · This Week',
+      headline: nextTaskName,
+      stats:[{icon:'📚',val:learningTimeWeek.toFixed(1)+'h',label:'learning'},{icon:'🙏',val:streak,label:'mindful'},{icon:'🎯',val:focusAreas.length,label:'focus'}] })}
+    <div class="pillar-task-card" style="background:${p.color}">
       <div class="pt-icon">⭐</div>
       <div class="pt-info">
         <div class="pt-label">NEXT PERSONAL TASK</div>
@@ -8875,7 +8878,7 @@ async function loadPersonalMap() {
       </div>
     </div>
     ${valueprintTeaserCard()}
-    <button class="view-log-btn" style="margin-top:14px" onclick="openPersonalHub()">View Full Personal Hub</button>`;
+    ${hubButton('View Full Personal Hub', p.color, 'openPersonalHub()', '✨')}`;
   container.innerHTML=html;
 }
 
@@ -9383,13 +9386,10 @@ async function loadWorkMap() {
   else { nextTaskName='Add your first project'; S.nextWorkFocus=null; }
 
   const html=`
-    <div class="metric-row">
-      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">⏱️</div><div class="metric-val" style="color:#fff">${focusTimeWeek.toFixed(1)}h/${WORK_FOCUS_TARGET_HOURS}h</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Focus Time This Week</div></div>
-      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">📊</div><div class="metric-val" style="color:#fff">${productivityScore}%</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Productivity</div></div>
-      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">✅</div><div class="metric-val" style="color:#fff">${tasksCompletedWeek}</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Tasks Completed</div></div>
-      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">⚠️</div><div class="metric-val" style="color:#fff">${overdueTasks}</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Overdue Tasks</div></div>
-    </div>
-    <div class="pillar-task-card" style="background:${p.color};margin-top:14px">
+    ${pillarMapHero({ color:p.color, ringPct:productivityScore/100, ringCenter:productivityScore+'%', ringLabel:'productivity', kicker:'Work · This Week',
+      headline: nextTaskName,
+      stats:[{icon:'⏱️',val:focusTimeWeek.toFixed(1)+'h',label:'focus'},{icon:'✅',val:tasksCompletedWeek,label:'done'},{icon:'⚠️',val:overdueTasks,label:'overdue'}] })}
+    <div class="pillar-task-card" style="background:${p.color}">
       <div class="pt-icon">🚀</div>
       <div class="pt-info">
         <div class="pt-label">NEXT WORK TASK</div>
@@ -9399,7 +9399,7 @@ async function loadWorkMap() {
         <button class="pt-btn start" onclick="${S.nextWorkFocus?'startNextWorkFocus()':'openAddProject()'}">${S.nextWorkFocus?'Start Focus':'Add'}</button>
       </div>
     </div>
-    <button class="view-log-btn" style="margin-top:14px" onclick="openWorkHub()">View Full Work Hub</button>`;
+    ${hubButton('View Full Work Hub', p.color, 'openWorkHub()', '💼')}`;
   container.innerHTML=html;
 }
 
