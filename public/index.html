@@ -6600,6 +6600,46 @@ async function loadPillarMap(pillarKey) {
 // ════════════════════════════════════════
 // DIET PILLAR — real meal tracking
 // ════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════
+// PILLAR MAP REDESIGN — shared hero components.
+// Two deliberately DISTINCT visual languages (so different pillars don't all feel
+// identical), each still built entirely from its own pillar colour:
+//   • Fitness → an athletic single big goal-ring + satellite stat pills (Whoop/Apple feel)
+//   • Diet    → a nutrition-tracker calorie ring + stacked macro progress bars (MyFitnessPal feel)
+// Research-backed dashboard heuristics applied throughout: one clear hero metric, a
+// glanceable secondary-stat cluster, progress-toward-a-target (rings/bars beat bare
+// numbers for "am I on track?"), and streaks for motivation.
+// ══════════════════════════════════════════════════════════════════════════
+function svgRing(pct, color, opts) {
+  opts=opts||{};
+  const size=opts.size||120, stroke=opts.stroke||11, track=opts.track||'rgba(255,255,255,.22)';
+  const r=(size-stroke)/2, c=2*Math.PI*r, off=c*(1-Math.max(0,Math.min(1,pct||0)));
+  const cx=size/2;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="display:block">
+    <circle cx="${cx}" cy="${cx}" r="${r}" fill="none" stroke="${track}" stroke-width="${stroke}"/>
+    <circle cx="${cx}" cy="${cx}" r="${r}" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-linecap="round"
+      stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}" transform="rotate(-90 ${cx} ${cx})"/>
+  </svg>`;
+}
+// A small translucent stat pill for the Fitness hero (white text over the colour gradient).
+function heroStatPill(icon, val, label) {
+  return `<div style="background:rgba(255,255,255,.18);border-radius:11px;padding:6px 11px;text-align:center;min-width:52px">
+    <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:800;color:#fff;line-height:1.1">${val}</div>
+    <div style="font-size:8.5px;color:rgba(255,255,255,.85);text-transform:uppercase;letter-spacing:.3px;margin-top:1px">${icon} ${label}</div>
+  </div>`;
+}
+// A horizontal macro-progress bar for the Diet hero (pillar-coloured fill on a dark track).
+function macroBar(label, val, target, unit, color) {
+  const pct=target?Math.min(100,Math.round(val/target*100)):0;
+  return `<div style="margin-bottom:9px">
+    <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px">
+      <span style="color:var(--text);font-weight:600">${label}</span>
+      <span style="color:var(--stone)">${Math.round(val)}<span style="opacity:.6"> / ${target}${unit}</span></span>
+    </div>
+    <div style="height:7px;background:var(--bg4);border-radius:4px;overflow:hidden"><div style="height:100%;width:${pct}%;background:${color};border-radius:4px;transition:width .5s ease"></div></div>
+  </div>`;
+}
+
 async function loadDietMap() {
   const container=document.getElementById('pillar-tab-map');
   const p=PILLARS.diet;
@@ -6642,16 +6682,38 @@ async function loadDietMap() {
 
   // Layout order matches every other pillar's Map tab (metrics first, then the pillar's
   // own action card, then "View Full Hub") -- fixed per live feedback, same as Fitness Map.
+  // Diet redesign — a nutrition-tracker hero: a calorie ring (consumed vs target) as the
+  // one hero metric, macros as stacked progress bars beneath (a bar reads "how full is my
+  // budget" far faster than "142/150g" alone), and a slim streak + hydration footer. The
+  // diet colour is the accent (ring, bars, numbers) on a calm dark card, deliberately
+  // unlike Fitness's full-bleed colour hero.
+  const calPct = targets.calories ? calories/targets.calories : 0;
+  const calRemaining = Math.max(0, Math.round(targets.calories - calories));
+  const waterPct=Math.min(100,Math.round(water/3.0*100));
   const html=`
-    <div class="metric-row">
-      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">📈</div><div class="metric-val" style="color:#fff">${calories}</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Daily Calories</div><div class="metric-delta" style="color:rgba(255,255,255,.7)">/ ${targets.calories}</div></div>
-      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">🔥</div><div class="metric-val" style="color:#fff;font-size:14px">${Math.round(protein)}/${targets.protein_g}g</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Protein</div></div>
-      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">🌾</div><div class="metric-val" style="color:#fff;font-size:14px">${Math.round(carbs)}/${targets.carbs_g}g</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Carbs</div></div>
-      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">🥑</div><div class="metric-val" style="color:#fff;font-size:14px">${Math.round(fat)}/${targets.fat_g}g</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Fat</div></div>
-    </div>
-    <div class="metric-row" style="margin-top:10px">
-      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">🔥</div><div class="metric-val" style="color:#fff">${streak}</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Meal Streak</div></div>
-      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">💧</div><div class="metric-val" style="color:#fff;font-size:16px">${water.toFixed(1)} / 3.0 L</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Hydration</div></div>
+    <div class="rm-goal-card" style="margin-bottom:14px;padding:18px">
+      <div style="display:flex;align-items:center;gap:18px;margin-bottom:16px">
+        <div style="position:relative;width:118px;height:118px;flex-shrink:0">
+          ${svgRing(calPct, p.color, {size:118, stroke:11, track:'var(--bg4)'})}
+          <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
+            <div style="font-family:'Syne',sans-serif;font-size:25px;font-weight:800;color:var(--text);line-height:1">${calories}</div>
+            <div style="font-size:9px;color:var(--stone);text-transform:uppercase;letter-spacing:.4px;margin-top:2px">of ${targets.calories} kcal</div>
+          </div>
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:10px;color:${p.color};letter-spacing:.6px;text-transform:uppercase;font-weight:700">Today's Nutrition</div>
+          <div style="font-family:'Syne',sans-serif;font-size:17px;font-weight:800;color:var(--text);margin:2px 0 4px">${calRemaining>0?`${calRemaining} kcal left`:'Target reached'}</div>
+          <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--stone)"><span style="color:${p.color}">🔥</span> ${streak}-day meal-log streak</div>
+        </div>
+      </div>
+      ${macroBar('Protein', protein, targets.protein_g, 'g', p.color)}
+      ${macroBar('Carbs', carbs, targets.carbs_g, 'g', p.color)}
+      ${macroBar('Fat', fat, targets.fat_g, 'g', p.color)}
+      <div style="margin-top:12px;display:flex;align-items:center;gap:10px;padding-top:12px;border-top:1px solid rgba(196,184,168,.1)">
+        <span style="font-size:15px">💧</span>
+        <div style="flex:1"><div style="height:7px;background:var(--bg4);border-radius:4px;overflow:hidden"><div style="height:100%;width:${waterPct}%;background:var(--personal);border-radius:4px"></div></div></div>
+        <span style="font-size:11px;color:var(--stone);white-space:nowrap">${water.toFixed(1)} / 3.0 L</span>
+      </div>
     </div>
     <div class="rm-goal-card" style="text-align:center;background:${p.color};margin-top:14px">
       ${todaysPlan ? `
@@ -7082,27 +7144,55 @@ async function loadFitnessMap() {
   // Layout order matches every other pillar's Map tab (metrics first, then the pillar's
   // own action card, then "View Full Hub") -- Pass 4 originally put the action card first,
   // which broke that shared layout; fixed per live feedback.
+  // Fitness redesign — an athletic hero: one big goal-completion RING (workouts this week
+  // vs the plan's weekly target) as the hero metric, with streak / volume / PRs as
+  // satellite stat pills. Full-bleed pillar-colour gradient, white ring — a deliberately
+  // bolder, more "dashboard" language than Diet's calm calorie-ring card.
+  // Ring fills toward the plan's weekly target; with no explicit target, fall back to a
+  // sensible default of 4/week so the ring still reflects real progress (4 workouts on an
+  // empty-target ring looked broken -- a full ring with the count reads as "on track").
+  const effTarget = weeklyTarget || 4;
+  const wkPct = Math.min(1, workoutsThisWeek/effTarget);
+  const ringCenter = weeklyTarget ? `${workoutsThisWeek}/${weeklyTarget}` : String(workoutsThisWeek);
+  const ringLabel = weeklyTarget ? 'this week' : 'workouts';
+  const headline = streak>1 ? `${streak}-day streak — keep it alive`
+    : metTarget ? "Target hit. Strong week." : "Let's move today.";
+  const volDisplay = weeklyVolume>=1000 ? (weeklyVolume/1000).toFixed(1)+'k' : weeklyVolume.toLocaleString();
   const html=`
-    <div class="metric-row">
-      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">🏋️</div><div class="metric-val" style="color:#fff">${weeklyVolume.toLocaleString()}</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Weekly Volume (kg)</div></div>
-      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">📅</div><div class="metric-val" style="color:#fff">${workoutsThisWeek}</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Workouts This Week</div></div>
-      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">🔥</div><div class="metric-val" style="color:#fff">${streak}</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Day Streak</div></div>
-      <div class="metric-card" style="background:${p.color}"><div class="metric-icon">✨</div><div class="metric-val" style="color:#fff">${prCount}</div><div class="metric-label" style="color:rgba(255,255,255,.85)">Personal Records</div></div>
+    <div style="background:linear-gradient(150deg, ${p.color}, ${p.color}bb);border-radius:22px;padding:18px 20px;margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:16px">
+        <div style="position:relative;width:116px;height:116px;flex-shrink:0">
+          ${svgRing(wkPct, '#fff', {size:116, stroke:11})}
+          <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff">
+            <div style="font-family:'Syne',sans-serif;font-size:25px;font-weight:800;line-height:1">${ringCenter}</div>
+            <div style="font-size:9px;opacity:.85;text-transform:uppercase;letter-spacing:.4px;margin-top:2px">${ringLabel}</div>
+          </div>
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:10px;color:rgba(255,255,255,.8);letter-spacing:.6px;text-transform:uppercase;font-weight:700">Fitness</div>
+          <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:800;color:#fff;line-height:1.2;margin:2px 0 12px">${headline}</div>
+          <div style="display:flex;gap:7px">
+            ${heroStatPill('🔥', streak, 'streak')}
+            ${heroStatPill('🏋️', volDisplay, 'kg vol')}
+            ${heroStatPill('✨', prCount, 'PRs')}
+          </div>
+        </div>
+      </div>
     </div>
-    <div class="rm-goal-card" style="text-align:center;background:${p.color};margin-top:14px">
+    <div class="rm-goal-card" style="text-align:center;margin-top:14px;border:1.5px solid ${todaysPlan?p.color:'rgba(196,184,168,.12)'}">
       ${todaysPlan ? `
-        <div style="font-size:11px;color:rgba(255,255,255,.75);letter-spacing:.5px">TODAY'S WORKOUT</div>
-        <div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:#fff;margin:6px 0 14px">${todaysPlan.data?.name||'Workout'}</div>
+        <div style="font-size:11px;color:${p.color};letter-spacing:.5px;font-weight:700">TODAY'S WORKOUT</div>
+        <div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:var(--text);margin:6px 0 14px">${todaysPlan.data?.name||'Workout'}</div>
         <div style="display:flex;gap:10px;justify-content:center">
-          <button class="btn-p filled" style="background:#fff;color:${p.color};border-color:#fff" onclick="startTodaysWorkout(${todaysPlan.id})">Start Workout</button>
-          <button class="btn-p" style="border-color:rgba(255,255,255,.5);color:#fff" onclick="openWorkoutHub()">Edit</button>
+          <button class="btn-p filled" style="background:${p.color};color:#fff;border-color:${p.color}" onclick="startTodaysWorkout(${todaysPlan.id})">Start Workout</button>
+          <button class="btn-p" style="border-color:${p.color};color:${p.color}" onclick="openWorkoutHub()">Edit</button>
         </div>` : plans.length ? `
-        <div style="font-size:11px;color:rgba(255,255,255,.75);letter-spacing:.5px">TODAY</div>
-        <div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:#fff;margin:6px 0 14px">😴 Rest Day${weeklyTarget?` -- ${workoutsThisWeek}/${weeklyTarget} this week`:''}</div>
-        <button class="btn-p" style="border-color:rgba(255,255,255,.5);color:#fff" onclick="openWorkoutHub()">Modify Plan</button>` : `
-        <div style="font-size:11px;color:rgba(255,255,255,.75);letter-spacing:.5px">TODAY</div>
-        <div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:#fff;margin:6px 0 14px">No plans yet</div>
-        <button class="btn-p" style="border-color:rgba(255,255,255,.5);color:#fff" onclick="openWorkoutHub()">Build a Plan</button>`}
+        <div style="font-size:11px;color:var(--stone);letter-spacing:.5px;font-weight:700">TODAY</div>
+        <div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:var(--text);margin:6px 0 14px">😴 Rest Day${weeklyTarget?` — ${workoutsThisWeek}/${weeklyTarget} this week`:''}</div>
+        <button class="btn-p" style="border-color:${p.color};color:${p.color}" onclick="openWorkoutHub()">Modify Plan</button>` : `
+        <div style="font-size:11px;color:var(--stone);letter-spacing:.5px;font-weight:700">TODAY</div>
+        <div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:var(--text);margin:6px 0 14px">No plans yet</div>
+        <button class="btn-p filled" style="background:${p.color};border-color:${p.color}" onclick="openWorkoutHub()">Build a Plan</button>`}
     </div>
     <div style="display:flex;gap:10px;margin-top:14px">
       <div class="rm-goal-card" style="flex:1;background:var(--bg2);padding:12px" onclick="openLogWeight()">
