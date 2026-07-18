@@ -9,6 +9,7 @@ import { reconcileStreakTokens } from '../lib/streakTokens.js';
 import { findOpenSlot, addMinutesToClock } from '../lib/scheduling.js';
 
 const PRIORITY_FLAG = { High: '🚩', Medium: '🏳️', Low: '🏳️' };
+const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 // A Project's own parent row carries its full remaining scope in
 // estimated_duration_minutes (real and correct -- that's the whole project, not a single
@@ -143,6 +144,51 @@ export default async function handler(req, res) {
   // what counts toward "scheduled today," not its full remaining project scope.
   const totalMinutes = data.reduce((s, d) => s + (d.durationMinutes || 0), 0);
 
+  // Fixed Commitments (an uploaded class/work/practice schedule, or a manually-added
+  // recurring block like a weekly guitar lesson) were only ever used internally by
+  // findOpenSlot to avoid double-booking against them -- they never actually rendered
+  // anywhere, so an uploaded schedule felt like it vanished into the scheduler instead of
+  // showing up as real items on the day. They're read-only (no XP, no complete/skip --
+  // they're external obligations, not something this app tracks progress on), merged
+  // into `data` so they interleave chronologically with everything else exactly like a
+  // real calendar would.
+  const weekday = WEEKDAY_NAMES[new Date(targetDate + 'T00:00:00').getDay()];
+  const commitmentRows = await sql`
+    SELECT * FROM fixed_commitments
+    WHERE user_id = ${user.id} AND (schedule_days = '{}' OR ${weekday} = ANY(schedule_days))
+    ORDER BY start_time ASC
+  `;
+  const commitments = commitmentRows.map(c => {
+    const startTime = String(c.start_time).slice(0, 5);
+    const endTime = String(c.end_time).slice(0, 5);
+    const durationMin = Math.round((new Date('2000-01-01T' + c.end_time) - new Date('2000-01-01T' + c.start_time)) / 60000);
+    return {
+      taskId: 'commitment-' + c.id,
+      routineId: null,
+      name: c.name,
+      description: 'Fixed Commitment | ' + durationMin + ' min',
+      goalId: null,
+      phaseLabel: null,
+      startTime,
+      endTime,
+      durationMinutes: durationMin,
+      taskType: 'Commitment',
+      pillar: PILLARS[c.pillar_id] || null,
+      priority: null,
+      time_block: timeBlock(startTime),
+      status: 'Fixed',
+      xpValue: 0,
+      customIcon: null,
+      isAntiGoal: false,
+      antiGoalType: null,
+      toolHint: null,
+      wasSkipped: false,
+      wasPartial: false,
+      partialCompletionPercentage: null,
+    };
+  });
+  const dataWithCommitments = [...data, ...commitments].sort((a, b) => (a.startTime || '99:99').localeCompare(b.startTime || '99:99'));
+
   // Real daily XP + streak, for the Wind-Down recap (no new endpoint needed --
   // 4.5.5's "Daily Summary" numbers just ride along on this same response).
   const [{ xp_from_tasks }] = await sql`SELECT COALESCE(SUM(xp_gained), 0) AS xp_from_tasks FROM tasks WHERE user_id = ${user.id} AND due_date = ${targetDate} AND status = 'Completed'`;
@@ -184,7 +230,7 @@ export default async function handler(req, res) {
   res.status(200).json({
     message: 'Projects and schedules retrieved successfully.',
     summary_stats: { total_tasks, completed_count: completed, completion_percent, total_scheduled_time: formatDuration(totalMinutes), xp_earned, streak_days },
-    data,
+    data: dataWithCommitments,
     movedAway,
     pillar_states,
   });

@@ -5054,8 +5054,12 @@ function formatHrsMins(totalMinutes) {
 
 function renderDailyStats(tasks) {
   const el=document.getElementById('daily-stats-bar');
-  const total=tasks.length;
-  const completed=tasks.filter(t=>t.status==='Completed').length;
+  // Fixed Commitments are real external time on the day (counted in Time below) but
+  // aren't something you "complete" -- excluded from the Tasks/Complete% counts so a
+  // packed calendar day doesn't read as a lower completion rate for no real reason.
+  const trackable=tasks.filter(t=>t.taskType!=='Commitment');
+  const total=trackable.length;
+  const completed=trackable.filter(t=>t.status==='Completed').length;
   const pct=total?Math.round(completed/total*100):0;
   const totalMin=tasks.reduce((s,t)=>s+(t.durationMinutes||0),0);
   el.innerHTML = `<span>Tasks: ${total}</span><span>Complete: ${pct}%</span><span>Time: ${formatHrsMins(totalMin)}</span>`;
@@ -5102,6 +5106,20 @@ function renderDailyTaskList(tasks, movedAway) {
 function dailyTaskCard(t) {
   const pk=getPillarKey(t.pillar);
   const p=PILLARS[pk]||PILLARS.personal;
+  // A Fixed Commitment (an uploaded class/work/practice schedule, or a manually-added
+  // recurring block) is a real external obligation the scheduler works around, not
+  // something this app tracks completion or XP for -- read-only, no reschedule/skip
+  // (those call endpoints that only know about real `tasks` rows, and a synthetic
+  // 'commitment-N' id isn't one), rendered so it still shows its real place in the day.
+  if(t.taskType==='Commitment') {
+    return `<div class="sq-card" style="opacity:.85;cursor:default">
+      <div class="sq-icon" style="background:${p.color}22;color:${p.color}">📌</div>
+      <div class="sq-info">
+        <div class="sq-name">${t.startTime?formatTimeOfDay(t.startTime)+' — ':''}${t.name}</div>
+        <div class="sq-meta">Fixed Commitment · ${t.durationMinutes||0} min</div>
+      </div>
+    </div>`;
+  }
   const isCompleted = t.status==='Completed';
   // The whole point of a day view is reading top-to-bottom what's done vs. still ahead
   // -- a completed card used to look identical to a pending one (just a small "✓ Done"

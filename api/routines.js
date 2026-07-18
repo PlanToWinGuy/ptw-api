@@ -36,7 +36,16 @@ export default async function handler(req, res) {
   const id = req.query.id ? Number(req.query.id) : null;
 
   if (req.method === 'GET' && !id) {
-    const rows = await sql`SELECT * FROM routines WHERE user_id = ${user.id} ORDER BY schedule_time ASC NULLS LAST, created_at ASC`;
+    // Active only -- an inactive routine is dead history from a superseded goal
+    // regeneration (see api/goals.js's retake cleanup), not something a user can act on.
+    // Showing it here just cluttered the Routines Library with stale duplicates (often
+    // several sitting at the same old default time), making a genuinely-fixed schedule
+    // look untouched. Pass ?includeInactive=1 to opt back into the full history if a
+    // future screen needs it.
+    const includeInactive = req.query.includeInactive === '1';
+    const rows = includeInactive
+      ? await sql`SELECT * FROM routines WHERE user_id = ${user.id} ORDER BY schedule_time ASC NULLS LAST, created_at ASC`
+      : await sql`SELECT * FROM routines WHERE user_id = ${user.id} AND is_active = true ORDER BY schedule_time ASC NULLS LAST, created_at ASC`;
     return res.status(200).json(rows.map(serialize));
   }
 

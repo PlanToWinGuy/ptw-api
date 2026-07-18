@@ -555,6 +555,23 @@ async function generateGoal(req, res, user) {
     }
     if (allIngredients.length) await mergeIntoGroceryList(sql, user.id, pillar_id, allIngredients);
 
+    // Real breakfast/lunch/dinner log reminders on the actual daily schedule -- the meal
+    // plans themselves only ever lived in the Meal Hub's "My Plans" tab and the Grocery
+    // List; nothing ever told the day "here's when to log breakfast/lunch/dinner," so
+    // Daily Overview never looked like an actual eating schedule despite the plan
+    // covering all three meals. One routine per distinct meal type the plan actually
+    // covers (not a fixed three -- a 2-meals-a-day plan only gets 2 reminders).
+    const MEAL_TIME_DEFAULTS = { breakfast: '07:30', lunch: '12:30', dinner: '18:30', snack: '15:00' };
+    const distinctMealTypes = [...new Set(plan.mealPlans.map(mp => String(mp.mealType || '').toLowerCase()).filter(mt => MEAL_TIME_DEFAULTS[mt]))];
+    for (const mealType of distinctMealTypes) {
+      const routineName = `Log your ${mealType}`;
+      await sql`
+        INSERT INTO routines (user_id, goal_id, name, category, is_active, schedule_days, schedule_time, steps, tool_hint, end_date)
+        VALUES (${user.id}, ${goal_id}, ${routineName}, ${pillar_name}, true, ${[]}, ${MEAL_TIME_DEFAULTS[mealType]}::time,
+                ${JSON.stringify([{ name: routineName, durationMinutes: 5 }])}::jsonb, 'meal', NULL)
+      `;
+    }
+
     // Real daily calorie/macro targets (estimated TDEE + goal-direction adjustment, see
     // DIET_ADDENDUM) replace the frontend's old hardcoded 2300kcal placeholder -- a single
     // row, same "one flexible row per user" pattern as the Grocery List, upserted so
