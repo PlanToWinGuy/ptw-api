@@ -16,11 +16,11 @@ export default async function handler(req, res) {
   // `${pillarId}::int IS NULL OR pillar_id = ${pillarId}` -- one query works for both the
   // "all pillars" and "one pillar" cases without duplicating every statement.
   const today = new Date().toISOString().split('T')[0];
-  const [{ completed, skipped, pending, late }] = await sql`
+  const [{ completed, skipped, pending_due, late }] = await sql`
     SELECT
       COUNT(*) FILTER (WHERE status = 'Completed') AS completed,
       COUNT(*) FILTER (WHERE status = 'Skipped') AS skipped,
-      COUNT(*) FILTER (WHERE status = 'Pending') AS pending,
+      COUNT(*) FILTER (WHERE status = 'Pending' AND due_date IS NOT NULL AND due_date <= ${today}) AS pending_due,
       COUNT(*) FILTER (WHERE status = 'Pending' AND due_date IS NOT NULL AND due_date < ${today}) AS late
     FROM tasks WHERE user_id = ${user.id} AND (${pillarId}::int IS NULL OR pillar_id = ${pillarId})
   `;
@@ -38,8 +38,11 @@ export default async function handler(req, res) {
     FROM tasks WHERE user_id = ${user.id} AND (${pillarId}::int IS NULL OR pillar_id = ${pillarId}) AND status = 'Completed'
   `;
 
-  const completedNum = Number(completed), skippedNum = Number(skipped), pendingNum = Number(pending);
-  const totalForRate = completedNum + skippedNum + pendingNum;
+  // Completion rate counts only tasks that have come due -- completed + skipped + pending
+  // that is already past/at its due date. Future pending tasks (a plan just scheduled next
+  // week) aren't misses yet, so they don't drag the rate down.
+  const completedNum = Number(completed), skippedNum = Number(skipped), pendingDueNum = Number(pending_due);
+  const totalForRate = completedNum + skippedNum + pendingDueNum;
   const completion_rate_percent = totalForRate ? Math.round((completedNum / totalForRate) * 100) : 0;
   const efficiencyTotal = Number(on_time) + Number(off_time);
   const efficiency_percent = efficiencyTotal ? Math.round((Number(on_time) / efficiencyTotal) * 100) : 0;

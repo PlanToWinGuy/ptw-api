@@ -6119,7 +6119,7 @@ async function loadProfileMetrics() {
   grid.innerHTML='<div class="spinner"></div>';
   const data=await req('GET','/profile/performance-metrics?pillar='+key);
   const cards=[
-    {icon:'⏰',val:data?.late_tasks??0,label:'Late Tasks'},
+    {icon:'🏆',val:data?.total_tasks_completed??0,label:'Tasks Completed'},
     {icon:'⏱️',val:(data?.avg_time_per_task_minutes??0)+'m',label:'Avg. Time / Task'},
     {icon:'🎯',val:(data?.efficiency_percent??0)+'%',label:'Efficiency'},
     {icon:'🔥',val:data?.daily_streak??0,label:'Daily Streak'},
