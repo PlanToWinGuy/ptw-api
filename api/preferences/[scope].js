@@ -7,7 +7,12 @@ import { getUserFromRequest } from '../../lib/auth.js';
 // either a pillar name lowercase ('fitness', 'diet', ...) or 'units' | 'notifications'.
 // GET returns {} (an empty default) if nothing's been saved yet, not a 404 -- every
 // preferences page pre-fills a real form, it just starts blank/at defaults.
-const VALID_SCOPES = new Set(['fitness', 'diet', 'finances', 'relations', 'personal', 'work', 'units', 'notifications', 'daily_briefings', 'essential_apps', 'home_background', 'pillar_priority']);
+// app_pairings: { [tool_hint]: catalogKey } -- which specific Essential App a user has
+// pinned for a given task type ("always Spotify for workout tasks"), set from Task
+// Detail. Its own scope (not folded into essential_apps) because that scope's Settings
+// save already does a blind overwrite of the whole preferences row -- sharing one scope
+// would let picking a pinned app wipe someone's Preferred Quick-Add list or vice versa.
+const VALID_SCOPES = new Set(['fitness', 'diet', 'finances', 'relations', 'personal', 'work', 'units', 'notifications', 'daily_briefings', 'essential_apps', 'home_background', 'pillar_priority', 'app_pairings']);
 
 export default async function handler(req, res) {
   if (cors(req, res)) return;

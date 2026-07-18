@@ -1433,10 +1433,11 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
     <div id="td-paired" style="display:none;text-align:left;margin-top:14px"></div>
     <button id="td-primary-action-btn" class="btn-p filled" style="display:none;width:100%;margin-top:16px;font-size:15px;padding:14px" onclick="launchTaskDetailTool()">Start</button>
   </div>
-  <div style="display:flex;justify-content:center;padding:16px 0 calc(40px + var(--sb))">
+  <div style="display:flex;justify-content:center;align-items:center;gap:14px;padding:16px 0 calc(40px + var(--sb))">
     <button class="grid-btn" onclick="openEssentialApps()">
       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
     </button>
+    <button class="icon-btn ghost" onclick="openAppPairingPicker()" title="Pin an app for this kind of task">📌</button>
   </div>
 </div>
 
@@ -3281,7 +3282,12 @@ function maybeStartPillarMapTip(){
   if(coachTour || hasCoachSeen('pillar_map_v1')) return;
   startCoachTour('pillar_map_v1', [
     { target:'.pillar-map-body > div:first-child', title:'Your pillar dashboard', body:"Every pillar has a Map like this — the same ring-and-stats layout in that pillar's colour, showing where you stand at a glance." },
-    { target:'#pillar-nav', title:'Everything for this pillar', body:"Map is your dashboard. Side-Quests are optional challenges, Roadmap is your AI plan, Trophies are what you've earned. The centre + logs something for this pillar instantly." },
+    { target:'#pillar-tab-map .view-log-btn', title:'The full Hub', body:"This button is where the real tools live — history, logging screens, saved plans, everything specific to this pillar. The Map is the summary; the Hub is where you actually do things." },
+    { target:'#pnav-map', title:'Map', body:"Your at-a-glance dashboard for this pillar — always the tab you land on first." },
+    { target:'#pnav-quests', title:'Side-Quests', body:"Optional extra challenges tied to this pillar, if you want more than the main plan." },
+    { target:'#pnav-roadmap', title:'Roadmap', body:"Your AI-generated plan — phases, milestones, and the strategy behind what you're doing and why." },
+    { target:'#pnav-trophies', title:'Trophies', body:"Badges, streaks, and everything you've actually earned in this pillar so far." },
+    { target:'#pnav-add', title:'Quick log', body:"The centre button logs something for this pillar right now — the fastest way in without digging through the Hub." },
   ]);
 }
 // Re-runnable from Help. Clears only the tour flags so tours replay; leaves one-off tips.
@@ -4517,7 +4523,7 @@ async function renderTaskDetailPairing(task, toolHint) {
   if(toolHint==='meal') {
     if(!Object.keys(mealPlansCache).length) {
       const data=await req('GET','/metrics?pillar_id='+PILLARS.diet.id+'&log_type=meal_plan');
-      (data?.logs||[]).forEach(pl=>{ mealPlansCache[pl.id]=pl.data; });
+      (data?.logs||[]).forEach(cacheMealPlan);
     }
     if(S.taskDetailTask!==task) return;
     const mealType=inferMealTypeFromText(task.name);
@@ -4863,7 +4869,8 @@ function maybeStartDailyTip(){
   if(!scr || !scr.classList.contains('active') || coachTour || hasCoachSeen('daily_v1')) return;
   startCoachTour('daily_v1', [
     { target:'#ov-tab-day', title:'Day, week or month', body:"Zoom out to the week or month to see the shape of what's coming, then back to a single day to focus." },
-    { target:null, title:'Swipe between days', body:"Swipe left or right anywhere on the list to move to the next or previous day. Behind today? Tap the ⚡ shuffle button to rebalance everything that's left." },
+    { target:null, title:'Swipe between days', body:"Swipe left or right anywhere on the list to move to the next or previous day." },
+    { target:'.shuffle-fab', title:'Behind today?', body:"Tap Shuffle Day and tell it why — slept in, low energy, plans changed — and it rebalances everything that's left in your day around that, without dropping anything." },
   ]);
 }
 
@@ -6463,7 +6470,7 @@ function switchLifeScoreDetailTab(tab) {
 // falls back to a toast (no scheme = no real universal deep link, e.g. Camera) if
 // the app isn't installed or no scheme exists for it.
 // ════════════════════════════════════════
-const ESSENTIAL_ICONS = { mail_icon:'✉️', calendar_icon:'📅', notes_icon:'📝', spotify_icon:'♪', camera_icon:'📷', health_icon:'❤️', calculator_icon:'🧮', duolingo_icon:'🦉', podcasts_icon:'🎙️', maps_icon:'🗺️', phone_icon:'📞' };
+const ESSENTIAL_ICONS = { mail_icon:'✉️', calendar_icon:'📅', notes_icon:'📝', spotify_icon:'♪', camera_icon:'📷', health_icon:'❤️', calculator_icon:'🧮', duolingo_icon:'🦉', podcasts_icon:'🎙️', maps_icon:'🗺️', phone_icon:'📞', news_icon:'📰' };
 let essentialAppsCache=[];
 let essentialAppsBreakType=null; // set when opened mid-break, so the back button returns there
 
@@ -6536,13 +6543,36 @@ const EA_CATALOG_UI = [
   {key:'youtube',label:'YouTube',category:'Entertainment'}, {key:'netflix',label:'Netflix',category:'Entertainment'},
   {key:'spotify',label:'Spotify',category:'Entertainment'}, {key:'podcasts',label:'Podcasts',category:'Entertainment'},
   {key:'duolingo',label:'Duolingo',category:'Skill'}, {key:'kindle',label:'Kindle',category:'Skill'},
-  {key:'audible',label:'Audible',category:'Skill'}, {key:'brilliant',label:'Brilliant',category:'Skill'},
+  {key:'audible',label:'Audible',category:'Skill'}, {key:'brilliant',label:'Brilliant',category:'Skill'}, {key:'ground_news',label:'Ground News',category:'Skill'},
   {key:'health',label:'Health',category:'Wellness'}, {key:'strava',label:'Strava',category:'Wellness'},
   {key:'mail',label:'Mail',category:'Utility'}, {key:'calendar',label:'Calendar',category:'Utility'},
   {key:'notes',label:'Notes',category:'Utility'}, {key:'calculator',label:'Calculator',category:'Utility'},
   {key:'slack',label:'Slack',category:'Utility'}, {key:'zoom',label:'Zoom',category:'Utility'},
   {key:'whatsapp',label:'WhatsApp',category:'Utility'},
 ];
+// Task Detail's own "pin an app for this kind of task" -- e.g. always Spotify for a
+// workout, always Notes for journaling. Reuses the generic Confirm modal as a simple
+// picker (same pattern as openLogPastActivityPicker/openSwapExercise); saved to its own
+// preferences scope (app_pairings) keyed by tool_hint, read back by GET /essential-apps
+// so this exact task type opens straight to that app from here on.
+function openAppPairingPicker() {
+  const task=S.taskDetailTask;
+  const toolHint=task && resolveTaskToolHint(task);
+  if(!toolHint) { toast("This task doesn't have a specific action type to pin an app to"); return; }
+  openConfirm('Pin an App', `Always open this for ${TOOL_HINT_ACTION_LABEL[toolHint]||'this kind of task'}:`, ()=>{});
+  document.getElementById('confirm-yes-btn').style.display='none';
+  document.getElementById('confirm-body').innerHTML=`<div style="display:flex;flex-direction:column;gap:6px">
+    ${EA_CATALOG_UI.map(a=>`<div class="view-log-btn" style="text-align:left;justify-content:space-between" onclick="pinAppForToolHint('${toolHint}','${a.key}','${a.label.replace(/'/g,"\\'")}')">${a.label} <span>›</span></div>`).join('')}
+  </div>`;
+}
+async function pinAppForToolHint(toolHint, key, label) {
+  const existing=await req('GET','/preferences/app_pairings')||{};
+  existing[toolHint]=key;
+  await req('PUT','/preferences/app_pairings',existing);
+  closeModal('modal-confirm');
+  document.getElementById('confirm-yes-btn').style.display='';
+  toast(`Pinned ${label} for this task type ✓`);
+}
 let eaPreferredKeys=[];
 async function openEssentialAppsPrefs() {
   showScreen('essential-apps-prefs');
@@ -6936,7 +6966,7 @@ async function loadDietMap() {
 
   const nextMealType=getNextMealType();
   const plans=plansData?.logs||[];
-  plans.forEach(pl=>{ mealPlansCache[pl.id]=pl.data; });
+  plans.forEach(cacheMealPlan);
   // Today's Meal Plan CTA: same rotation idea as Fitness's Today's Workout -- prefer a plan
   // matching the current meal type (breakfast/lunch/dinner/snack by clock), rotating through
   // however many of that type exist so the same plan doesn't repeat every single day; only
@@ -7079,8 +7109,8 @@ async function viewMealDetail(id) {
 // not a whole week), stored as metric_logs (log_type='meal_plan') from api/goals.js's
 // DIET_ADDENDUM or created manually below.
 function mealPlanCard(plan) {
-  mealPlansCache[plan.id]=plan.data;
-  const d=plan.data||{};
+  cacheMealPlan(plan);
+  const d=mealPlansCache[plan.id];
   return `<div class="rm-goal-card" style="margin-bottom:10px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
       <span style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text);cursor:pointer" onclick="viewMealPlanDetail(${plan.id})">${d.name||'Meal Plan'} <span style="color:var(--stone);font-size:11px">›</span></span>
@@ -7351,6 +7381,15 @@ function showMealLoggedCelebration(m) {
 // FITNESS PILLAR — real workout tracking
 // ════════════════════════════════════════
 let workoutPlansCache={}, activeWorkout=null, mealPlansCache={};
+// A meal plan's calorie count lives on the metric_log row's own `value` column, not
+// inside `data` (older plans predate api/goals.js storing it in both places) -- caching
+// `pl.data` alone silently dropped calories, so every plan-based "Log This Meal" recorded
+// 0 kcal regardless of what the plan actually was (confirmed live: Diet Map's calorie
+// ring never moved after logging from a saved/generated plan). This falls back to the
+// row's `value` whenever `data.calories` is missing, for every existing cache call site.
+function cacheMealPlan(pl) {
+  mealPlansCache[pl.id] = { ...pl.data, calories: (pl.data?.calories ?? Number(pl.value)) || 0 };
+}
 
 async function loadFitnessMap() {
   const container=document.getElementById('pillar-tab-map');
@@ -8066,45 +8105,101 @@ function renderHiitDone() {
     <button class="btn-p filled" style="margin-top:16px;margin-bottom:20px;background:var(--fitness);border-color:var(--fitness)" onclick="finishWorkout()">Finish Workout</button>`;
 }
 
+// A shared, no-asset chime -- Web Audio synthesized (a real gong sample would mean
+// bundling/fetching an audio file, which this offline-first PWA doesn't do anywhere
+// else), a cluster of low inharmonic partials fading out together reads as gong-like
+// enough to mark "pose done, moving on" without needing to look at the screen.
+let sharedAudioCtx=null;
+function playGongSound() {
+  try {
+    if(!sharedAudioCtx) sharedAudioCtx=new (window.AudioContext||window.webkitAudioContext)();
+    const ctx=sharedAudioCtx;
+    if(ctx.state==='suspended') ctx.resume();
+    const now=ctx.currentTime;
+    const master=ctx.createGain();
+    master.gain.setValueAtTime(0.001, now);
+    master.gain.linearRampToValueAtTime(0.3, now+0.02);
+    master.gain.exponentialRampToValueAtTime(0.001, now+2.2);
+    master.connect(ctx.destination);
+    [110, 174, 233, 311].forEach((freq,i)=>{
+      const osc=ctx.createOscillator();
+      osc.type='sine';
+      osc.frequency.value=freq;
+      const g=ctx.createGain();
+      g.gain.value=1/(i+1);
+      osc.connect(g); g.connect(master);
+      osc.start(now); osc.stop(now+2.2);
+    });
+  } catch(e) { /* Web Audio unsupported/blocked -- silently skip, not critical */ }
+}
+
 // ── Mobility session: active, not a static checklist -- a big countdown ring per pose
 // (readable mid-stretch, not a wall of small text to squint at), auto-advancing to the
-// next pose after a short breather so you never have to touch the phone mid-flow. Skip
-// is still there for a pose you want to cut short or a hold length that doesn't fit.
+// next pose after a short breather so you never have to touch the phone mid-flow. Pause/
+// Skip live in the same icon-bar-below-the-title convention as Task Detail's Play-Pause/
+// Skip/Complete row, for the same reason every other active session (Task Detail,
+// strength) uses it: one consistent place to look for session controls across the app.
 const MOBILITY_HOLD_SECONDS=30;
 const MOBILITY_TRANSITION_SECONDS=3;
+
+function mobilityControlBar(isPaused) {
+  return `<div style="display:flex;justify-content:center;gap:16px;margin-top:22px">
+    <button class="cta-micro" id="mobility-pause-btn" style="width:44px;height:44px;background:var(--fitness);color:#fff" onclick="toggleMobilityPause()" title="${isPaused?'Resume':'Pause'}">${isPaused?PLAY_ICON_SVG:PAUSE_ICON_SVG}</button>
+    <button class="cta-micro" style="width:44px;height:44px" onclick="skipMobilityStretch()" title="Skip">⏭</button>
+  </div>`;
+}
 
 function renderMobilitySession() {
   const w=activeWorkout;
   if(w.mobilityIdx===undefined) w.mobilityIdx=0;
   if(w.mobilityIdx>=w.stretches.length) { renderMobilityDone(); return; }
   const stretch=w.stretches[w.mobilityIdx];
+  w.mobilityRemaining = w.mobilityRemaining ?? MOBILITY_HOLD_SECONDS;
+  w.mobilityPaused = false;
   document.getElementById('workout-log-header').textContent=`${w.planName} · Pose ${w.mobilityIdx+1} of ${w.stretches.length}`;
   const circumference=2*Math.PI*100;
   document.getElementById('workout-log-body').innerHTML=`
     <div style="text-align:center;padding:16px 0">
       <div style="font-family:'Syne',sans-serif;font-size:24px;font-weight:800;color:var(--text);margin-bottom:20px;padding:0 12px;line-height:1.3">${stretch.name}</div>
-      <div style="position:relative;width:220px;height:220px;margin:0 auto">
+      ${mobilityControlBar(false)}
+      <div style="position:relative;width:220px;height:220px;margin:22px auto 0">
         <svg viewBox="0 0 220 220" width="220" height="220" style="transform:rotate(-90deg)">
           <circle cx="110" cy="110" r="100" fill="none" stroke="var(--bg4)" stroke-width="14"/>
-          <circle id="mobility-ring-arc" cx="110" cy="110" r="100" fill="none" stroke="var(--fitness)" stroke-width="14" stroke-linecap="round" stroke-dasharray="${circumference}" stroke-dashoffset="0" style="transition:stroke-dashoffset 1s linear"/>
+          <circle id="mobility-ring-arc" cx="110" cy="110" r="100" fill="none" stroke="var(--fitness)" stroke-width="14" stroke-linecap="round" stroke-dasharray="${circumference}" stroke-dashoffset="${circumference*(1-w.mobilityRemaining/MOBILITY_HOLD_SECONDS)}" style="transition:stroke-dashoffset 1s linear"/>
         </svg>
-        <div id="mobility-ring-number" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-size:56px;font-weight:800;color:var(--text)">${MOBILITY_HOLD_SECONDS}</div>
-      </div>
-      <div style="display:flex;justify-content:center;margin-top:22px">
-        <button class="btn-p filled" style="background:var(--fitness);border-color:var(--fitness);padding:10px 28px" onclick="skipMobilityStretch()">Skip Pose</button>
+        <div id="mobility-ring-number" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-size:56px;font-weight:800;color:var(--text)">${w.mobilityRemaining}</div>
       </div>
     </div>`;
+  startMobilityCountdown();
+}
+
+function startMobilityCountdown() {
+  const w=activeWorkout;
+  const stretch=w.stretches[w.mobilityIdx];
+  const circumference=2*Math.PI*100;
   clearInterval(w.mobilityTimer);
-  let remaining=MOBILITY_HOLD_SECONDS;
   w.mobilityTimer=setInterval(()=>{
-    remaining--;
+    w.mobilityRemaining--;
     const numEl=document.getElementById('mobility-ring-number');
     const arcEl=document.getElementById('mobility-ring-arc');
     if(!numEl||!arcEl) { clearInterval(w.mobilityTimer); return; }
-    if(remaining<=0) { clearInterval(w.mobilityTimer); stretch.done=true; advanceMobility(); return; }
-    numEl.textContent=remaining;
-    arcEl.setAttribute('stroke-dashoffset', circumference*(1-remaining/MOBILITY_HOLD_SECONDS));
+    if(w.mobilityRemaining<=0) { clearInterval(w.mobilityTimer); playGongSound(); stretch.done=true; w.mobilityRemaining=undefined; advanceMobility(); return; }
+    numEl.textContent=w.mobilityRemaining;
+    arcEl.setAttribute('stroke-dashoffset', circumference*(1-w.mobilityRemaining/MOBILITY_HOLD_SECONDS));
   },1000);
+}
+
+function toggleMobilityPause() {
+  const w=activeWorkout;
+  w.mobilityPaused=!w.mobilityPaused;
+  const btn=document.getElementById('mobility-pause-btn');
+  if(w.mobilityPaused) {
+    clearInterval(w.mobilityTimer);
+    if(btn) { btn.innerHTML=PLAY_ICON_SVG; btn.title='Resume'; }
+  } else {
+    startMobilityCountdown();
+    if(btn) { btn.innerHTML=PAUSE_ICON_SVG; btn.title='Pause'; }
+  }
 }
 
 function advanceMobility() {
@@ -8139,6 +8234,7 @@ function renderMobilityTransition() {
 
 function skipMobilityStretch() {
   clearInterval(activeWorkout.mobilityTimer);
+  activeWorkout.mobilityRemaining=undefined;
   advanceMobility();
 }
 
@@ -8159,12 +8255,12 @@ function renderActiveWorkout() {
   const elapsed=Math.floor((Date.now()-w.startTime)/60000);
   document.getElementById('workout-log-header').textContent=`${w.planName} | ${w.exerciseIdx+1} of ${w.exercises.length} | ${elapsed}m`;
   document.getElementById('workout-log-body').innerHTML=`
-    <div style="display:flex;justify-content:center;gap:14px;margin:14px 0">
-      <button class="cta-micro" style="width:44px;height:44px;background:var(--bg3)" onclick="skipExercise()" title="Skip">⏭</button>
-    </div>
-    <div style="text-align:center;font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:var(--text);margin:6px 0 4px">${ex.name}</div>
+    <div style="text-align:center;font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:var(--text);margin:14px 0 4px">${ex.name}</div>
     ${ex.substitutedFrom?`<div style="text-align:center;font-size:11px;color:var(--stone);margin-bottom:6px">Swapped from ${ex.substitutedFrom}</div>`:''}
-    <div style="text-align:center;margin-bottom:10px"><button class="view-log-btn" style="width:auto;display:inline-flex" onclick="openSwapExercise()">⇄ Swap Exercise</button></div>
+    <div style="display:flex;justify-content:center;gap:16px;margin-bottom:18px">
+      <button class="cta-micro" style="width:44px;height:44px" onclick="openSwapExercise()" title="Swap Exercise">⇄</button>
+      <button class="cta-micro" style="width:44px;height:44px" onclick="skipExercise()" title="Skip">⏭</button>
+    </div>
     <div class="rm-goal-card">
       <div class="section-sub" style="text-align:center">Set ${w.setIdx+1} of ${ex.sets.length}</div>
       <div style="display:flex;justify-content:space-around;margin:12px 0">
@@ -8197,10 +8293,25 @@ const EXERCISE_SUBSTITUTE_RULES=[
   [/lunge/i, ['Walking Lunge', 'Step-Up', 'Split Squat']],
   [/lat pulldown|pull-?up/i, ['Assisted Pull-up', 'Lat Pulldown', 'Band Pull-Apart']],
   [/leg press/i, ['Squat', 'Leg Extension', 'Hack Squat']],
+  [/plank/i, ['Side Plank', 'Dead Bug', 'Hollow Body Hold']],
+  [/crunch|sit-?up|\babs?\b/i, ['Bicycle Crunch', 'Leg Raise', 'Russian Twist']],
+  [/calf raise/i, ['Seated Calf Raise', 'Single-Leg Calf Raise', 'Calf Press']],
+  [/face pull|rear delt|reverse fly/i, ['Band Face Pull', 'Reverse Cable Fly', 'Prone Y-Raise']],
+  [/leg curl|hamstring curl/i, ['Nordic Curl', 'Stability Ball Leg Curl', 'Romanian Deadlift']],
+  [/hip thrust|glute bridge/i, ['Barbell Hip Thrust', 'Single-Leg Glute Bridge', 'Cable Kickback']],
+  [/lat raise|lateral raise/i, ['Cable Lateral Raise', 'Band Lateral Raise', 'Leaning Lateral Raise']],
+  [/dip/i, ['Bench Dip', 'Ring Dip', 'Close-Grip Push-up']],
 ];
+// A fallback list still needs to be real, loggable exercises -- not literal category
+// labels ("Bodyweight Variation" was being typed straight into the log as if it were the
+// exercise itself, confirmed live: tapping any of the 3 fallback options just set the
+// task name to that placeholder text instead of substituting a real movement). This
+// covers the major muscle groups so at minimum something reasonable is always on offer
+// even when the exercise name doesn't match a specific pattern above.
+const GENERIC_EXERCISE_FALLBACK=['Bodyweight Squat', 'Push-ups', 'Plank', 'Walking Lunge', 'Dumbbell Row', 'Glute Bridge'];
 function getExerciseSubstitutes(name) {
   for(const [re,subs] of EXERCISE_SUBSTITUTE_RULES) if(re.test(name)) return subs;
-  return ['Bodyweight Variation', 'Machine Variation', 'Dumbbell Variation'];
+  return GENERIC_EXERCISE_FALLBACK;
 }
 
 function openSwapExercise() {

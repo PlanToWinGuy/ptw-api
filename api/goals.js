@@ -549,7 +549,7 @@ async function generateGoal(req, res, user) {
       await sql`
         INSERT INTO metric_logs (user_id, pillar_id, log_type, value, unit, data)
         VALUES (${user.id}, ${pillar_id}, 'meal_plan', ${mp.calories || null}, 'kcal',
-                ${JSON.stringify({ name: mp.name, mealType: mp.mealType || null, protein_g: mp.protein_g || 0, carbs_g: mp.carbs_g || 0, fat_g: mp.fat_g || 0, ingredients: mp.ingredients || [], instructions: mp.instructions || '', source: 'goal' })}::jsonb)
+                ${JSON.stringify({ name: mp.name, mealType: mp.mealType || null, calories: Number(mp.calories) || 0, protein_g: mp.protein_g || 0, carbs_g: mp.carbs_g || 0, fat_g: mp.fat_g || 0, ingredients: mp.ingredients || [], instructions: mp.instructions || '', source: 'goal' })}::jsonb)
       `;
       (mp.ingredients || []).forEach(ing => { if (ing?.name) allIngredients.push(ing); });
     }

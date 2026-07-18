@@ -43,6 +43,10 @@ const CATALOG = {
   brilliant: { appName: 'Brilliant', iconName: 'duolingo_icon',  category: 'skill',        webFallback: 'https://brilliant.org/' },
   maps:      { appName: 'Maps',      iconName: 'maps_icon',      category: 'utility',      urlScheme: 'maps://',                webFallback: 'https://maps.google.com/' },
   phone:     { appName: 'Phone',     iconName: 'phone_icon',     category: 'utility',      urlScheme: 'tel:' },
+  // Real-world awareness (news/politics from multiple perspectives, bias-labeled) fits
+  // the same "worth doing with idle time" slot as Duolingo/Brilliant -- staying informed
+  // is a real skill-building/wellness activity, not just entertainment filler.
+  ground_news: { appName: 'Ground News', iconName: 'news_icon',   category: 'skill',        webFallback: 'https://ground.news/' },
 };
 
 const APPS_BY_PILLAR = {
@@ -51,13 +55,13 @@ const APPS_BY_PILLAR = {
   Diet:      ['scan_food', 'notes', 'spotify', 'health', 'calculator'],
   Finances:  ['notes', 'calculator', 'mail', 'calendar'],
   Relations: ['mail', 'calendar', 'whatsapp', 'notes', 'zoom'],
-  Personal:  ['notes', 'spotify', 'duolingo', 'kindle', 'audible', 'brilliant', 'podcasts'],
+  Personal:  ['notes', 'spotify', 'duolingo', 'kindle', 'audible', 'brilliant', 'ground_news', 'podcasts'],
 };
 const DEFAULT_KEYS = ['mail', 'calendar', 'notes', 'spotify', 'calculator', 'whatsapp'];
 // The "nothing scheduled right now" fallback (no AI key configured) -- a real mix of
 // entertainment + skill-building instead of the task-context utility defaults above,
 // since idle time isn't well served by "here's your Mail app again."
-const IDLE_KEYS = ['duolingo', 'youtube', 'spotify', 'kindle', 'netflix', 'podcasts', 'brilliant', 'audible'];
+const IDLE_KEYS = ['duolingo', 'youtube', 'spotify', 'kindle', 'netflix', 'podcasts', 'brilliant', 'ground_news', 'audible'];
 
 // tool_hint-level overrides layered on top of the pillar list, for the cases where the
 // specific task matters more than the pillar overall (a meal-logging task always wants
@@ -120,6 +124,16 @@ async function getPreferredKeys(sql, userId) {
   const keys = rows[0]?.data?.preferredKeys;
   return Array.isArray(keys) ? keys.filter(k => CATALOG[k]) : [];
 }
+// Task Detail's "pin an app for this task type" -- e.g. always Spotify for a workout,
+// always Notes for a journal task. Looked up by tool_hint, not by pillar, since the
+// pairing is about the KIND of action, the same way APPS_BY_TOOL_HINT already overrides
+// the pillar-level defaults for that reason.
+async function getPinnedKey(sql, userId, toolHint) {
+  if (!toolHint) return null;
+  const rows = await sql`SELECT data FROM preferences WHERE user_id = ${userId} AND scope = 'app_pairings'`;
+  const key = rows[0]?.data?.[toolHint];
+  return CATALOG[key] ? key : null;
+}
 function prioritize(keys, preferredKeys) {
   if (!preferredKeys.length) return keys;
   const preferredSet = new Set(preferredKeys);
@@ -127,12 +141,12 @@ function prioritize(keys, preferredKeys) {
 }
 
 const APPS_BY_BREAK = {
-  bathroom:     ['duolingo', 'podcasts', 'brilliant', 'kindle'],
-  snack:        ['spotify', 'podcasts', 'scan_food', 'youtube'],
+  bathroom:     ['duolingo', 'podcasts', 'brilliant', 'ground_news', 'kindle'],
+  snack:        ['spotify', 'podcasts', 'scan_food', 'ground_news', 'youtube'],
   stretch:      ['spotify', 'health', 'strava'],
   walk:         ['spotify', 'podcasts', 'health', 'strava'],
-  mental_reset: ['notes', 'spotify', 'duolingo'],
-  free_time:    ['duolingo', 'mail', 'notes', 'youtube', 'netflix', 'kindle'],
+  mental_reset: ['notes', 'spotify', 'duolingo', 'ground_news'],
+  free_time:    ['duolingo', 'mail', 'notes', 'ground_news', 'youtube', 'netflix', 'kindle'],
 };
 const HABIT_STACK_HINT = {
   bathroom:     'A quick Duolingo lesson pairs well with a bathroom break.',
@@ -205,11 +219,10 @@ export default async function handler(req, res) {
     const rows = await sql`SELECT * FROM tasks WHERE id = ${taskId} AND user_id = ${user.id}`;
     const task = rows[0];
     const pillarName = task ? PILLARS[task.pillar_id] : null;
-    const keys = padKeys(prioritize(
-      (task?.tool_hint && APPS_BY_TOOL_HINT[task.tool_hint]) || inferActivityKeys(task?.name) || APPS_BY_PILLAR[pillarName] || DEFAULT_KEYS,
-      preferredKeys
-    ));
-    return res.status(200).json({ apps: resolveApps(keys), habitStack: null });
+    const pinnedKey = await getPinnedKey(sql, user.id, task?.tool_hint);
+    const baseKeys = (task?.tool_hint && APPS_BY_TOOL_HINT[task.tool_hint]) || inferActivityKeys(task?.name) || APPS_BY_PILLAR[pillarName] || DEFAULT_KEYS;
+    const keys = padKeys(prioritize(baseKeys, pinnedKey ? [pinnedKey, ...preferredKeys] : preferredKeys));
+    return res.status(200).json({ apps: resolveApps(keys), habitStack: null, pinnedKey });
   }
 
   // The "main Essential Apps folder" case -- opened straight from Home with no task or
