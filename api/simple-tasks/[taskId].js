@@ -2,7 +2,7 @@ import { sql } from '../../lib/db.js';
 import { cors } from '../../lib/cors.js';
 import { getUserFromRequest } from '../../lib/auth.js';
 import { serializeTask } from '../simple-tasks.js';
-import { findOpenSlot, slotSearchWindowForPriority } from '../../lib/scheduling.js';
+import { findOpenSlot, slotSearchWindowForPriority, addMinutesToClock } from '../../lib/scheduling.js';
 
 const VALID_PRIORITIES = ['Low', 'Medium', 'High', 'Urgent'];
 
@@ -33,7 +33,7 @@ export default async function handler(req, res) {
     // Same real auto-slotting as creation (see simple-tasks.js) -- if an edit leaves the
     // task without a time (e.g. the date was cleared, or it never had one), it still
     // needs to land somewhere real on the calendar rather than going back to floating.
-    let finalDueDate = due_date, finalStartTime = start_time;
+    let finalDueDate = due_date, finalStartTime = start_time, finalEndTime = task.end_time ? String(task.end_time).slice(0, 5) : null;
     if (!start_time) {
       const today = new Date().toISOString().split('T')[0];
       const { searchDays } = slotSearchWindowForPriority(priority);
@@ -44,12 +44,22 @@ export default async function handler(req, res) {
       });
       finalDueDate = slot.date;
       finalStartTime = slot.startTime;
+      finalEndTime = addMinutesToClock(finalStartTime, Number(dur) || 30);
+    } else {
+      // A new start_time (or just a changed duration) always needs a freshly-derived
+      // end_time -- previously this was left completely untouched on edit, so changing
+      // the start time alone left the OLD end_time in place, producing a nonsensical
+      // range once the two no longer matched (confirmed live: editing a task's start
+      // time while it was already the current task showed something like "9:00pm-2:30pm"
+      // -- the stale old end_time paired with the brand-new start_time).
+      finalEndTime = addMinutesToClock(finalStartTime, Number(dur) || 30);
     }
 
     const updated = await sql`
       UPDATE tasks SET
         name = ${name}, pillar_id = ${pillar_id}, estimated_duration_minutes = ${dur},
         priority = ${priority}, due_date = ${finalDueDate || null}, start_time = ${finalStartTime || null},
+        end_time = ${finalEndTime || null},
         notes = ${description}, icon = ${icon}, color = ${color}, updated_at = now()
       WHERE id = ${id}
       RETURNING *
