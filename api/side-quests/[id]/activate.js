@@ -1,7 +1,7 @@
 import { sql, PILLARS } from '../../../lib/db.js';
 import { cors } from '../../../lib/cors.js';
 import { getUserFromRequest } from '../../../lib/auth.js';
-import { timeOfDayToClock, addMinutesToClock, inferToolHint, scheduleSubTasks } from '../../../lib/scheduling.js';
+import { timeOfDayToClock, inferToolHint, scheduleSubTasks } from '../../../lib/scheduling.js';
 
 export default async function handler(req, res) {
   if (cors(req, res)) return;
@@ -31,8 +31,13 @@ export default async function handler(req, res) {
     // Day 1's target starts at the baseline itself (just match your current average)
     // and steps down daily toward final_target_value -- see log-progressive.js.
     const dayOneTarget = plan.antiGoalType === 'progressive' ? (plan.baselineValue ?? null) : null;
-    const startTime = clockStart;
-    const endTime = addMinutesToClock(clockStart, 15);
+    // An anti-goal is a retrospective check-in ("did you avoid/limit the thing today"),
+    // not a morning intention -- it can only honestly be answered once the day is mostly
+    // over, so it's scheduled at end of day (same 21:00 convention as every other
+    // end-of-day review task, see inferClockFromText) instead of the user's generic
+    // time-of-day preference, which was defaulting it to morning.
+    const startTime = '21:00';
+    const endTime = '21:15';
     const toolHint = inferToolHint(pillarKey, plan.title);
     await sql`
       INSERT INTO tasks (user_id, pillar_id, quest_id, name, kind, recurrence, due_date, estimated_duration_minutes,

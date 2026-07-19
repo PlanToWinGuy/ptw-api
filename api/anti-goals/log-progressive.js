@@ -45,12 +45,16 @@ export default async function handler(req, res) {
   const step = Math.max(1, Math.round((baseline - finalTarget) / 14));
   const nextTarget = Math.max(finalTarget, target - step);
 
+  // Carries the same start_time/end_time forward -- previously dropped entirely, so the
+  // regenerated task landed with no scheduled slot (bucketed into "Unscheduled" instead
+  // of its real end-of-day check-in time), easy to overlook and read as if the anti-goal
+  // had silently stopped recurring.
   const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
   await sql`
     INSERT INTO tasks (user_id, pillar_id, quest_id, name, kind, recurrence, due_date, estimated_duration_minutes,
-                        is_anti_goal, anti_goal_type, baseline_value, target_value, final_target_value)
+                        start_time, end_time, is_anti_goal, anti_goal_type, baseline_value, target_value, final_target_value)
     VALUES (${task.user_id}, ${task.pillar_id}, ${task.quest_id}, ${task.name}, 'habit', 'daily', ${tomorrow}, ${task.estimated_duration_minutes},
-            true, 'progressive', ${task.baseline_value}, ${nextTarget}, ${task.final_target_value})
+            ${task.start_time}, ${task.end_time}, true, 'progressive', ${task.baseline_value}, ${nextTarget}, ${task.final_target_value})
   `;
 
   res.status(200).json({ feedbackMessage, xpGained });
