@@ -3738,6 +3738,27 @@ async function confirmTaskCompletion() {
     await renderProjectDetail();
     return;
   }
+  // An ad-hoc Personal focus session running in the Home ring's live timer (see
+  // startFocusSession) has no backing task row at all -- completing it logs a real
+  // personal_log metric with the ACTUAL elapsed time instead of routing through the
+  // plain task-completion endpoint below, which expects a real task_id.
+  if(S.manualTaskOverride?.personalSessionFocusId) {
+    const m=S.manualTaskOverride;
+    const wantsComplete=pct>=50;
+    const actualMinutesSpent=Math.max(1, Math.round((m.elapsedMs+(m.running?Date.now()-m.lastResumeAt:0))/60000));
+    const focusAreaId=m.personalSessionFocusId, type=m.personalSessionType;
+    const focus=focusAreasCache[focusAreaId];
+    clearManualTaskOverride();
+    if(wantsComplete) {
+      const result=await req('POST','/metrics',{pillar_id:PILLARS.personal.id, log_type:'personal_log', value:actualMinutesSpent, unit:'min', data:{focusAreaId, focusAreaName:focus?.data?.name, type}});
+      toast(`+${result?.xp_gained||0} XP ⚡`);
+    } else {
+      toast('Not logged');
+    }
+    showScreen('personal-hub');
+    await switchPersonalHubTab('history');
+    return;
+  }
   if(!S.currentTask) { showScreen('home'); return; }
   // If this is the task the Home ring's manual timer is running for, we know exactly
   // how long it's actually taken so far -- the backend uses that (real pace) instead of
@@ -5708,17 +5729,27 @@ async function openRoutineFromLibrary(routineId) {
   // inferToolHint() started prioritizing 'steps'), and TOOL_HINT_OPEN.workout is
   // literally openWorkoutHub().
   const effectiveHint = (r && getPillarKey(r.category)==='fitness' && /\bsteps?\b/i.test(r.name||'')) ? 'steps' : r?.toolHint;
+  // Materialize (idempotent -- see api/user-projects.js) BEFORE branching, not after, so
+  // both branches below have today's real taskId in hand. This used to only run for the
+  // generic-checklist fallback path; the tool-hint branch opened Task Detail with
+  // id:routineId standing in for a task id, which meant launchTaskDetailTool()'s
+  // S.pendingTaskId got set to the ROUTINE's id instead of a real tasks.id row -- every
+  // submit*() correctly sent that as task_id, but completeTask() (lib/tasks.js) scopes its
+  // lookup to the tasks table, so it silently found nothing and the actual scheduled
+  // instance never left 'Pending' even though the right logger opened and the log itself
+  // saved fine. Confirmed live on guest2: a tool-hint routine opened via Library kept its
+  // materialized task stuck Pending after logging through it.
+  const today=new Date().toISOString().split('T')[0];
+  const proj=await req('POST','/user-projects',{date:today}); // also lazily materializes today's routine tasks
+  const match=(proj?.data||[]).find(t=>t.routineId===routineId);
   // A goal-generated routine (single recurring action, e.g. a daily workout) has a real
   // tool it should open instead of the generic step-checklist -- routes through Task
   // Detail first (tip + explicit action button), same as every other tool_hint-tagged
   // task now does.
   if(effectiveHint && (effectiveHint==='steps' || TOOL_HINT_OPEN[effectiveHint])) {
-    openTaskDetail({ id:routineId, name:r.name, toolHint:effectiveHint, pillar:r.category, routineId }, 'todo-routines');
+    openTaskDetail({ id:match?.taskId||routineId, taskId:match?.taskId||null, name:r.name, toolHint:effectiveHint, pillar:r.category, routineId }, 'todo-routines');
     return;
   }
-  const today=new Date().toISOString().split('T')[0];
-  const proj=await req('POST','/user-projects',{date:today}); // also lazily materializes today's routine tasks
-  const match=(proj?.data||[]).find(t=>t.routineId===routineId);
   openActiveRoutine(routineId, match?.taskId||null);
 }
 
@@ -8899,21 +8930,53 @@ async function addAsset() {
 }
 
 // ── Log a Transaction ──
+// Recent merchants (below) are indexed by position into this array rather than by name,
+// so a payee with a quote/apostrophe in it (e.g. "Trader Joe's") never has to be escaped
+// into an onclick string.
+let transactionRecentPicks=[];
+
 function openLogTransaction(type, prefillName) {
   S.transactionType=type||'expense';
+  S.recentTransactions=null;
   showScreen('transaction-log');
-  renderTransactionForm(prefillName);
+  document.getElementById('transaction-log-body').innerHTML='<div class="spinner"></div>';
+  // Pulled fresh every time this opens (not read from whatever the History tab happened
+  // to have cached) -- this screen is reachable straight from the Map tab's own "+ Log
+  // Expense" button, the pillar quick-add "+", and tool_hint dispatch, none of which
+  // guarantee financeTxnCache has ever been populated first.
+  req('GET','/metrics?pillar_id='+PILLARS.finances.id+'&log_type=transaction').then(data=>{
+    S.recentTransactions=(data?.logs||[]).sort((a,b)=>new Date(b.logged_at)-new Date(a.logged_at));
+    renderTransactionForm(prefillName);
+  });
+}
+
+// Real merchants/payees the user has actually logged before -- never invented names.
+// De-duped to most-recent-per-name, split by expense vs income so an Income tab's quick
+// row surfaces past income sources (employer, client) instead of grocery stores.
+function recentMerchantPicks(type) {
+  const seen=new Map();
+  (S.recentTransactions||[]).filter(t=>(t.data?.type||'expense')===type).forEach(t=>{
+    const name=t.data?.name;
+    if(name && !seen.has(name)) seen.set(name, t.data);
+  });
+  return [...seen.values()].slice(0,6);
 }
 
 function renderTransactionForm(prefillName) {
   const isIncome=S.transactionType==='income';
+  transactionRecentPicks=recentMerchantPicks(S.transactionType);
   document.getElementById('transaction-log-body').innerHTML=`
     <div style="display:flex;gap:20px;justify-content:center;margin:14px 0;font-size:14px;font-weight:700">
       <span onclick="setTransactionType('expense')" style="cursor:pointer;padding-bottom:6px;border-bottom:2px solid ${!isIncome?'var(--finances)':'transparent'};color:${!isIncome?'var(--text)':'var(--stone)'}">Expense</span>
       <span onclick="setTransactionType('income')" style="cursor:pointer;padding-bottom:6px;border-bottom:2px solid ${isIncome?'var(--finances)':'transparent'};color:${isIncome?'var(--text)':'var(--stone)'}">Income</span>
     </div>
+    ${transactionRecentPicks.length?`
+    <div class="section-sub" style="margin-top:0">${isIncome?'RECENT SOURCES':'RECENT MERCHANTS'}</div>
+    <div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;margin-bottom:14px">
+      ${transactionRecentPicks.map((d,i)=>`<button type="button" class="chip" onclick="pickRecentMerchant(${i})">${d.name}</button>`).join('')}
+    </div>`:''}
     <div class="field"><label>AMOUNT</label><input type="number" id="txn-amount" placeholder="0.00" style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800"></div>
-    <div class="field"><label>NAME / DESCRIPTION</label><input type="text" id="txn-name" placeholder="e.g. Groceries" value="${prefillName||''}"></div>
+    <div class="field"><label>MERCHANT / DESCRIPTION</label><input type="text" id="txn-name" placeholder="e.g. Trader Joe's" value="${prefillName||''}"></div>
     <div class="field"><label>CATEGORY</label>
       <select id="txn-category">${isIncome?'<option>Income</option>':FINANCE_CATEGORIES.map(c=>`<option>${c}</option>`).join('')}</select>
     </div>
@@ -8924,6 +8987,23 @@ function renderTransactionForm(prefillName) {
     <button class="btn-p filled" style="margin:8px 0 20px;background:var(--finances);border-color:var(--finances)" onclick="submitTransaction()">Log Transaction</button>`;
 }
 function setTransactionType(t) { S.transactionType=t; renderTransactionForm(); }
+
+// Tapping a recent merchant fills in the merchant name and its own last-used category
+// (and pillar tag, if it had one) -- one tap instead of retyping something logged a
+// dozen times before, then hands off straight to Amount since that's the one field that
+// actually changes each time.
+function pickRecentMerchant(i) {
+  const d=transactionRecentPicks[i];
+  if(!d) return;
+  document.getElementById('txn-name').value=d.name||'';
+  const catSel=document.getElementById('txn-category');
+  if(catSel && d.category) catSel.value=d.category;
+  const tagSel=document.getElementById('txn-pillar-tag');
+  if(tagSel && d.pillarTag) tagSel.value=d.pillarTag;
+  const amountEl=document.getElementById('txn-amount');
+  amountEl.focus();
+  amountEl.select();
+}
 
 async function submitTransaction() {
   const amount=Math.abs(Number(document.getElementById('txn-amount').value)||0);
@@ -9190,34 +9270,82 @@ async function viewContactDetail(id) {
     ${theirConns.length?theirConns.map(connectionCard).join(''):'<div class="empty"><div class="empty-icon">❤️</div><div class="empty-text">No interactions logged yet.</div></div>'}`;
 }
 
-function openConnectionLog(contactId) {
-  S.connectionContactId=contactId;
+let connectionLogContacts=[];
+
+async function openConnectionLog(contactId) {
+  S.connectionContactId=contactId||null;
+  // A specific contact (from their detail page, or the Relations Map's "Log" button on
+  // whoever's most overdue) skips straight to the type/duration step; opening it with no
+  // one in mind (quick-add, tool_hint dispatch) starts on the real contact list instead
+  // of a freeform "who" text field.
+  S.connectionShowPicker=!contactId;
+  S.connectionType=null; S.connectionDuration=30; S.connectionNotesDraft='';
   showScreen('connection-log');
+  document.getElementById('connection-log-body').innerHTML='<div class="spinner"></div>';
+  // Pulled fresh every time -- reachable before the Social Hub's own People tab has ever
+  // loaded contacts into contactsCache (straight from Map, quick-add, or tool_hint).
+  const data=await req('GET','/metrics?pillar_id='+PILLARS.relations.id+'&log_type=contact');
+  (data?.logs||[]).forEach(c=>contactsCache[c.id]=c);
+  connectionLogContacts=Object.values(contactsCache);
   renderConnectionLogForm();
 }
 
+// Notes typed so far survive a type/duration chip re-render (which redraws the whole
+// body) by being captured into state first, instead of quietly wiping out whatever the
+// user had already written.
+function captureConnectionDraft() {
+  const notesEl=document.getElementById('conn-notes');
+  if(notesEl) S.connectionNotesDraft=notesEl.value;
+}
+function selectConnectionContact(id) { S.connectionContactId=id; S.connectionShowPicker=false; renderConnectionLogForm(); }
+function selectConnectionType(t) { captureConnectionDraft(); S.connectionType=t; renderConnectionLogForm(); }
+function selectConnectionDuration(m) { captureConnectionDraft(); S.connectionDuration=m; renderConnectionLogForm(); }
+
 function renderConnectionLogForm() {
   const contact=S.connectionContactId?contactsCache[S.connectionContactId]:null;
-  const allContacts=Object.values(contactsCache);
-  document.getElementById('connection-log-body').innerHTML=`
-    <div class="field"><label>WITH</label>
-      <select id="conn-contact">${allContacts.length?allContacts.map(c=>`<option value="${c.id}" ${contact&&c.id===contact.id?'selected':''}>${c.data?.name}</option>`).join(''):'<option value="">Add a contact first</option>'}</select>
+  const showPicker=S.connectionShowPicker||!contact;
+  const body=document.getElementById('connection-log-body');
+  if(!connectionLogContacts.length) {
+    body.innerHTML=`<div class="empty"><div class="empty-icon">👥</div><div class="empty-text">Add a contact first to log a real interaction with them.</div></div>
+      <button class="btn-p filled" style="background:var(--relations);border-color:var(--relations);margin-top:14px" onclick="showScreen('social-hub');switchSocialHubTab('people')">+ Add a Contact</button>`;
+    return;
+  }
+  if(showPicker) {
+    body.innerHTML=`
+      <div class="section-sub" style="margin-top:0">WITH WHOM?</div>
+      ${connectionLogContacts.map(c=>`<div class="sq-card" onclick="selectConnectionContact(${c.id})">
+        <div class="sq-icon" style="background:var(--relations)22;color:var(--relations)">👤</div>
+        <div class="sq-info"><div class="sq-name">${c.data?.name||''}</div><div class="sq-meta">${c.data?.category||''}</div></div>
+      </div>`).join('')}`;
+    return;
+  }
+  const selType=S.connectionType||CONNECTION_TYPES[0];
+  const selDuration=S.connectionDuration||30;
+  body.innerHTML=`
+    <div class="section-sub" style="margin-top:0">WITH</div>
+    <div class="sq-card" style="border:1.5px solid var(--relations)" onclick="S.connectionShowPicker=true;renderConnectionLogForm()">
+      <div class="sq-icon" style="background:var(--relations)22;color:var(--relations)">👤</div>
+      <div class="sq-info"><div class="sq-name">${contact.data?.name||''}</div><div class="sq-meta">Tap to change</div></div>
     </div>
-    <div class="field"><label>TYPE</label>
-      <select id="conn-type" onchange="document.getElementById('conn-type-hint').textContent=CONNECTION_TYPE_HINTS[this.value]||''">${CONNECTION_TYPES.map(t=>`<option>${t}</option>`).join('')}</select>
-      <div id="conn-type-hint" style="font-size:11px;color:var(--stone);margin-top:6px">${CONNECTION_TYPE_HINTS[CONNECTION_TYPES[0]]}</div>
+    <div class="section-sub" style="margin-top:16px">TYPE</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px">
+      ${CONNECTION_TYPES.map(t=>`<button type="button" class="chip${selType===t?' sel':''}" onclick="selectConnectionType('${t.replace(/'/g,"\\'")}')">${t}</button>`).join('')}
     </div>
-    <div class="field"><label>DURATION (min)</label><input type="number" id="conn-duration" placeholder="30"></div>
-    <div class="field"><textarea id="conn-notes" rows="2" placeholder="Notes (optional)" style="width:100%;padding:12px 14px;background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:10px;color:var(--text);font-size:14px;font-family:'Inter',sans-serif;outline:none;resize:none"></textarea></div>
+    <div style="font-size:11px;color:var(--stone);margin-bottom:16px">${CONNECTION_TYPE_HINTS[selType]||''}</div>
+    <div class="section-sub">DURATION</div>
+    <div style="display:flex;gap:8px;margin-bottom:16px">
+      ${[15,30,60,90].map(m=>`<button type="button" class="chip${selDuration===m?' sel':''}" onclick="selectConnectionDuration(${m})">${m}m</button>`).join('')}
+    </div>
+    <div class="field"><label>HOW'D IT GO? (optional)</label><textarea id="conn-notes" rows="2" placeholder="e.g. caught up over coffee, made plans for next month" style="width:100%;padding:12px 14px;background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:10px;color:var(--text);font-size:14px;font-family:'Inter',sans-serif;outline:none;resize:none">${S.connectionNotesDraft||''}</textarea></div>
     <button class="btn-p filled" style="margin:8px 0 20px;background:var(--relations);border-color:var(--relations)" onclick="submitConnection()">Log Activity</button>`;
 }
 
 async function submitConnection() {
-  const contactId=Number(document.getElementById('conn-contact').value);
-  if(!contactId) { toast('Add a contact first'); return; }
-  const type=document.getElementById('conn-type').value;
-  const duration=Number(document.getElementById('conn-duration').value)||0;
-  const notes=document.getElementById('conn-notes').value.trim();
+  const contactId=S.connectionContactId;
+  if(!contactId) { toast('Pick who this was with first'); return; }
+  const type=S.connectionType||CONNECTION_TYPES[0];
+  const duration=S.connectionDuration||30;
+  const notes=(document.getElementById('conn-notes')?.value||'').trim();
   const contact=contactsCache[contactId];
   const taskId=S.pendingTaskId; S.pendingTaskId=null;
   const result=await req('POST','/metrics',{pillar_id:PILLARS.relations.id, log_type:'connection', value:duration, unit:'min', task_id:taskId||undefined, data:{contactId, contactName:contact?.data?.name, type, notes:notes||null}});
@@ -9638,35 +9766,104 @@ async function viewFocusDetail(id) {
     ${theirSessions.length?theirSessions.map(sessionCard).join(''):'<div class="empty"><div class="empty-icon">⭐</div><div class="empty-text">No sessions logged yet.</div></div>'}`;
 }
 
-function openLogSession(focusAreaId) {
-  S.logSessionFocusId=focusAreaId;
+async function openLogSession(focusAreaId) {
+  S.logSessionFocusId=focusAreaId||null;
+  S.logSessionType=null; S.logSessionDuration=25; S.logSessionManual=false; S.logSessionNotesDraft='';
   showScreen('log-session');
+  document.getElementById('log-session-body').innerHTML='<div class="spinner"></div>';
+  // Pulled fresh -- reachable straight from tool_hint dispatch or the pillar quick-add
+  // before the Personal Hub's own Focus tab has ever loaded focusAreasCache.
+  const data=await req('GET','/metrics?pillar_id='+PILLARS.personal.id+'&log_type=focus_area');
+  (data?.logs||[]).forEach(f=>focusAreasCache[f.id]=f);
+  if(!S.logSessionFocusId) { const first=Object.values(focusAreasCache)[0]; if(first) S.logSessionFocusId=first.id; }
   renderLogSessionForm();
 }
 
+function selectLogSessionFocus(id) { S.logSessionFocusId=id; renderLogSessionForm(); }
+function selectLogSessionType(t) { captureLogSessionDraft(); S.logSessionType=t; renderLogSessionForm(); }
+function selectLogSessionDuration(m) { captureLogSessionDraft(); S.logSessionDuration=m; renderLogSessionForm(); }
+// A manual-entry duration input and notes textarea both live inside the part of the DOM
+// that gets fully redrawn on every chip tap -- captured into state first so neither is
+// silently wiped by switching focus area/type/duration mid-edit.
+function captureLogSessionDraft() {
+  const notesEl=document.getElementById('sess-notes');
+  if(notesEl) S.logSessionNotesDraft=notesEl.value;
+  const durEl=document.getElementById('sess-duration-manual');
+  if(durEl && durEl.value) S.logSessionDuration=Number(durEl.value)||S.logSessionDuration;
+}
+function toggleLogSessionManual(v) { captureLogSessionDraft(); S.logSessionManual=v; renderLogSessionForm(); }
+
 function renderLogSessionForm() {
-  const focus=S.logSessionFocusId?focusAreasCache[S.logSessionFocusId]:null;
   const allFocus=Object.values(focusAreasCache);
-  const firstType=Object.keys(PERSONAL_LOG_TYPES)[0];
+  if(!allFocus.length) {
+    document.getElementById('log-session-body').innerHTML=`
+      <div class="empty"><div class="empty-icon">🎯</div><div class="empty-text">Add a focus area first -- a skill, hobby, or habit to track sessions against.</div></div>
+      <button class="btn-p filled" style="background:var(--personal);border-color:var(--personal);margin-top:14px" onclick="openAddFocusArea()">+ Add Focus Area</button>`;
+    return;
+  }
+  const selectedFocusId=S.logSessionFocusId||allFocus[0].id;
+  const selType=S.logSessionType||Object.keys(PERSONAL_LOG_TYPES)[0];
+  const selDuration=S.logSessionDuration||25;
   document.getElementById('log-session-body').innerHTML=`
-    <div class="field"><label>FOCUS AREA</label>
-      <select id="sess-focus">${allFocus.length?allFocus.map(f=>`<option value="${f.id}" ${focus&&f.id===focus.id?'selected':''}>${f.data?.name}</option>`).join(''):'<option value="">Add a focus area first</option>'}</select>
+    <div class="section-sub" style="margin-top:0">FOCUS AREA</div>
+    <div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;margin-bottom:16px">
+      ${allFocus.map(f=>`<button type="button" class="chip${selectedFocusId===f.id?' sel':''}" onclick="selectLogSessionFocus(${f.id})">${f.data?.icon?f.data.icon+' ':''}${f.data?.name}</button>`).join('')}
     </div>
-    <div class="field"><label>TYPE</label>
-      <select id="sess-type" onchange="document.getElementById('sess-type-hint').textContent=PERSONAL_LOG_TYPES[this.value]?.hint||''">${Object.keys(PERSONAL_LOG_TYPES).map(t=>`<option>${t}</option>`).join('')}</select>
-      <div id="sess-type-hint" style="font-size:11px;color:var(--stone);margin-top:6px">${PERSONAL_LOG_TYPES[firstType].hint}</div>
+    <div class="section-sub">TYPE</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px">
+      ${Object.keys(PERSONAL_LOG_TYPES).map(t=>`<button type="button" class="chip${selType===t?' sel':''}" onclick="selectLogSessionType('${t.replace(/'/g,"\\'")}')">${t}</button>`).join('')}
     </div>
-    <div class="field"><label>DURATION (min)</label><input type="number" id="sess-duration" placeholder="30"></div>
-    <div class="field"><textarea id="sess-notes" rows="2" placeholder="Notes (optional)" style="width:100%;padding:12px 14px;background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:10px;color:var(--text);font-size:14px;font-family:'Inter',sans-serif;outline:none;resize:none"></textarea></div>
-    <button class="btn-p filled" style="margin:8px 0 20px;background:var(--personal);border-color:var(--personal)" onclick="submitLogSession()">Log Session</button>`;
+    <div style="font-size:11px;color:var(--stone);margin-bottom:16px">${PERSONAL_LOG_TYPES[selType]?.hint||''}</div>
+    ${S.logSessionManual ? `
+    <div class="section-sub">DURATION</div>
+    <div class="field"><input type="number" id="sess-duration-manual" value="${selDuration}" placeholder="30"></div>
+    <div class="field"><textarea id="sess-notes" rows="2" placeholder="Notes (optional)" style="width:100%;padding:12px 14px;background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:10px;color:var(--text);font-size:14px;font-family:'Inter',sans-serif;outline:none;resize:none">${S.logSessionNotesDraft||''}</textarea></div>
+    <button class="btn-p filled" style="margin:8px 0 10px;background:var(--personal);border-color:var(--personal)" onclick="submitLogSession()">Log Session</button>
+    <button class="btn-p" style="border-color:transparent;color:var(--stone);margin-bottom:20px" onclick="toggleLogSessionManual(false)">‹ Back to live timer</button>
+    ` : `
+    <div class="section-sub">DURATION</div>
+    <div style="display:flex;gap:8px;margin-bottom:20px">
+      ${[15,25,45,60].map(m=>`<button type="button" class="chip${selDuration===m?' sel':''}" onclick="selectLogSessionDuration(${m})">${m}m</button>`).join('')}
+    </div>
+    <button class="btn-p filled" style="margin:8px 0 10px;background:var(--personal);border-color:var(--personal)" onclick="startFocusSession()">▶ Start Now</button>
+    <button class="btn-p" style="border-color:transparent;color:var(--stone);margin-bottom:20px" onclick="toggleLogSessionManual(true)">Log a past session instead</button>
+    `}`;
+}
+
+// Reuses the exact same manualTaskOverride shape as startManualTask/startProjectSubtaskSession
+// so an ad-hoc Personal focus session gets a real running countdown in the Home CTA ring
+// instead of retroactively typing a duration guess -- same live-timer treatment Work
+// sessions got. Tagged with personalSessionFocusId/personalSessionType so
+// confirmTaskCompletion knows to log it as a real personal_log metric (with the ACTUAL
+// elapsed time) instead of routing through the plain task-completion endpoint real
+// scheduled tasks use -- this session has no backing task row at all.
+function startFocusSession() {
+  const focusAreaId=S.logSessionFocusId;
+  const focus=focusAreaId?focusAreasCache[focusAreaId]:null;
+  if(!focus) { toast('Pick a focus area first'); return; }
+  const type=S.logSessionType||Object.keys(PERSONAL_LOG_TYPES)[0];
+  const durationMinutes=S.logSessionDuration||25;
+  const now=new Date();
+  const startTime=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+  const endDate=new Date(now.getTime()+durationMinutes*60000);
+  const endTime=String(endDate.getHours()).padStart(2,'0')+':'+String(endDate.getMinutes()).padStart(2,'0');
+  S.manualTaskOverride = {
+    taskId: 'focus-'+focusAreaId+'-'+Date.now(), name: type+' — '+(focus.data?.name||'Focus'), pillar:'personal',
+    durationMinutes, startTime, endTime,
+    elapsedMs: 0, running: true, lastResumeAt: Date.now(),
+    personalSessionFocusId: focusAreaId, personalSessionType: type,
+  };
+  applyCtaState();
+  showScreen('home');
+  toast('Session started — live timer on your Home ring');
 }
 
 async function submitLogSession() {
-  const focusAreaId=Number(document.getElementById('sess-focus').value);
+  const focusAreaId=S.logSessionFocusId;
   if(!focusAreaId) { toast('Add a focus area first'); return; }
-  const type=document.getElementById('sess-type').value;
-  const duration=Number(document.getElementById('sess-duration').value)||0;
-  const notes=document.getElementById('sess-notes').value.trim();
+  const type=S.logSessionType||Object.keys(PERSONAL_LOG_TYPES)[0];
+  const duration=Number(document.getElementById('sess-duration-manual')?.value)||0;
+  const notes=(document.getElementById('sess-notes')?.value||'').trim();
   const focus=focusAreasCache[focusAreaId];
   const taskId=S.pendingTaskId; S.pendingTaskId=null;
   const result=await req('POST','/metrics',{pillar_id:PILLARS.personal.id, log_type:'personal_log', value:duration, unit:'min', task_id:taskId||undefined, data:{focusAreaId, focusAreaName:focus?.data?.name, type, notes:notes||null}});
