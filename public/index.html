@@ -1228,6 +1228,7 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
      WORK: WORK HUB, PROJECTS & ANALYTICS
 ══════════════════════════════════ -->
 <div id="screen-work-hub" class="screen">
+  <div class="accent-wash" style="background:radial-gradient(120% 70% at 50% -10%, var(--work) 0%, transparent 60%)"></div>
   <div class="pillar-top-bar">
     <button class="icon-btn ghost" onclick="showPillarScreen('work')">←</button>
     <h2>Work Hub</h2>
@@ -2229,6 +2230,10 @@ const ICONS = {
   lotus: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" style="vertical-align:-0.15em"><path d="M12 21c-3.5-1.3-5.5-4.3-5.5-7.5C6.5 9.5 8.7 6.8 12 5c3.3 1.8 5.5 4.5 5.5 8.5 0 3.2-2 6.2-5.5 7.5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M12 21V9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
   star2: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-0.15em"><path d="M12 3l1.8 5.5H19l-4.6 3.4L16.2 17 12 13.6 7.8 17l1.8-5.1L5 8.5h5.2z"/></svg>',
   compass: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" style="vertical-align:-0.15em"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M15 9l-2 5-4 1 2-5z" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/></svg>',
+  rocket: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" style="vertical-align:-0.15em"><path d="M12 2c3 1.5 5 5 5 9 0 2-.5 3.5-1 4.5l-4 3-4-3c-.5-1-1-2.5-1-4.5 0-4 2-7.5 5-9z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="12" cy="10" r="1.8" fill="currentColor"/><path d="M8.5 15.5 6 19l3-1M15.5 15.5 18 19l-3-1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  checkCircle: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" style="vertical-align:-0.15em"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><polyline points="8,12.5 11,15.5 16,9.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  warning: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" style="vertical-align:-0.15em"><path d="M12 3.5 21.5 20h-19z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><line x1="12" y1="9.5" x2="12" y2="14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="12" cy="17" r="1" fill="currentColor"/></svg>',
+  briefcase: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" style="vertical-align:-0.15em"><rect x="2.5" y="7" width="19" height="13" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M8 7V5.5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2V7" stroke="currentColor" stroke-width="1.6"/><line x1="2.5" y1="12.5" x2="21.5" y2="12.5" stroke="currentColor" stroke-width="1.6"/></svg>',
 };
 const PILLARS = {
   fitness:   {id:1, key:'fitness',   label:'Fitness',   color:'#E07840', icon:PILLAR_GLYPH.fitness, emoji:PILLAR_GLYPH.fitness},
@@ -11146,12 +11151,21 @@ async function loadWorkMap() {
   else if(leastDone) { nextTaskName=`Deep Work: ${leastDone.name}`; S.nextWorkFocus={projectId:leastDone.id}; }
   else { nextTaskName='Add your first project'; S.nextWorkFocus=null; }
 
+  // Metric-card trend data for the Glass treatment -- Focus Time is a real daily-session
+  // trend (like Personal's Learning Time). Tasks Completed is a real daily count of actual
+  // completions (updated_at), not fabricated.
+  const focusDaily=aggregateDaily(sessions.map(s=>({logged_at:s.logged_at, value:(Number(s.value)||0)/60})));
+  const focusVals=focusDaily.map(x=>x.value);
+  const focusDelta=computeWeekDelta(focusDaily);
+  const completedDaily=aggregateDaily(workTasks.filter(t=>t.status==='Completed' && t.updated_at).map(t=>({logged_at:t.updated_at, value:1})));
+  const completedDelta=computeWeekDelta(completedDaily);
+
   const html=`
     ${pillarMapHero({ color:p.color, ringPct:productivityScore/100, ringCenter:productivityScore+'%', ringLabel:'productivity', kicker:'Work · This Week',
       headline: nextTaskName,
-      stats:[{icon:'⏱️',val:focusTimeWeek.toFixed(1)+'h',label:'focus'},{icon:'✅',val:tasksCompletedWeek,label:'done'},{icon:'⚠️',val:overdueTasks,label:'overdue'}] })}
+      stats:[{icon:ICONS.clock,val:focusTimeWeek.toFixed(1)+'h',label:'focus'},{icon:ICONS.checkCircle,val:tasksCompletedWeek,label:'done'},{icon:ICONS.warning,val:overdueTasks,label:'overdue'}] })}
     <div class="pillar-task-card" style="background:${p.color}">
-      <div class="pt-icon">🚀</div>
+      <div class="pt-icon" style="color:#fff">${ICONS.rocket}</div>
       <div class="pt-info">
         <div class="pt-label">NEXT WORK TASK</div>
         <div class="pt-name">${nextTaskName}</div>
@@ -11160,7 +11174,37 @@ async function loadWorkMap() {
         <button class="pt-btn start" onclick="${S.nextWorkFocus?'startNextWorkFocus()':'openAddProject()'}">${S.nextWorkFocus?'Start Focus':'Add'}</button>
       </div>
     </div>
-    ${hubButton('View Full Work Hub', p.color, 'openWorkHub()', '💼')}`;
+    <div style="display:flex;gap:10px;margin-top:14px">
+      ${glassCard(p.color, `
+        <div style="display:flex;align-items:center;gap:10px">
+          ${glassIcon(ICONS.clock, p.color)}
+          <div style="flex:1;min-width:0">
+            <div class="section-sub" style="margin:0">Focus Time</div>
+            <div style="display:flex;align-items:baseline;gap:5px;flex-wrap:wrap">
+              <span style="font-family:'Syne',sans-serif;font-size:17px;font-weight:800;color:var(--text)">${focusTimeWeek.toFixed(1)}h</span>
+              ${deltaChipHtml(focusDelta,'h',true)}
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:8px">${sparklineSvg(focusVals.slice(-14), p.color, {w:130,h:28})}</div>
+        <div style="font-size:10px;color:var(--stone);margin-top:8px">Full analytics ›</div>`,
+        {style:'flex:1', onclick:"showScreen('work-hub');switchWorkHubTab('analytics')"})}
+      ${glassCard(p.color, `
+        <div style="display:flex;align-items:center;gap:10px">
+          ${glassIcon(ICONS.checkCircle, p.color)}
+          <div style="flex:1;min-width:0">
+            <div class="section-sub" style="margin:0">Tasks Completed</div>
+            <div style="display:flex;align-items:baseline;gap:5px;flex-wrap:wrap">
+              <span style="font-family:'Syne',sans-serif;font-size:17px;font-weight:800;color:var(--text)">${tasksCompletedWeek}</span>
+              ${deltaChipHtml(completedDelta,'',true)}
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:8px">${sparklineSvg(completedDaily.map(x=>x.value).slice(-14), p.color, {w:130,h:28})}</div>
+        <div style="font-size:10px;color:var(--stone);margin-top:8px">Full analytics ›</div>`,
+        {style:'flex:1', onclick:"showScreen('work-hub');switchWorkHubTab('analytics')"})}
+    </div>
+    ${hubButton('View Full Work Hub', p.color, 'openWorkHub()', ICONS.briefcase)}`;
   container.innerHTML=html;
 }
 
@@ -11215,7 +11259,7 @@ function setWorkFilter(val) {
 
 function renderWorkProjectsBody(projects) {
   const body=document.getElementById('work-hub-body');
-  if(!projects.length) { body.innerHTML=`<div class="empty"><div class="empty-icon">🚀</div><div class="empty-text">No projects yet — add one to start tracking real progress.</div></div>`; return; }
+  if(!projects.length) { body.innerHTML=`<div class="empty"><div class="empty-icon">${ICONS.rocket}</div><div class="empty-text">No projects yet — add one to start tracking real progress.</div></div>`; return; }
   const filter=S.workProjectFilter||'Active';
   const filtered=projects.filter(pr=>(filter==='Completed')===(pr.status==='Completed'));
   if(!filtered.length) { body.innerHTML=`<div class="empty"><div class="empty-text">No ${filter.toLowerCase()} projects.</div></div>`; return; }
@@ -11238,14 +11282,14 @@ function projectCard(pr, pillarKey, returnScreen) {
   const done=subs.filter(s=>s.status==='Completed').length;
   const pct=subs.length?Math.round(done/subs.length*100):(pr.status==='Completed'?100:0);
   const remainingMin=subs.filter(s=>s.status!=='Completed').reduce((sum,s)=>sum+(Number(s.estimated_duration_minutes)||0),0);
-  return `<div class="sq-card" style="flex-direction:column;align-items:stretch" onclick="openProjectDetail(${pr.id},'${returnScreen||'work-hub'}')">
+  return glassCard(color, `
     <div class="sq-name">${pr.name||''}</div>
     <div class="sq-meta" style="margin-top:2px">${subs.length?`Est. Time Remaining: ${(remainingMin/60).toFixed(1)} hours`:'No sub-tasks yet'}</div>
     <div style="margin-top:8px">
       <div style="height:6px;background:var(--bg4);border-radius:4px;overflow:hidden"><div style="height:100%;width:${pct}%;background:${color}"></div></div>
       <div class="sq-meta" style="margin-top:6px">${pct}% Complete</div>
-    </div>
-  </div>`;
+    </div>`,
+    {style:'margin-bottom:8px', onclick:`openProjectDetail(${pr.id},'${returnScreen||'work-hub'}')`});
 }
 
 function openAddProject(pillarKey) {
@@ -11530,7 +11574,7 @@ async function renderWorkAnalyticsBody() {
   const body=document.getElementById('work-hub-body');
   const p=PILLARS.work;
   const [metricsData, tasksData]=await Promise.all([
-    req('GET','/metrics?pillar_id='+p.id+'&log_type=work_session'),
+    req('GET','/metrics?pillar_id='+p.id+'&log_type=work_session&days=90'),
     req('GET','/simple-tasks'),
   ]);
   const sessions=metricsData?.logs||[];
@@ -11538,6 +11582,30 @@ async function renderWorkAnalyticsBody() {
   const workTasks=allTasks.filter(t=>t.pillar_id===p.id && !t.parent_task_id);
   const now=new Date();
   const today=now.toISOString().split('T')[0];
+  const color=p.color;
+
+  // Focus Time trend hero -- the "metric card on the Map taps through into a real Hub
+  // drill-down" requirement: a 30-day sparkline + delta + 3 stat chips, same pattern as
+  // every other pillar, sitting above the existing 7-day bar breakdown below (that stays --
+  // a complementary zoomed-in "this week" view, not redundant with the 30-day trend).
+  const focusDaily=aggregateDaily(sessions.map(s=>({logged_at:s.logged_at, value:(Number(s.value)||0)/60})));
+  const focusVals=focusDaily.map(x=>x.value);
+  const focusHeroDelta=computeWeekDelta(focusDaily);
+  const weekCutoff=Date.now()-7*86400000;
+  const weekFocusTotal=focusDaily.filter(d=>new Date(d.logged_at).getTime()>weekCutoff).reduce((s,d)=>s+d.value,0);
+  const allFocusAvg=focusVals.length?focusVals.reduce((a,b)=>a+b,0)/focusVals.length:0;
+  const bestFocusDay=focusVals.length?Math.max(...focusVals):0;
+  const focusHeroHtml = focusDaily.length ? `
+    <div class="glass-card" style="border:1px solid ${hexToRgba(color,.22)};text-align:center;padding:20px 16px;margin-top:14px">
+      <div class="section-sub" style="margin:0 0 4px">FOCUS TIME TREND</div>
+      <div style="font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:var(--text)">${focusVals[focusVals.length-1].toFixed(1)}h/day ${deltaChipHtml(focusHeroDelta,'h',true)}</div>
+      <div style="margin-top:14px">${sparklineSvg(focusVals.slice(-30), color, {w:300,h:60})}</div>
+    </div>
+    <div style="display:flex;gap:8px;margin:12px 0 4px">
+      ${metricStatChip('This Week', weekFocusTotal.toFixed(1)+'h', color)}
+      ${metricStatChip('Daily Avg', allFocusAvg.toFixed(1)+'h', color)}
+      ${metricStatChip('Best Day', bestFocusDay.toFixed(1)+'h', color)}
+    </div>` : '';
 
   // Focus Time Distribution -- last 7 days, real per-day totals
   const days=[];
@@ -11581,19 +11649,20 @@ async function renderWorkAnalyticsBody() {
   const pctOf=n=>totalForPct?Math.round(n/totalForPct*100):0;
 
   body.innerHTML=`
-    <div class="section-sub" style="margin-top:14px">FOCUS TIME DISTRIBUTION (LAST 7 DAYS)</div>
-    <div style="display:flex;gap:6px;align-items:flex-end;padding:8px 0 4px">${barsHtml}</div>
+    ${focusHeroHtml}
+    <div class="section-sub" style="margin-top:22px">FOCUS TIME DISTRIBUTION (LAST 7 DAYS)</div>
+    ${glassCard(color, `<div style="display:flex;gap:6px;align-items:flex-end">${barsHtml}</div>`)}
 
     <div class="section-sub" style="margin-top:22px">PRODUCTIVITY TREND</div>
-    <div class="metric-card" style="background:var(--bg3)">
+    ${glassCard(color, `
       <div class="metric-val">${currentRate===null?'—':currentRate+'%'}</div>
       <div class="metric-label">On-time completion, last 30 days${delta===null?'':` · <span style="color:${delta>=0?'#5A9460':'#C46882'}">${delta>=0?'↑':'↓'} ${Math.abs(delta)}% vs prior 30 days</span>`}</div>
-    </div>
+    `)}
 
     <div class="section-sub" style="margin-top:22px">TASK COMPLETION</div>
-    <div class="sq-card"><div class="sq-info"><div class="sq-name">Completed On Time</div></div><div style="font-weight:800;color:var(--work)">${pctOf(onTimeCount)}%</div></div>
-    <div class="sq-card"><div class="sq-info"><div class="sq-name">Completed Late</div></div><div style="font-weight:800;color:var(--work)">${pctOf(lateCount)}%</div></div>
-    <div class="sq-card"><div class="sq-info"><div class="sq-name">Overdue</div></div><div style="font-weight:800;color:var(--work)">${pctOf(overdueCount)}%</div></div>
+    ${glassCard(color, `<div style="display:flex;justify-content:space-between;align-items:center"><span class="sq-name">Completed On Time</span><span style="font-weight:800;color:var(--work)">${pctOf(onTimeCount)}%</span></div>`, {style:'margin-bottom:8px'})}
+    ${glassCard(color, `<div style="display:flex;justify-content:space-between;align-items:center"><span class="sq-name">Completed Late</span><span style="font-weight:800;color:var(--work)">${pctOf(lateCount)}%</span></div>`, {style:'margin-bottom:8px'})}
+    ${glassCard(color, `<div style="display:flex;justify-content:space-between;align-items:center"><span class="sq-name">Overdue</span><span style="font-weight:800;color:var(--work)">${pctOf(overdueCount)}%</span></div>`, {style:'margin-bottom:8px'})}
   `;
 }
 
