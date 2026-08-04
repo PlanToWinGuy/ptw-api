@@ -1081,6 +1081,7 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
      FINANCES: FINANCIAL HUB + TRANSACTIONS
 ══════════════════════════════════ -->
 <div id="screen-finance-hub" class="screen">
+  <div class="accent-wash" style="background:radial-gradient(120% 70% at 50% -10%, var(--finances) 0%, transparent 60%)"></div>
   <div class="pillar-top-bar">
     <button class="icon-btn ghost" onclick="showPillarScreen('finances')">←</button>
     <h2>Financial Hub</h2>
@@ -2211,6 +2212,11 @@ const ICONS = {
   utensils: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" style="vertical-align:-0.15em"><path d="M6 2v8m0 0v12M3 2v5a3 3 0 0 0 3 3 3 3 0 0 0 3-3V2M18 2c-2 0-3 2-3 5s1 4 3 4v11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   protein: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" style="vertical-align:-0.15em"><path d="M12 3v18M6 8c0-3 2.5-5 6-5s6 2 6 5-2.5 4-6 4-6 1-6 4 2.5 5 6 5 6-2 6-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
   cart: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" style="vertical-align:-0.15em"><path d="M3 4h2l2.4 12.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.6L21 8H6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="10" cy="21" r="1.4" fill="currentColor"/><circle cx="18" cy="21" r="1.4" fill="currentColor"/></svg>',
+  target: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" style="vertical-align:-0.15em"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="12" r="5.2" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/></svg>',
+  trendUp: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" style="vertical-align:-0.15em"><polyline points="3,17 9,11 13,15 21,6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><polyline points="15,6 21,6 21,12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  wallet: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" style="vertical-align:-0.15em"><path d="M3 7a2 2 0 0 1 2-2h13a1 1 0 0 1 1 1v3H5a2 2 0 0 1-2-2z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M3 7v11a2 2 0 0 0 2 2h14a1 1 0 0 0 1-1v-9a1 1 0 0 0-1-1H6" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="17" cy="14" r="1.4" fill="currentColor"/></svg>',
+  receipt: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" style="vertical-align:-0.15em"><path d="M6 3h12v18l-2.5-1.5L13 21l-1-1.5L11 21l-2.5-1.5L6 21z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><line x1="8.5" y1="8" x2="15.5" y2="8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><line x1="8.5" y1="12" x2="15.5" y2="12" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
+  house: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-0.15em"><path d="M12 2.5 2 11h3v10h6v-6h2v6h6V11h3z"/></svg>',
 };
 const PILLARS = {
   fitness:   {id:1, key:'fitness',   label:'Fitness',   color:'#E07840', icon:PILLAR_GLYPH.fitness, emoji:PILLAR_GLYPH.fitness},
@@ -7370,6 +7376,13 @@ function aggregateDaily(logs) {
   (logs||[]).forEach(l=>{ const d=(l.logged_at||'').split('T')[0]; if(!d) return; byDate[d]=(byDate[d]||0)+(Number(l.value)||0); });
   return Object.keys(byDate).sort().map(d=>({logged_at:d, value:byDate[d]}));
 }
+// Running total over time -- for metrics that accumulate (e.g. net worth built up from
+// individually-logged assets) rather than reset daily (e.g. steps/calories). Built from
+// real log timestamps, so it's a genuine "as of that date" trend, not a fabricated one.
+function cumulativeSeries(logs) {
+  let running=0;
+  return aggregateDaily(logs).map(d=>{ running+=d.value; return {logged_at:d.logged_at, value:running}; });
+}
 // Groups any date-stamped log list into Monday-start weeks, newest week first -- the
 // "history grouped by week (not one flat list)" Hub drill-down requirement.
 function groupLogsByWeek(logs) {
@@ -9337,15 +9350,58 @@ async function loadFinanceMap() {
 
   const budgetLeft=Math.max(0, budgetTarget-monthSpending);
   const topGoalPct=topGoal?Math.round((Number(topGoal.data?.current_amount)||0)/(Number(topGoal.value)||1)*100):0;
+
+  // Metric-card trend data for the Glass treatment -- Spending is a real daily-expense
+  // trend (like Diet's Calories). Net Worth has no periodic "check-in" log of its own (each
+  // asset is logged once as a distinct item, not a recurring balance update), so it's shown
+  // as a genuine running total built from real asset-added timestamps (cumulativeSeries)
+  // rather than a fabricated smooth curve.
+  const spendingDaily=aggregateDaily(txns.filter(t=>t.data?.type==='expense').map(t=>({logged_at:t.logged_at, value:Math.abs(Number(t.value)||0)})));
+  const spendingVals=spendingDaily.map(x=>x.value);
+  const spendingDelta=computeWeekDelta(spendingDaily);
+  const netWorthSeries=cumulativeSeries(assets);
+  const netWorthVals=netWorthSeries.map(x=>x.value);
+  const netWorthDelta=computeWeekDelta(netWorthSeries);
+
   const html=`
     ${pillarMapHero({ color:p.color, ringPct:budgetTarget?monthSpending/budgetTarget:0, ringCenter:budgetPct+'%', ringLabel:'budget used', kicker:'Finances · This Month',
       headline: budgetLeft>0?`$${budgetLeft.toLocaleString()} left to spend`:'Over budget this month',
-      stats:[{icon:'💰',val:'$'+(netWorth>=1000?(netWorth/1000).toFixed(1)+'k':netWorth),label:'net worth'},{icon:'🎯',val:topGoal?topGoalPct+'%':'—',label:'top goal'},{icon:'📈',val:txns.length,label:'logged'}] })}
-    <div style="display:flex;gap:10px;margin-top:2px">
+      stats:[{icon:PILLAR_GLYPH.finances,val:'$'+(netWorth>=1000?(netWorth/1000).toFixed(1)+'k':netWorth),label:'net worth'},{icon:ICONS.target,val:topGoal?topGoalPct+'%':'—',label:'top goal'},{icon:ICONS.trendUp,val:txns.length,label:'logged'}] })}
+    <div style="display:flex;gap:10px;margin-top:2px;margin-bottom:14px">
       <button class="btn-p filled" style="background:var(--finances);border-color:var(--finances);flex:1" onclick="openLogTransaction('expense')">+ Log Expense</button>
       <button class="btn-p" style="flex:1;border-color:var(--finances);color:var(--finances)" onclick="openLogTransaction('income')">+ Log Income</button>
     </div>
-    ${hubButton('View Full Financial Hub', p.color, 'openFinanceHub()', '💵')}`;
+    <div style="display:flex;gap:10px;margin-bottom:14px">
+      ${glassCard(p.color, `
+        <div style="display:flex;align-items:center;gap:10px">
+          ${glassIcon(ICONS.receipt, p.color)}
+          <div style="flex:1;min-width:0">
+            <div class="section-sub" style="margin:0">Spending/Day</div>
+            <div style="display:flex;align-items:baseline;gap:5px;flex-wrap:wrap">
+              <span style="font-family:'Syne',sans-serif;font-size:17px;font-weight:800;color:var(--text)">$${spendingVals.length?Math.round(spendingVals[spendingVals.length-1]).toLocaleString():'0'}</span>
+              ${deltaChipHtml(spendingDelta,'',false)}
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:8px">${sparklineSvg(spendingVals.slice(-14), p.color, {w:130,h:28})}</div>
+        <div style="font-size:10px;color:var(--stone);margin-top:8px">Full budget history ›</div>`,
+        {style:'flex:1', onclick:"showScreen('finance-hub');switchFinanceHubTab('budgets')"})}
+      ${glassCard(p.color, `
+        <div style="display:flex;align-items:center;gap:10px">
+          ${glassIcon(ICONS.wallet, p.color)}
+          <div style="flex:1;min-width:0">
+            <div class="section-sub" style="margin:0">Net Worth</div>
+            <div style="display:flex;align-items:baseline;gap:5px;flex-wrap:wrap">
+              <span style="font-family:'Syne',sans-serif;font-size:17px;font-weight:800;color:var(--text)">$${netWorth>=1000?(netWorth/1000).toFixed(1)+'k':netWorth.toLocaleString()}</span>
+              ${deltaChipHtml(netWorthDelta,'',true)}
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:8px">${sparklineSvg(netWorthVals.slice(-14), p.color, {w:130,h:28})}</div>
+        <div style="font-size:10px;color:var(--stone);margin-top:8px">Full asset history ›</div>`,
+        {style:'flex:1', onclick:"showScreen('finance-hub');switchFinanceHubTab('assets')"})}
+    </div>
+    ${hubButton('View Full Financial Hub', p.color, 'openFinanceHub()', PILLAR_GLYPH.finances)}`;
   container.innerHTML=html;
 }
 
