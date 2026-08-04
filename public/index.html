@@ -8087,7 +8087,207 @@ async function submitMealRefine() {
   renderMealReview();
 }
 
-function renderMealManualEntry() { mealLogDraft={name:'',calories:0,protein_g:0,carbs_g:0,fat_g:0}; renderMealReview(); }
+// ── Manual meal entry: real food search (USDA FoodData Central via /api/metrics
+// ?action=food-search, proxied server-side so the API key never ships to the client) with
+// a live-scaling quantity/portion selector, MyFitnessPal-style -- add one or more foods,
+// each gets its own portion, then Continue folds the running totals into the SAME
+// mealLogDraft shape the photo-scan flow produces and hands off to the untouched
+// renderMealReview()/renderMealIngredientsList() for the final name/macro tweak + log step.
+let mealManualItems=[], mealSearchTimer=null, mealSearchResults=[], mealSearchSeq=0, mealFoodPortionFood=null;
+
+function renderMealManualEntry() {
+  mealLogDraft=null;
+  mealManualItems=[];
+  mealSearchResults=[];
+  renderMealManualSearch();
+}
+
+function renderMealManualSearch() {
+  const total=mealManualItems.reduce((a,it)=>({calories:a.calories+it.calories,protein_g:a.protein_g+it.protein_g,carbs_g:a.carbs_g+it.carbs_g,fat_g:a.fat_g+it.fat_g}),{calories:0,protein_g:0,carbs_g:0,fat_g:0});
+  document.getElementById('meal-log-body').innerHTML=`
+    <div class="field" style="margin-top:6px">
+      <label>SEARCH FOOD DATABASE</label>
+      <input type="text" id="ml-food-search" placeholder="e.g. grilled chicken breast, greek yogurt..." autocomplete="off" oninput="onMealFoodSearchInput(this.value)" style="width:100%;padding:12px;background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:10px;color:var(--text);font-size:13px;font-family:'Inter',sans-serif;outline:none">
+    </div>
+    <div id="ml-food-search-status" style="font-size:11px;color:var(--stone);min-height:14px;margin:2px 0 6px"></div>
+    <div id="ml-food-search-results" style="display:flex;flex-direction:column;gap:6px;max-height:220px;overflow-y:auto"></div>
+    ${mealManualItems.length?`
+      <div class="section-sub" style="margin-top:16px">ADDED TO THIS MEAL</div>
+      <div id="ml-manual-items-list" style="margin-top:6px"></div>
+      <div class="metric-row" style="margin-top:10px">
+        <div class="metric-card"><div class="metric-label">Calories</div><div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--diet)">${Math.round(total.calories)}</div></div>
+        <div class="metric-card"><div class="metric-label">Protein (g)</div><div style="font-size:16px;color:var(--text)">${Math.round(total.protein_g)}</div></div>
+      </div>
+      <div class="metric-row">
+        <div class="metric-card"><div class="metric-label">Carbs (g)</div><div style="font-size:16px;color:var(--text)">${Math.round(total.carbs_g)}</div></div>
+        <div class="metric-card"><div class="metric-label">Fat (g)</div><div style="font-size:16px;color:var(--text)">${Math.round(total.fat_g)}</div></div>
+      </div>
+      <button class="btn-p filled" style="margin-top:14px" onclick="finishMealManualEntry()">Continue</button>
+    `:''}
+    <button class="btn-p" style="margin-top:${mealManualItems.length?'8px':'16px'};border-color:transparent;color:var(--blue)" onclick="openMealCustomFood()">Can't find it? Enter a custom food</button>`;
+  if(mealManualItems.length) renderMealManualItemsList();
+}
+
+function onMealFoodSearchInput(val) {
+  clearTimeout(mealSearchTimer);
+  const q=val.trim();
+  const statusEl=document.getElementById('ml-food-search-status');
+  const resultsEl=document.getElementById('ml-food-search-results');
+  if(!q) { if(statusEl) statusEl.textContent=''; if(resultsEl) resultsEl.innerHTML=''; mealSearchResults=[]; return; }
+  if(statusEl) statusEl.textContent='Searching…';
+  mealSearchTimer=setTimeout(()=>runMealFoodSearch(q), 400);
+}
+
+async function runMealFoodSearch(q) {
+  const seq=++mealSearchSeq;
+  const data=await req('GET','/metrics?action=food-search&query='+encodeURIComponent(q));
+  if(seq!==mealSearchSeq) return; // a newer keystroke's search already landed -- drop this stale response
+  const statusEl=document.getElementById('ml-food-search-status');
+  const resultsEl=document.getElementById('ml-food-search-results');
+  if(!resultsEl) return; // user navigated away while the request was in flight
+  const foods=data?.foods||[];
+  mealSearchResults=foods;
+  if(statusEl) statusEl.textContent = foods.length ? '' : (data?.message || 'No matches — try a different search or enter it manually');
+  resultsEl.innerHTML = foods.map((f,i)=>`
+    <div onclick="openMealFoodPortion(${i})" style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px;background:var(--bg3);border-radius:8px;cursor:pointer">
+      <div style="min-width:0">
+        <div style="font-size:13px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.name}</div>
+        ${f.brand?`<div style="font-size:11px;color:var(--stone);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.brand}</div>`:''}
+      </div>
+      <div style="font-size:12px;color:var(--stone);white-space:nowrap;flex-shrink:0">${Math.round(f.per100g.calories)} kcal/100g</div>
+    </div>`).join('');
+}
+
+// Portion selector: grams / ounces / label-serving (when the food has one), scaling the
+// per-100g macros returned by the search live as the quantity or unit changes.
+function openMealFoodPortion(i) {
+  const f=mealSearchResults[i];
+  if(!f) return;
+  mealFoodPortionFood=f;
+  openConfirm('Add Food', '', ()=>{});
+  document.getElementById('confirm-body').innerHTML=`
+    <div style="font-size:14px;color:var(--text);font-weight:600;margin-bottom:2px">${f.name}</div>
+    ${f.brand?`<div style="font-size:11px;color:var(--stone);margin-bottom:8px">${f.brand}</div>`:''}
+    <div style="display:flex;gap:8px;align-items:center;margin:10px 0">
+      <input type="number" id="mfp-qty" value="${f.servingSize?1:100}" min="0" step="any" oninput="updateMealFoodPortionPreview()" style="flex:1;padding:10px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none">
+      <select id="mfp-unit" onchange="updateMealFoodPortionPreview()" style="flex:1.4;padding:10px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text)">
+        ${f.servingSize?`<option value="serving">serving${f.householdServing?' ('+f.householdServing+')':' ('+f.servingSize+f.servingSizeUnit+')'}</option>`:''}
+        <option value="g" ${!f.servingSize?'selected':''}>grams</option>
+        <option value="oz">ounces</option>
+      </select>
+    </div>
+    <div id="mfp-preview"></div>
+    <div style="font-size:10px;color:var(--stone);margin-top:8px">Per 100g: ${Math.round(f.per100g.calories)} kcal · ${f.per100g.protein_g}g protein · ${f.per100g.carbs_g}g carbs · ${f.per100g.fat_g}g fat</div>`;
+  updateMealFoodPortionPreview();
+  const yesBtn=document.getElementById('confirm-yes-btn');
+  yesBtn.textContent='Add to Meal';
+  yesBtn.onclick=()=>{
+    const scaled=computeMealFoodPortion(f);
+    if(!scaled) { toast('Enter a quantity'); return; }
+    const qty=document.getElementById('mfp-qty').value, unit=document.getElementById('mfp-unit').value;
+    mealManualItems.push({name:f.name, qty, unit, ...scaled});
+    closeModal('modal-confirm');
+    renderMealManualSearch();
+  };
+}
+
+function computeMealFoodPortion(f) {
+  const qtyRaw=Number(document.getElementById('mfp-qty')?.value);
+  const unit=document.getElementById('mfp-unit')?.value||'g';
+  if(!qtyRaw || qtyRaw<=0) return null;
+  let grams=qtyRaw;
+  if(unit==='oz') grams=qtyRaw*28.3495;
+  else if(unit==='serving') grams=qtyRaw*(f.servingSize||100);
+  const factor=grams/100;
+  return {
+    calories: Math.round((f.per100g.calories||0)*factor),
+    protein_g: Math.round((f.per100g.protein_g||0)*factor*10)/10,
+    carbs_g: Math.round((f.per100g.carbs_g||0)*factor*10)/10,
+    fat_g: Math.round((f.per100g.fat_g||0)*factor*10)/10,
+  };
+}
+
+function updateMealFoodPortionPreview() {
+  const el=document.getElementById('mfp-preview');
+  if(!el || !mealFoodPortionFood) return;
+  const scaled=computeMealFoodPortion(mealFoodPortionFood);
+  el.innerHTML = scaled ? `
+    <div class="metric-row" style="margin-bottom:0">
+      <div class="metric-card"><div class="metric-label">Calories</div><div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:var(--diet)">${scaled.calories}</div></div>
+      <div class="metric-card"><div class="metric-label">Protein (g)</div><div style="font-size:15px;color:var(--text)">${scaled.protein_g}</div></div>
+    </div>
+    <div class="metric-row" style="margin-top:8px;margin-bottom:0">
+      <div class="metric-card"><div class="metric-label">Carbs (g)</div><div style="font-size:15px;color:var(--text)">${scaled.carbs_g}</div></div>
+      <div class="metric-card"><div class="metric-label">Fat (g)</div><div style="font-size:15px;color:var(--text)">${scaled.fat_g}</div></div>
+    </div>` : `<div style="font-size:12px;color:var(--stone)">Enter a quantity above</div>`;
+}
+
+// Fallback for foods USDA doesn't have -- same repeatable modal-confirm pattern as the
+// portion selector above, just with hand-typed macros instead of a scaled lookup.
+function openMealCustomFood() {
+  openConfirm('Custom Food', '', ()=>{});
+  document.getElementById('confirm-body').innerHTML=`
+    <input type="text" id="mcf-name" placeholder="Food name" style="width:100%;padding:10px;margin-bottom:8px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);outline:none">
+    <div style="display:flex;gap:6px">
+      <input type="number" id="mcf-cal" placeholder="Calories" style="flex:1;padding:8px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none">
+      <input type="number" id="mcf-protein" placeholder="Protein g" style="flex:1;padding:8px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none">
+    </div>
+    <div style="display:flex;gap:6px;margin-top:6px">
+      <input type="number" id="mcf-carbs" placeholder="Carbs g" style="flex:1;padding:8px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none">
+      <input type="number" id="mcf-fat" placeholder="Fat g" style="flex:1;padding:8px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none">
+    </div>`;
+  const yesBtn=document.getElementById('confirm-yes-btn');
+  yesBtn.textContent='Add to Meal';
+  yesBtn.onclick=()=>{
+    const name=document.getElementById('mcf-name').value.trim();
+    if(!name) { toast('Enter a food name'); return; }
+    mealManualItems.push({
+      name, qty:'', unit:'',
+      calories:Number(document.getElementById('mcf-cal').value)||0,
+      protein_g:Number(document.getElementById('mcf-protein').value)||0,
+      carbs_g:Number(document.getElementById('mcf-carbs').value)||0,
+      fat_g:Number(document.getElementById('mcf-fat').value)||0,
+    });
+    closeModal('modal-confirm');
+    renderMealManualSearch();
+  };
+}
+
+function renderMealManualItemsList() {
+  const holder=document.getElementById('ml-manual-items-list');
+  if(!holder) return;
+  holder.innerHTML = mealManualItems.map((it,i)=>`
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--bg3);border-radius:8px;margin-bottom:6px">
+      <div style="min-width:0">
+        <div style="font-size:13px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${it.name}</div>
+        <div style="font-size:11px;color:var(--stone)">${it.qty?it.qty+' '+(it.unit==='g'?'g':it.unit==='oz'?'oz':it.unit==='serving'?'serving':''):'custom'} · ${it.calories} kcal</div>
+      </div>
+      <button type="button" onclick="removeMealManualItem(${i})" style="width:24px;height:24px;flex-shrink:0;border-radius:50%;border:none;background:var(--bg4);color:var(--stone);font-size:16px;line-height:1;cursor:pointer">−</button>
+    </div>`).join('');
+}
+function removeMealManualItem(i) {
+  mealManualItems.splice(i,1);
+  renderMealManualSearch();
+}
+
+// Folds the running per-item totals into the same draft shape the photo-scan flow
+// produces (name/calories/protein_g/carbs_g/fat_g + scanned_ingredients) and hands off to
+// the UNTOUCHED renderMealReview()/renderMealIngredientsList() for the final tweak + log
+// step -- manual entry gets its own search/portion UI without needing its own review/log
+// code path.
+function finishMealManualEntry() {
+  if(!mealManualItems.length) { toast('Add at least one food first'); return; }
+  const total=mealManualItems.reduce((a,it)=>({calories:a.calories+it.calories,protein_g:a.protein_g+it.protein_g,carbs_g:a.carbs_g+it.carbs_g,fat_g:a.fat_g+it.fat_g}),{calories:0,protein_g:0,carbs_g:0,fat_g:0});
+  mealLogDraft={
+    name: mealManualItems.length===1 ? mealManualItems[0].name : mealManualItems.map(it=>it.name).join(', '),
+    calories: Math.round(total.calories),
+    protein_g: Math.round(total.protein_g*10)/10,
+    carbs_g: Math.round(total.carbs_g*10)/10,
+    fat_g: Math.round(total.fat_g*10)/10,
+    scanned_ingredients: mealManualItems.map(it=>it.name),
+  };
+  renderMealReview();
+}
 
 function renderMealReview() {
   const d=mealLogDraft||{};
@@ -8219,6 +8419,15 @@ function showMealLoggedCelebration(m) {
 // FITNESS PILLAR — real workout tracking
 // ════════════════════════════════════════
 let workoutPlansCache={}, activeWorkout=null, mealPlansCache={};
+// Cached so an active session doesn't refetch on every render -- invalidated in
+// savePillarPreferences() whenever the fitness scope is saved so a toggle flip takes
+// effect on the very next workout without a full page reload.
+let fitnessPrefsCache=null;
+async function getFitnessPrefs() {
+  if(fitnessPrefsCache) return fitnessPrefsCache;
+  fitnessPrefsCache = await req('GET','/preferences/fitness') || {};
+  return fitnessPrefsCache;
+}
 // A meal plan's calorie count lives on the metric_log row's own `value` column, not
 // inside `data` (older plans predate api/goals.js storing it in both places) -- caching
 // `pl.data` alone silently dropped calories, so every plan-based "Log This Meal" recorded
@@ -8377,6 +8586,42 @@ async function loadFitnessMap() {
 // target right in the text; this session's remaining count is that target minus whatever
 // has already been logged today, so multiple short walks across the day all count toward
 // the same daily goal instead of resetting each time. ──
+// ─── NATIVE HEALTH DATA (Part B) -- @capgo/capacitor-health, Android Health Connect /
+// iOS HealthKit, wired into the ptw-native Capacitor shell. window.Capacitor only ever
+// exists inside that shell (undefined in the plain web PWA, so every function here is a
+// genuine no-op there -- manual entry below is unaffected). Falls back silently to manual
+// entry on any failure (unsupported device, denied permission, plugin error) -- this is a
+// real device's actual step count, not the old idea of a DeviceMotion/accelerometer
+// approximation, which this app never actually shipped -- it's a real upgrade over the
+// manual-only entry that existed before.
+function nativeHealthPlugin() {
+  return (window.Capacitor?.isNativePlatform?.() && window.Capacitor.Plugins?.Health) || null;
+}
+let nativeHealthReadAuthorized=null; // null = not asked this session yet
+async function ensureNativeHealthAuthorized() {
+  const Health=nativeHealthPlugin();
+  if(!Health) return false;
+  if(nativeHealthReadAuthorized!==null) return nativeHealthReadAuthorized;
+  try {
+    const avail=await Health.isAvailable();
+    if(!avail?.available) { nativeHealthReadAuthorized=false; return false; }
+    const status=await Health.requestAuthorization({read:['steps']});
+    nativeHealthReadAuthorized = Array.isArray(status?.readAuthorized) && status.readAuthorized.includes('steps');
+  } catch(e) { console.warn('native health authorization failed', e); nativeHealthReadAuthorized=false; }
+  return nativeHealthReadAuthorized;
+}
+async function readNativeStepsToday() {
+  const Health=nativeHealthPlugin();
+  if(!Health) return null;
+  const ok=await ensureNativeHealthAuthorized();
+  if(!ok) return null;
+  try {
+    const start=new Date(); start.setHours(0,0,0,0);
+    const res=await Health.readSamples({dataType:'steps', startDate:start.toISOString(), endDate:new Date().toISOString(), limit:1000});
+    return (res?.samples||[]).reduce((sum,x)=>sum+(Number(x.value)||0), 0);
+  } catch(e) { console.warn('native health steps read failed', e); return null; }
+}
+
 let stepsLoggerState=null;
 function parseStepsTarget(text) {
   const m=String(text||'').match(/(\d[\d,]*)\s*steps?/i);
@@ -8393,21 +8638,49 @@ async function openStepsLogger(task) {
   const loggedToday=(data?.logs||[]).filter(l=>(l.logged_at||'').split('T')[0]===today).reduce((s,l)=>s+(Number(l.value)||0),0);
   stepsLoggerState={target, loggedToday};
   renderStepsLogger();
+  // Non-blocking: only ever resolves to a real number inside the native shell with Health
+  // Connect/HealthKit access granted -- render() re-runs once it lands, or never fires on web.
+  if(nativeHealthPlugin()) {
+    readNativeStepsToday().then(n=>{ if(n!=null && stepsLoggerState) { stepsLoggerState.nativeToday=n; renderStepsLogger(); } });
+  }
 }
 function renderStepsLogger() {
   const s=stepsLoggerState;
   const remaining=Math.max(0, s.target-s.loggedToday);
+  const hasNative=!!nativeHealthPlugin();
   document.getElementById('workout-log-body').innerHTML=`
     <div class="rm-goal-card" style="text-align:center;margin-top:14px">
       <div class="section-sub">TODAY'S GOAL</div>
       <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--text);margin:6px 0">${s.target.toLocaleString()} steps</div>
       <div style="font-size:12px;color:var(--stone)">${s.loggedToday.toLocaleString()} logged today${remaining>0?` — ${remaining.toLocaleString()} more needed this session`:' — goal already hit today! 🎉'}</div>
     </div>
+    ${hasNative ? `
+    <div class="rm-goal-card" style="margin-top:14px;text-align:center">
+      <div class="section-sub">HEALTH CONNECT</div>
+      <div style="font-size:12px;color:var(--stone);margin:6px 0 10px">${s.nativeToday!=null ? s.nativeToday.toLocaleString()+' steps recorded on this device today' : 'Checking your device’s real step count…'}</div>
+      <button class="btn-p" style="width:100%" onclick="syncNativeStepsToLog()">🔄 Sync from Health Connect</button>
+    </div>` : ''}
     <div class="rm-goal-card" style="margin-top:14px">
       <div class="section-sub" style="text-align:center">LOG THIS SESSION'S STEPS</div>
       <input type="number" id="steps-actual" placeholder="e.g. ${remaining||2000}" style="width:100%;margin-top:10px;padding:12px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;font-size:18px;outline:none">
       <button class="btn-p filled" style="margin-top:14px;background:var(--fitness);border-color:var(--fitness)" onclick="confirmLogSteps()">Log Steps</button>
     </div>`;
+}
+// Health Connect gives a running daily total, not a "this session" delta -- logging the
+// gap since our last logged total (never negative, never a re-log of the same steps) keeps
+// this consistent with how every other steps log already accumulates loggedToday.
+async function syncNativeStepsToLog() {
+  const s=stepsLoggerState;
+  if(!s) return;
+  const nativeTotal=await readNativeStepsToday();
+  if(nativeTotal==null) { toast('Health Connect data unavailable — enter steps manually below'); return; }
+  s.nativeToday=nativeTotal;
+  const delta=Math.max(0, Math.round(nativeTotal)-s.loggedToday);
+  if(delta<=0) { toast('Already up to date with Health Connect'); renderStepsLogger(); return; }
+  const p=PILLARS.fitness;
+  const taskId=S.pendingTaskId; S.pendingTaskId=null;
+  const result=await req('POST','/metrics',{pillar_id:p.id, log_type:'steps', value:delta, unit:'steps', task_id:taskId||undefined, data:{target:s.target, source:'health_connect'}});
+  showStepsLogged({steps:delta, xp:result?.xp_gained||0, totalToday:s.loggedToday+delta, target:s.target});
 }
 async function confirmLogSteps() {
   const steps=Number(document.getElementById('steps-actual').value)||0;
@@ -8517,16 +8790,38 @@ function startPastWorkout(planId) {
   startWorkout(planId);
 }
 
+// Each row is add/remove/reorder-able (coach-authored plans need real editing, not just
+// an append-only list) -- up/down swap the row with its neighbor rather than drag-drop,
+// which needs no extra library and works the same on touch and mouse.
 function renderTemplateRows() {
   document.getElementById('tpl-rows').innerHTML = S.tplRows.map((r,i)=>`
-    <div style="display:flex;gap:6px">
-      <input type="text" placeholder="Exercise" value="${r.name}" oninput="S.tplRows[${i}].name=this.value" style="flex:2;padding:8px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);outline:none">
-      <input type="number" placeholder="Sets" value="${r.sets}" oninput="S.tplRows[${i}].sets=Number(this.value)" style="flex:1;padding:8px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none">
-      <input type="number" placeholder="Reps" value="${r.reps}" oninput="S.tplRows[${i}].reps=Number(this.value)" style="flex:1;padding:8px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none">
-      <input type="number" placeholder="Kg" value="${r.weight}" oninput="S.tplRows[${i}].weight=Number(this.value)" style="flex:1;padding:8px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none">
+    <div class="rm-goal-card" style="padding:8px;margin-bottom:0">
+      <div style="display:flex;gap:6px;align-items:center">
+        <input type="text" placeholder="Exercise" value="${r.name}" oninput="S.tplRows[${i}].name=this.value" style="flex:1;min-width:0;padding:8px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);outline:none">
+        <button type="button" class="cta-micro" style="width:26px;height:26px;font-size:12px;flex-shrink:0" onclick="moveTemplateRow(${i},-1)" ${i===0?'disabled':''} title="Move up">↑</button>
+        <button type="button" class="cta-micro" style="width:26px;height:26px;font-size:12px;flex-shrink:0" onclick="moveTemplateRow(${i},1)" ${i===S.tplRows.length-1?'disabled':''} title="Move down">↓</button>
+        <button type="button" class="cta-micro" style="width:26px;height:26px;font-size:12px;flex-shrink:0;color:#c46882" onclick="removeTemplateRow(${i})" title="Remove exercise">✕</button>
+      </div>
+      <div style="display:flex;gap:6px;margin-top:6px">
+        <div style="flex:1"><div style="font-size:9px;color:var(--stone);text-align:center;margin-bottom:2px">SETS</div><input type="number" value="${r.sets}" oninput="S.tplRows[${i}].sets=Number(this.value)" style="width:100%;padding:8px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none"></div>
+        <div style="flex:1"><div style="font-size:9px;color:var(--stone);text-align:center;margin-bottom:2px">REPS</div><input type="number" value="${r.reps}" oninput="S.tplRows[${i}].reps=Number(this.value)" style="width:100%;padding:8px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none"></div>
+        <div style="flex:1"><div style="font-size:9px;color:var(--stone);text-align:center;margin-bottom:2px">KG</div><input type="number" value="${r.weight}" oninput="S.tplRows[${i}].weight=Number(this.value)" style="width:100%;padding:8px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none"></div>
+        <div style="flex:1"><div style="font-size:9px;color:var(--stone);text-align:center;margin-bottom:2px">REST(S)</div><input type="number" value="${r.rest}" oninput="S.tplRows[${i}].rest=Number(this.value)" style="width:100%;padding:8px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none"></div>
+      </div>
     </div>`).join('');
 }
-function addTemplateRow() { S.tplRows.push({name:'',sets:3,reps:10,weight:0}); renderTemplateRows(); }
+function addTemplateRow() { S.tplRows.push({name:'',sets:3,reps:10,weight:0,rest:90}); renderTemplateRows(); }
+function removeTemplateRow(i) {
+  S.tplRows.splice(i,1);
+  if(!S.tplRows.length) S.tplRows.push({name:'',sets:3,reps:10,weight:0,rest:90});
+  renderTemplateRows();
+}
+function moveTemplateRow(i,dir) {
+  const j=i+dir;
+  if(j<0||j>=S.tplRows.length) return;
+  [S.tplRows[i],S.tplRows[j]]=[S.tplRows[j],S.tplRows[i]];
+  renderTemplateRows();
+}
 
 // Activity type registry -- shared by the template creator, plan cards, active session
 // dispatch, and history/detail rendering, so adding a type in one place doesn't require
@@ -8553,25 +8848,33 @@ function workoutPlanSummary(d) {
 // activity typed here, even a one-off like "Squash", is available to reuse next time --
 // then jumps straight into the real logger for it via startWorkout(), same as tapping a
 // saved plan's Start button. Either way, freeform activity names are never a dead end.
-function openCreateWorkoutTemplate(mode) {
-  mode = mode==='start' ? 'start' : 'save';
+// mode='edit' (from a saved plan's Edit button, planId required): pre-fills every field
+// from the existing plan's data and PATCHes it in place instead of creating a new log
+// row, so a coach refining their own template doesn't end up with duplicates.
+function openCreateWorkoutTemplate(mode, planId) {
+  mode = mode==='start' ? 'start' : mode==='edit' ? 'edit' : 'save';
   S.tplMode=mode;
-  S.tplActivityType='strength';
-  S.tplName='';
-  S.tplRows=[{name:'',sets:3,reps:10,weight:0}];
-  S.tplCardio={durationMin:20, distance:0, intensity:'Moderate'};
-  S.tplHiit={rounds:8, workSeconds:30, restSeconds:15};
-  S.tplMobility={durationMin:10, stretches:''};
-  openConfirm(mode==='start' ? 'What Are You Doing?' : 'Create Workout Template', mode==='start' ? 'Type anything -- shoulder HIIT, a hike, morning yoga -- and get a real workout, or fill it in yourself below.' : '', ()=>{});
+  S.tplEditId = mode==='edit' ? planId : null;
+  const ed = mode==='edit' ? (workoutPlansCache[planId]||{}) : null;
+  S.tplActivityType = ed?.activityType || 'strength';
+  S.tplName = ed?.name || '';
+  S.tplRows = (ed && ed.activityType==='strength' && (ed.exercises||[]).length)
+    ? ed.exercises.map(e=>({name:e.name||'', sets:e.sets||3, reps:e.targetReps||10, weight:e.targetWeight||0, rest:e.restSec||90}))
+    : [{name:'',sets:3,reps:10,weight:0,rest:90}];
+  S.tplCardio = (ed && ed.activityType==='cardio') ? {durationMin:ed.durationMin||20, distance:ed.distance||0, intensity:ed.intensity||'Moderate'} : {durationMin:20, distance:0, intensity:'Moderate'};
+  S.tplHiit = (ed && ed.activityType==='hiit') ? {rounds:ed.rounds||8, workSeconds:ed.workSeconds||30, restSeconds:ed.restSeconds||15} : {rounds:8, workSeconds:30, restSeconds:15};
+  S.tplMobility = (ed && ed.activityType==='mobility') ? {durationMin:ed.durationMin||10, stretches:(ed.stretches||[]).join('\n')} : {durationMin:10, stretches:''};
+  const title = mode==='start' ? 'What Are You Doing?' : mode==='edit' ? 'Edit Template' : 'Create Workout Template';
+  openConfirm(title, mode==='start' ? 'Type anything -- shoulder HIIT, a hike, morning yoga -- and get a real workout, or fill it in yourself below.' : '', ()=>{});
   renderTemplateForm();
   const yesBtn=document.getElementById('confirm-yes-btn');
-  yesBtn.textContent = mode==='start' ? 'Start Now' : 'Save Template';
+  yesBtn.textContent = mode==='start' ? 'Start Now' : mode==='edit' ? 'Save Changes' : 'Save Template';
   yesBtn.onclick=async ()=>{
     const name=(document.getElementById('tpl-name')?.value||'').trim();
     if(!name) { toast('Enter an activity name'); return; }
     let data={name, activityType:S.tplActivityType, source:'manual'}, value=45, unit='min';
     if(S.tplActivityType==='strength') {
-      const exercises=S.tplRows.filter(r=>r.name.trim()).map(r=>({name:r.name.trim(), sets:r.sets||3, targetReps:r.reps||10, targetWeight:r.weight||0}));
+      const exercises=S.tplRows.filter(r=>r.name.trim()).map(r=>({name:r.name.trim(), sets:r.sets||3, targetReps:r.reps||10, targetWeight:r.weight||0, restSec:r.rest||90}));
       if(!exercises.length) { toast('Add at least one exercise'); return; }
       data.exercises=exercises;
     } else if(S.tplActivityType==='cardio') {
@@ -8588,6 +8891,14 @@ function openCreateWorkoutTemplate(mode) {
     }
     closeModal('modal-confirm');
     yesBtn.textContent='Yes';
+    if(mode==='edit') {
+      const editId=S.tplEditId;
+      await req('PATCH','/metrics',{id:editId, data});
+      workoutPlansCache[editId]=data;
+      toast('Template updated');
+      viewWorkoutPlanDetail(editId);
+      return;
+    }
     const result=await req('POST','/metrics',{pillar_id:PILLARS.fitness.id, log_type:'workout_plan', value, unit, data});
     if(mode==='start' && result?.data?.id) {
       workoutPlansCache[result.data.id]=data;
@@ -8652,7 +8963,7 @@ function renderTemplateForm() {
 function renderTplTypeBody() {
   const el=document.getElementById('tpl-type-body');
   if(S.tplActivityType==='strength') {
-    el.innerHTML=`<div id="tpl-rows" style="display:flex;flex-direction:column;gap:8px;max-height:180px;overflow-y:auto"></div>
+    el.innerHTML=`<div id="tpl-rows" style="display:flex;flex-direction:column;gap:8px;max-height:300px;overflow-y:auto"></div>
       <button class="view-log-btn" style="margin-top:10px" onclick="addTemplateRow()">+ Add Exercise Row</button>`;
     renderTemplateRows();
   } else if(S.tplActivityType==='cardio') {
@@ -8800,11 +9111,23 @@ function workoutPlanCard(plan) {
   const color=PILLARS.fitness.color;
   return glassCard(color, `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-      <span style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;gap:6px" onclick="viewWorkoutPlanDetail(${plan.id})"><span style="color:${color}">${activityIcon(d.activityType)}</span> ${d.name||'Plan'} <span style="color:var(--stone);font-size:11px">›</span></span>
+      <span style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;gap:6px;min-width:0" onclick="viewWorkoutPlanDetail(${plan.id})"><span style="color:${color};flex-shrink:0">${activityIcon(d.activityType)}</span> <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${d.name||'Plan'}</span> <span style="color:var(--stone);font-size:11px;flex-shrink:0">›</span></span>
+      <div style="display:flex;gap:12px;flex-shrink:0;margin-left:8px">
+        <span style="cursor:pointer;color:var(--stone);font-size:14px" onclick="event.stopPropagation();openCreateWorkoutTemplate('edit',${plan.id})" title="Edit template">${ICONS.pencil}</span>
+        <span style="cursor:pointer;color:#c46882;font-size:13px" onclick="event.stopPropagation();deleteWorkoutPlan(${plan.id})" title="Delete template">🗑</span>
+      </div>
     </div>
     <div style="font-size:12px;color:var(--stone);margin-bottom:10px">${workoutPlanSummary(d)}</div>
     <button class="btn-p filled" style="background:${color};border-color:${color}" onclick="startWorkout(${plan.id})">Start Workout</button>
   `, {style:'margin-bottom:10px'});
+}
+
+async function deleteWorkoutPlan(id) {
+  await req('DELETE','/metrics?id='+id);
+  delete workoutPlansCache[id];
+  toast('Template deleted');
+  showScreen('workout-hub');
+  switchWorkoutHubTab('myplans');
 }
 
 // Read-only preview of an un-started plan template -- mirrors viewWorkoutDetail()'s
@@ -8828,7 +9151,8 @@ function viewWorkoutPlanDetail(planId) {
     bodyHtml=`<div class="section-title" style="margin-top:8px">Exercises</div>
     ${(d.exercises||[]).map(ex=>`
       <div class="rm-goal-card" style="margin-bottom:10px">
-        <div style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text);margin-bottom:8px">${ex.name}</div>
+        <div style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text);margin-bottom:2px">${ex.name}</div>
+        <div style="font-size:11px;color:var(--stone);margin-bottom:6px">Rest between sets: ${ex.restSec||90}s</div>
         ${Array.from({length:ex.sets||3}).map((_,i)=>`<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--stone);padding:4px 0;border-top:1px solid rgba(196,184,168,.07)">
           <span>Set ${i+1}</span><span>Target: ${ex.targetWeight||0}kg × ${ex.targetReps||10}</span>
         </div>`).join('')}
@@ -8838,6 +9162,8 @@ function viewWorkoutPlanDetail(planId) {
     <div class="section-sub" style="margin-top:14px">TEMPLATE PREVIEW · NOT YET STARTED</div>
     ${bodyHtml}
     <button class="btn-p filled" style="margin-top:16px;background:var(--fitness);border-color:var(--fitness)" onclick="startWorkout(${planId})">Start Workout</button>
+    <button class="btn-p" style="margin-top:10px" onclick="openCreateWorkoutTemplate('edit',${planId})">✎ Edit Template</button>
+    <button class="btn-p" style="margin-top:10px;border-color:#c46882;color:#c46882" onclick="deleteWorkoutPlan(${planId})">🗑 Delete Template</button>
     <button class="btn-p" style="margin:10px 0 20px" onclick="showScreen('workout-hub')">← Back to Workout Hub</button>`;
 }
 
@@ -8964,24 +9290,29 @@ async function saveWorkoutLogCorrection(id) {
 }
 
 // ── Active workout logging ──
-function startWorkout(planId) {
+async function startWorkout(planId) {
   const planData=workoutPlansCache[planId];
   if(!planData) return;
   const type=planData.activityType||'strength';
   showScreen('workout-log');
+  document.getElementById('workout-log-body').innerHTML='<div class="spinner"></div>';
+  // Voice Guidance preference (Fitness Preferences toggle, default off) -- fetched once
+  // per session via the cache above so this await only costs real latency on the very
+  // first workout started, not every one.
+  const voiceEnabled = !!(await getFitnessPrefs()).voiceGuidance;
 
   if(type==='cardio') {
-    activeWorkout={ activityType:'cardio', planName:planData.name, targetDurationMin:planData.durationMin||20, targetDistance:planData.distance||0, intensity:planData.intensity||'Moderate', startTime:Date.now(), sessionNotes:'' };
+    activeWorkout={ activityType:'cardio', planName:planData.name, targetDurationMin:planData.durationMin||20, targetDistance:planData.distance||0, intensity:planData.intensity||'Moderate', startTime:Date.now(), sessionNotes:'', voiceEnabled };
     renderCardioSession();
     return;
   }
   if(type==='hiit') {
-    activeWorkout={ activityType:'hiit', planName:planData.name, rounds:planData.rounds||8, workSeconds:planData.workSeconds||30, restSeconds:planData.restSeconds||15, currentRound:1, phase:'work', startTime:Date.now(), sessionNotes:'' };
+    activeWorkout={ activityType:'hiit', planName:planData.name, rounds:planData.rounds||8, workSeconds:planData.workSeconds||30, restSeconds:planData.restSeconds||15, currentRound:1, phase:'work', startTime:Date.now(), sessionNotes:'', voiceEnabled };
     renderHiitSession();
     return;
   }
   if(type==='mobility') {
-    activeWorkout={ activityType:'mobility', planName:planData.name, targetDurationMin:planData.durationMin||10, stretches:(planData.stretches||[]).map(s=>({name:s, done:false})), startTime:Date.now(), sessionNotes:'' };
+    activeWorkout={ activityType:'mobility', planName:planData.name, targetDurationMin:planData.durationMin||10, stretches:(planData.stretches||[]).map(s=>({name:s, done:false})), startTime:Date.now(), sessionNotes:'', voiceEnabled };
     renderMobilitySession();
     return;
   }
@@ -8991,9 +9322,10 @@ function startWorkout(planId) {
     planName: planData.name,
     exercises: (planData.exercises||[]).map(ex=>({
       name: ex.name,
+      restSec: ex.restSec||REST_BETWEEN_SETS_SECONDS,
       sets: Array.from({length: ex.sets||3},()=>({targetWeight:ex.targetWeight||0, targetReps:ex.targetReps||10, actualWeight:null, actualReps:null})),
     })),
-    exerciseIdx:0, setIdx:0, startTime:Date.now(), sessionNotes:'',
+    exerciseIdx:0, setIdx:0, startTime:Date.now(), sessionNotes:'', voiceEnabled,
   };
   renderActiveWorkout();
 }
@@ -9058,32 +9390,58 @@ function renderHiitDone() {
     <button class="btn-p filled" style="margin-top:16px;margin-bottom:20px;background:var(--fitness);border-color:var(--fitness)" onclick="finishWorkout()">Finish Workout</button>`;
 }
 
-// A shared, no-asset chime -- Web Audio synthesized (a real gong sample would mean
+// A shared, no-asset chime -- Web Audio synthesized (a real sound sample would mean
 // bundling/fetching an audio file, which this offline-first PWA doesn't do anywhere
-// else), a cluster of low inharmonic partials fading out together reads as gong-like
-// enough to mark "pose done, moving on" without needing to look at the screen.
+// else). Four short, distinct-enough presets, each just a different note pattern/
+// waveform/decay fed through the same synth engine -- picked in Fitness Preferences
+// (see PILLAR_PREF_CONFIG.fitness's completionSound field) and persisted via the
+// existing generic /preferences/fitness scope, no new backend endpoint needed.
+const COMPLETION_SOUNDS = {
+  Gong:   { notes:[{f:110,t:0},{f:174,t:0},{f:233,t:0},{f:311,t:0}], wave:'sine',     decay:2.2, peak:0.30 },
+  Bell:   { notes:[{f:659.25,t:0},{f:987.77,t:0.03}],                 wave:'sine',     decay:1.6, peak:0.26 },
+  Chime:  { notes:[{f:523.25,t:0},{f:659.25,t:0.09},{f:783.99,t:0.18}], wave:'triangle', decay:0.9, peak:0.22 },
+  'Digital Beep': { notes:[{f:880,t:0},{f:880,t:0.14}],               wave:'square',   decay:0.12, peak:0.15 },
+};
+const DEFAULT_COMPLETION_SOUND='Gong';
 let sharedAudioCtx=null;
-function playGongSound() {
+function playCompletionSound(soundKey) {
+  const cfg=COMPLETION_SOUNDS[soundKey]||COMPLETION_SOUNDS[DEFAULT_COMPLETION_SOUND];
   try {
     if(!sharedAudioCtx) sharedAudioCtx=new (window.AudioContext||window.webkitAudioContext)();
     const ctx=sharedAudioCtx;
     if(ctx.state==='suspended') ctx.resume();
-    const now=ctx.currentTime;
-    const master=ctx.createGain();
-    master.gain.setValueAtTime(0.001, now);
-    master.gain.linearRampToValueAtTime(0.3, now+0.02);
-    master.gain.exponentialRampToValueAtTime(0.001, now+2.2);
-    master.connect(ctx.destination);
-    [110, 174, 233, 311].forEach((freq,i)=>{
+    cfg.notes.forEach(n=>{
+      const start=ctx.currentTime+n.t;
+      const master=ctx.createGain();
+      master.gain.setValueAtTime(0.001, start);
+      master.gain.linearRampToValueAtTime(cfg.peak, start+0.02);
+      master.gain.exponentialRampToValueAtTime(0.001, start+cfg.decay);
+      master.connect(ctx.destination);
       const osc=ctx.createOscillator();
-      osc.type='sine';
-      osc.frequency.value=freq;
-      const g=ctx.createGain();
-      g.gain.value=1/(i+1);
-      osc.connect(g); g.connect(master);
-      osc.start(now); osc.stop(now+2.2);
+      osc.type=cfg.wave;
+      osc.frequency.value=n.f;
+      osc.connect(master);
+      osc.start(start); osc.stop(start+cfg.decay);
     });
   } catch(e) { /* Web Audio unsupported/blocked -- silently skip, not critical */ }
+}
+// Cached after first load so every in-session gong/bell/chime doesn't refetch the
+// preference -- kept in sync immediately on save (see savePillarPreferences) rather
+// than going stale until next page load.
+let fitnessCompletionSoundCache=null;
+async function ensureFitnessCompletionSoundLoaded() {
+  if(fitnessCompletionSoundCache) return fitnessCompletionSoundCache;
+  const prefs=await req('GET','/preferences/fitness').catch(()=>null);
+  fitnessCompletionSoundCache=(prefs && COMPLETION_SOUNDS[prefs.completionSound]) ? prefs.completionSound : DEFAULT_COMPLETION_SOUND;
+  return fitnessCompletionSoundCache;
+}
+// The actual call site used wherever the completion chime plays (currently: a
+// mobility pose's hold timer hitting zero, see startMobilityCountdown) -- fetches the
+// user's chosen sound on first use (falling back to the Gong default while that's
+// still in flight) rather than making every call site await it.
+function playGongSound() {
+  playCompletionSound(fitnessCompletionSoundCache||DEFAULT_COMPLETION_SOUND);
+  if(!fitnessCompletionSoundCache) ensureFitnessCompletionSoundLoaded();
 }
 
 // ── Mobility session: active, not a static checklist -- a big countdown ring per pose
@@ -9312,7 +9670,11 @@ function logSet() {
 // catches that instead of leaking a timer against a screen that's no longer showing).
 function renderRestTimer() {
   const w=activeWorkout;
-  let remaining=REST_BETWEEN_SETS_SECONDS;
+  // Uses the upcoming exercise's own restSec (per-exercise, set on the plan by the
+  // editor) rather than the fixed global default, falling back to it for plans/rows
+  // that never set one (AI-generated plans, older saved templates).
+  const nextEx=w.exercises[w.exerciseIdx];
+  let remaining=(nextEx && nextEx.restSec) || REST_BETWEEN_SETS_SECONDS;
   document.getElementById('workout-log-body').innerHTML=`
     <div style="text-align:center;padding:50px 0">
       <div class="section-sub">REST</div>
