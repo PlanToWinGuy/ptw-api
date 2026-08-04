@@ -13,11 +13,20 @@ Estimates are approximate — say so honestly via confidence/note rather than pr
 // (log_type: "meal") to actually save it. Uses Haiku for vision since this doesn't need
 // Sonnet-level reasoning and keeping it cheap matters if it's called often.
 async function scanMeal(req, res) {
-  const { image_base64, media_type } = req.body || {};
+  const { image_base64, media_type, context_text } = req.body || {};
   if (!image_base64) return res.status(422).json({ message: 'image_base64 is required' });
 
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) return res.status(500).json({ message: 'ANTHROPIC_API_KEY not set on the server' });
+
+  // context_text does double duty: typed alongside the photo up front (pre-empting a
+  // likely misread, e.g. "it's duck not chicken"), or typed after seeing a wrong AI guess
+  // and re-sent against the SAME photo as a correction (the frontend's "Refine" step) --
+  // either way it's the user's own word on what's actually in the photo, so it should
+  // outweigh the model's own visual guess wherever the two disagree.
+  const promptText = context_text
+    ? `What is this meal and its approximate nutrition? The user says: "${context_text}" — trust this over your own visual read for anything it addresses (ingredients, cooking method, portion size, etc.), and adjust the nutrition estimate accordingly.`
+    : 'What is this meal and its approximate nutrition?';
 
   try {
     const r = await fetch(ANTHROPIC_URL, {
@@ -32,7 +41,7 @@ async function scanMeal(req, res) {
           role: 'user',
           content: [
             { type: 'image', source: { type: 'base64', media_type: media_type || 'image/jpeg', data: image_base64 } },
-            { type: 'text', text: 'What is this meal and its approximate nutrition?' },
+            { type: 'text', text: promptText },
           ],
         }],
       }),

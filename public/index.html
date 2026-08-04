@@ -3563,6 +3563,12 @@ const TOOL_HINT_OPEN = {
 function resolveTaskToolHint(t) {
   const pillarVal=t.pillar_name||t.pillar||t.pillar_id;
   if(getPillarKey(pillarVal)==='fitness' && /\bsteps?\b/i.test(t.name||'')) return 'steps';
+  // Mirrors lib/scheduling.js's REFLECT_PATTERN broadening -- "write one sentence about
+  // each of your friends" style reflection habits predate that pattern catching
+  // "write ... sentence/line/note about" phrasing, so they're stored with tool_hint=null
+  // and fall through to a generic Connection Log instead of the real Journal entry they
+  // actually describe. Same stored-but-missing override as the steps case above.
+  if(/\bwrite (one |a )?(sentence|line|note)s? (about|on)\b|\blog (one|a) (line|note|sentence)s? (per|about|on)\b/i.test(t.name||'')) return 'journal';
   return t.toolHint||t.tool_hint||null;
 }
 function openTaskByToolHint(t) {
@@ -6694,10 +6700,10 @@ async function selectHomeBackgroundPreset(key) {
   toast('Home background updated ✓');
   applyHomeBackground();
 }
-async function uploadHomeBackgroundPhoto(file) {
+async function uploadHomeBackgroundPhoto(file, filename) {
   if(!file) return;
   const fd=new FormData();
-  fd.append('image',file);
+  fd.append('image',file,filename||undefined);
   const h={};
   if(S.token) h['Authorization']='Bearer '+S.token;
   toast('Uploading...');
@@ -7310,7 +7316,8 @@ function renderMealCapture() {
   document.getElementById('meal-log-body').innerHTML=`
     <div style="text-align:center;padding:30px 0 10px">
       <div style="font-size:44px;margin-bottom:14px">📷</div>
-      <div style="font-size:13px;color:var(--stone);margin-bottom:20px;line-height:1.5">Snap a photo and AI estimates the nutrition, or enter it yourself.</div>
+      <div style="font-size:13px;color:var(--stone);margin-bottom:16px;line-height:1.5">Snap a photo and AI estimates the nutrition, or enter it yourself.</div>
+      <div class="field" style="text-align:left;margin-bottom:16px"><label>ADD CONTEXT (OPTIONAL)</label><textarea id="meal-photo-context" rows="2" placeholder="e.g. it's roasted duck, no sauce, ate half" style="width:100%;padding:12px;background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:10px;color:var(--text);font-size:13px;font-family:'Inter',sans-serif;outline:none;resize:none"></textarea></div>
       <input type="file" accept="image/*" capture="environment" id="meal-photo-input" style="display:none" onchange="handleMealPhoto(this)">
       <button class="btn-p filled" onclick="document.getElementById('meal-photo-input').click()">Take / Choose Photo</button>
       <button class="btn-p" style="margin-top:10px" onclick="renderMealManualEntry()">Enter Manually</button>
@@ -7323,13 +7330,45 @@ function handleMealPhoto(input) {
   const reader=new FileReader();
   reader.onload=async()=>{
     const base64=reader.result.split(',')[1];
+    const mediaType=file.type||'image/jpeg';
+    const contextText=(document.getElementById('meal-photo-context')?.value||'').trim();
     document.getElementById('meal-log-body').innerHTML=`<div style="padding:80px 0;text-align:center"><div class="spinner"></div><div style="font-size:13px;color:var(--stone);margin-top:12px">Reading your photo…</div></div>`;
-    const data=await req('POST','/metrics/scan-meal',{image_base64:base64, media_type:file.type||'image/jpeg'});
+    const data=await req('POST','/metrics/scan-meal',{image_base64:base64, media_type:mediaType, context_text:contextText||undefined});
     if(!data || data.message) { toast(data?.message||'Could not read that photo'); renderMealCapture(); return; }
-    mealLogDraft={...data.data, image:reader.result};
+    // Keep the raw base64/media_type around (not just the display data URL) so a later
+    // Refine correction can resend the exact same photo without re-touching the file input.
+    mealLogDraft={...data.data, image:reader.result, imageBase64:base64, imageMediaType:mediaType};
     renderMealReview();
   };
   reader.readAsDataURL(file);
+}
+
+// "Not quite right?" -- re-sends the SAME photo already on the draft plus a typed
+// correction, so a wrong AI guess (duck read as chicken) can be fixed by telling it what
+// it got wrong instead of the user having to manually retype every macro by hand.
+function openMealRefine() {
+  const body=document.getElementById('meal-log-body');
+  if(document.getElementById('meal-refine-wrap')) return;
+  const wrap=document.createElement('div');
+  wrap.id='meal-refine-wrap';
+  wrap.style.cssText='margin-top:10px;padding:12px;background:var(--bg3);border-radius:10px';
+  wrap.innerHTML=`
+    <div style="font-size:12px;color:var(--stone);margin-bottom:8px">Tell AI what it got wrong — it'll re-read the same photo with your correction.</div>
+    <textarea id="meal-refine-text" rows="2" placeholder="e.g. it was roasted duck, not chicken" style="width:100%;padding:10px;background:var(--bg4);border:1px solid rgba(196,184,168,.1);border-radius:8px;color:var(--text);font-size:13px;font-family:'Inter',sans-serif;outline:none;resize:none"></textarea>
+    <button class="btn-p filled" style="margin-top:8px;padding:8px;font-size:13px" onclick="submitMealRefine()">Re-analyze</button>`;
+  body.appendChild(wrap);
+  document.getElementById('meal-refine-text').focus();
+}
+
+async function submitMealRefine() {
+  const correction=(document.getElementById('meal-refine-text')?.value||'').trim();
+  if(!correction) { toast('Type what to correct first'); return; }
+  if(!mealLogDraft?.imageBase64) { toast('No photo to refine'); return; }
+  document.getElementById('meal-log-body').innerHTML=`<div style="padding:80px 0;text-align:center"><div class="spinner"></div><div style="font-size:13px;color:var(--stone);margin-top:12px">Re-reading with your correction…</div></div>`;
+  const data=await req('POST','/metrics/scan-meal',{image_base64:mealLogDraft.imageBase64, media_type:mealLogDraft.imageMediaType, context_text:correction});
+  if(!data || data.message) { toast(data?.message||'Could not refine that'); renderMealReview(); return; }
+  mealLogDraft={...mealLogDraft, ...data.data};
+  renderMealReview();
 }
 
 function renderMealManualEntry() { mealLogDraft={name:'',calories:0,protein_g:0,carbs_g:0,fat_g:0}; renderMealReview(); }
@@ -7339,7 +7378,10 @@ function renderMealReview() {
   document.getElementById('meal-log-body').innerHTML=`
     ${d.image?`<div style="text-align:center;margin:14px 0"><img src="${d.image}" style="width:160px;height:160px;object-fit:cover;border-radius:12px;border:1px solid rgba(196,184,168,.15)"></div>`:''}
     <div class="field"><label>MEAL NAME</label><input type="text" id="ml-name" value="${d.name||''}" placeholder="e.g. Chicken & Rice Bowl"></div>
-    <div class="section-sub" style="margin-top:14px">${d.image?'NUTRITIONAL OVERVIEW (AI ESTIMATE)':d.ingredients?'FROM YOUR MEAL PLAN':'NUTRITIONAL OVERVIEW'}</div>
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:14px">
+      <div class="section-sub" style="margin:0">${d.image?'NUTRITIONAL OVERVIEW (AI ESTIMATE)':d.ingredients?'FROM YOUR MEAL PLAN':'NUTRITIONAL OVERVIEW'}</div>
+      ${d.image&&mealLogDraft?.imageBase64?`<span style="font-size:11px;color:var(--blue);cursor:pointer;text-decoration:underline;text-underline-offset:2px" onclick="openMealRefine()">Not quite right? Refine ↻</span>`:''}
+    </div>
     <div class="metric-row">
       <div class="metric-card"><div class="metric-label">Calories</div><input type="number" id="ml-cal" value="${d.calories||0}" style="width:100%;background:transparent;border:none;color:var(--diet);font-family:'Syne',sans-serif;font-size:20px;font-weight:800;outline:none"></div>
       <div class="metric-card"><div class="metric-label">Protein (g)</div><input type="number" id="ml-protein" value="${d.protein_g||0}" style="width:100%;background:transparent;border:none;color:var(--text);font-size:16px;outline:none"></div>
@@ -9636,13 +9678,76 @@ async function submitJournalEntry() {
   if(!text) { toast('Write something first'); return; }
   const pillarKey=S.journalEntryPillar||'personal';
   const data = { text, pillar:pillarKey, ...(S.journalEntrySource?{source:S.journalEntrySource}:{}) };
-  const result=await req('POST','/metrics',{pillar_id:PILLARS[pillarKey]?.id||PILLARS.personal.id, log_type:'journal_entry', data});
+  // Opening Journal via a task's own tool_hint routing (launchTaskDetailTool) sets
+  // S.pendingTaskId same as every other logger -- this just never read it, so a task like
+  // "write one sentence about each friend" would log the entry but never actually
+  // complete the underlying task (no streak/XP credit tied to it, stayed Pending forever).
+  const taskId=S.pendingTaskId; S.pendingTaskId=null;
+  const result=await req('POST','/metrics',{pillar_id:PILLARS[pillarKey]?.id||PILLARS.personal.id, log_type:'journal_entry', task_id:taskId||undefined, data});
   toast(`+${result?.xp_gained||0} XP ⚡`);
+  // Only offer for a guided entry (a task's own reflection prompt, or an Identity
+  // Reflection card) -- suggesting a wallpaper swap on every free-form "what's on your
+  // mind" entry would turn a quiet journaling habit into a nag.
+  const guided = !!taskId || S.journalEntrySource==='identity_reflection';
   const returnTab = S.journalEntrySource==='identity_reflection' ? 'identity' : 'journal';
   S.journalEntrySource=null;
   S.journalEntryPillar=null;
+  if(guided) { offerJournalBackground(text, returnTab); return; }
   showScreen('personal-hub');
   switchPersonalHubTab(returnTab);
+}
+
+// Renders the note as a portrait wallpaper card directly on a Canvas (same-document
+// context, so it picks up the page's own loaded Syne/Inter webfonts correctly -- unlike
+// rasterizing an SVG through an <img>, which silently falls back to a system font).
+function renderJournalNoteCard(text) {
+  const W=1080, H=1920;
+  const canvas=document.createElement('canvas');
+  canvas.width=W; canvas.height=H;
+  const ctx=canvas.getContext('2d');
+  ctx.fillStyle='#0A0908';
+  ctx.fillRect(0,0,W,H);
+  ctx.textAlign='left';
+  ctx.fillStyle='#5BA4DC';
+  ctx.font="700 34px 'Syne', sans-serif";
+  ctx.fillText('PLAN TO WIN', 80, 140);
+  ctx.fillStyle='rgba(242,237,230,.5)';
+  ctx.font="500 28px 'Inter', sans-serif";
+  ctx.fillText(new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}), 80, 185);
+
+  ctx.fillStyle='#F2EDE6';
+  ctx.font="600 52px 'Syne', sans-serif";
+  const maxWidth=W-160;
+  const words=text.split(/\s+/);
+  const lines=[];
+  let line='';
+  for(const w of words) {
+    const test=line?line+' '+w:w;
+    if(ctx.measureText(test).width>maxWidth && line) { lines.push(line); line=w; }
+    else line=test;
+  }
+  if(line) lines.push(line);
+  const lineHeight=76;
+  let y=(H-lines.length*lineHeight)/2 + lineHeight/2;
+  lines.forEach(l=>{ ctx.fillText(l,80,y); y+=lineHeight; });
+  return canvas;
+}
+
+// Only offered after a guided reflection entry (see submitJournalEntry's `guided` check)
+// -- turns what was just written into a phone-wallpaper-style card and offers to set it
+// as the Home background, so a note like "one sentence about each friend" is something
+// you'll actually see daily instead of buried in a Journal list you rarely open.
+function offerJournalBackground(text, returnTab) {
+  showScreen('personal-hub');
+  switchPersonalHubTab(returnTab);
+  const canvas=renderJournalNoteCard(text);
+  const previewUrl=canvas.toDataURL('image/png');
+  openConfirm('Set as Background?', '', ()=>{
+    canvas.toBlob(blob=>{ if(blob) uploadHomeBackgroundPhoto(blob, 'journal-note.png'); }, 'image/png');
+  });
+  document.getElementById('confirm-body').innerHTML = `
+    <div style="margin:6px 0 12px">We turned today's note into a wallpaper — set it as your Home background so you'll see it daily?</div>
+    <img src="${previewUrl}" style="width:100%;max-width:200px;border-radius:14px;display:block;margin:0 auto;border:1px solid rgba(196,184,168,.15)">`;
 }
 
 // ════════════════════════════════════════
