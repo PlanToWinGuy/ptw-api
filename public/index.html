@@ -2635,6 +2635,7 @@ function submitPromoCode() {
   input.value='';
   if(val==='letsgolocomoto') {
     S.promoUnlockAll=true;
+    S.promoCode=val;
     toast('Promo unlocked — all pillars available ⚡');
     openPillarSelect();
   } else {
@@ -4171,8 +4172,14 @@ async function acceptPillarPlan() {
   if(firstStep?.type==='task' && firstStep.taskId) localStorage.setItem('ptw_first_step_task_id', String(firstStep.taskId));
   if(wasNew) {
     const p = PILLARS[key];
-    const result = await req('POST','/pillar/'+p.label+'?action=activate');
-    S.unlocked = result?.unlocked_pillars || [...S.unlocked, key];
+    const result = await req('POST','/pillar/'+p.label+'?action=activate', S.promoUnlockAll ? {promo_code:S.promoCode} : undefined);
+    // A gate rejection (403) still comes back as a parsed JSON body from req(), not a
+    // thrown error -- it just won't have unlocked_pillars. Treating that as "no unlocked
+    // list yet, so add it locally" used to silently fake success (the pillar never
+    // actually persisted server-side, so it vanished from the bottom nav/carousel on the
+    // very next data refresh even though its already-generated tasks stuck around).
+    if(!result?.unlocked_pillars) { toast(result?.message||"Couldn't activate that pillar — try again"); activationBack(); return; }
+    S.unlocked = result.unlocked_pillars;
     localStorage.setItem('ptw_unlocked',JSON.stringify(S.unlocked));
     await loadUserData(); // refresh phase_progress/can_activate_next_pillar for the new window
     showPillarCongrats(key);

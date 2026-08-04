@@ -3,6 +3,13 @@ import { cors } from '../../lib/cors.js';
 import { getUserFromRequest } from '../../lib/auth.js';
 import { getPillarState } from '../../lib/pillarState.js';
 
+// Same code the Settings screen's promo input checks client-side (ptw-pwa-v2.html
+// submitPromoCode) -- that check only bypassed the frontend's display gate, so a promo
+// activation could sail through goal generation (ungated) and then get silently 403'd
+// here, with the frontend mistaking the error body for success. Mirroring the code
+// server-side closes that gap for real instead of just hiding it further.
+const PROMO_UNLOCK_CODE = 'letsgolocomoto';
+
 // Static per-pillar activation questionnaires. These are fixed UI copy, not user data or
 // AI output, so they live here as config rather than in the database.
 const QUESTIONS = {
@@ -107,7 +114,8 @@ export default async function handler(req, res) {
 
     const pillarState = await getPillarState(user);
     const alreadyUnlocked = pillarState.unlockedPillars.includes(pillarName.toLowerCase());
-    if (!alreadyUnlocked && !pillarState.canActivateNextPillar) {
+    const promoBypass = req.body?.promo_code === PROMO_UNLOCK_CODE;
+    if (!alreadyUnlocked && !pillarState.canActivateNextPillar && !promoBypass) {
       return res.status(403).json({ message: "You haven't met the consistency requirements yet to unlock a new pillar." });
     }
 

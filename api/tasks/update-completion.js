@@ -184,16 +184,21 @@ export default async function handler(req, res) {
     }
     if (startDelayMinutes) cursor = new Date(cursor.getTime() + startDelayMinutes * 60000);
 
+    // Real Date comparison against an explicit end-of-day anchor -- the old check
+    // (cursor.getHours() >= 23) broke the moment a packed day pushed the cursor past
+    // midnight: getHours() on a rolled-over Date wraps back down to 0/1/2..., which is
+    // never >= 23, so overflow tasks silently "scheduled" at e.g. 2:00 AM under today's
+    // due_date instead of being deferred to backlog like they should've been.
+    const dayCutoff = new Date(targetDate + 'T23:00:00');
+
     const proposed = [];
     for (const t of rows) {
+      if (cursor >= dayCutoff) { tasksDeferred.push(t.name); deferredIds.push(t.id); continue; }
       const durationMin = t.estimated_duration_minutes || 30;
+      const tentativeEnd = new Date(cursor.getTime() + durationMin * 60000);
+      if (tentativeEnd > dayCutoff) { tasksDeferred.push(t.name); deferredIds.push(t.id); continue; }
       const startStr = cursor.toTimeString().slice(0, 8);
-      cursor = new Date(cursor.getTime() + durationMin * 60000);
-      if (cursor.getHours() >= 23 && cursor.getMinutes() > 0) {
-        tasksDeferred.push(t.name);
-        deferredIds.push(t.id);
-        continue;
-      }
+      cursor = tentativeEnd;
       const endStr = cursor.toTimeString().slice(0, 8);
       proposed.push({ ...t, start_time: startStr, end_time: endStr, estimated_duration_minutes: durationMin });
     }
