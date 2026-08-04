@@ -290,14 +290,17 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
   font-size:21px;position:relative;
   box-shadow:0 4px 12px rgba(0,0,0,.3);
+  color:#0A0908; /* dark mode (the base/default theme) -- black glyph on the pillar's own colour */
 }
+:root[data-theme="light"] .pillar-app-icon{ color:#fff; } /* light mode -- white glyph instead */
 .pillar-app-icon::after{
   content:'';position:absolute;inset:-2px;border-radius:16px;
   background:transparent;border:2px solid transparent;
   transition:border-color .2s;
 }
 .pillar-app-btn:active .pillar-app-icon::after{border-color:rgba(196,184,168,.3)}
-.pillar-app-icon-name{font-size:9px;font-weight:700;color:rgba(255,255,255,.92);letter-spacing:.1px}
+.pillar-app-icon-name{font-size:9px;font-weight:700;color:#0A0908;letter-spacing:.1px}
+:root[data-theme="light"] .pillar-app-icon-name{ color:#fff; }
 .pillar-app-label{font-size:10px;color:var(--stone);font-weight:500;letter-spacing:.3px}
 .pillar-app-reason{font-size:9px;color:var(--muted);text-align:center;line-height:1.3;margin-top:1px}
 
