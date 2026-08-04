@@ -1123,15 +1123,17 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
      RELATIONS: SOCIAL HUB + CONNECTION LOG
 ══════════════════════════════════ -->
 <div id="screen-social-hub" class="screen">
+  <div class="accent-wash" style="background:radial-gradient(120% 70% at 50% -10%, var(--relations) 0%, transparent 60%)"></div>
   <div class="pillar-top-bar">
     <button class="icon-btn ghost" onclick="showPillarScreen('relations')">←</button>
     <h2>Social Hub</h2>
     <span style="width:36px"></span>
   </div>
-  <div style="display:flex;gap:8px;padding:0 18px 10px">
-    <button class="pg-btn sel" id="sh-tab-people" style="background:var(--relations);flex:1;font-size:11px" onclick="switchSocialHubTab('people')">My People</button>
-    <button class="pg-btn" id="sh-tab-history" style="background:var(--bg4);flex:1;font-size:11px" onclick="switchSocialHubTab('history')">History</button>
-    <button class="pg-btn" id="sh-tab-planner" style="background:var(--bg4);flex:1;font-size:11px" onclick="switchSocialHubTab('planner')">Planner</button>
+  <div style="display:flex;gap:6px;padding:0 18px 10px">
+    <button class="pg-btn sel" id="sh-tab-people" style="background:var(--relations);flex:1;font-size:10px;padding:8px 2px" onclick="switchSocialHubTab('people')">My People</button>
+    <button class="pg-btn" id="sh-tab-history" style="background:var(--bg4);flex:1;font-size:10px;padding:8px 2px" onclick="switchSocialHubTab('history')">History</button>
+    <button class="pg-btn" id="sh-tab-trends" style="background:var(--bg4);flex:1;font-size:10px;padding:8px 2px" onclick="switchSocialHubTab('trends')">Trends</button>
+    <button class="pg-btn" id="sh-tab-planner" style="background:var(--bg4);flex:1;font-size:10px;padding:8px 2px" onclick="switchSocialHubTab('planner')">Planner</button>
   </div>
   <div id="sh-subfilter" style="display:flex;gap:8px;padding:0 18px 12px;font-size:11px;color:var(--stone);flex-wrap:wrap"></div>
   <div class="scroll-body" style="padding:0 18px" id="social-hub-body"></div>
@@ -2217,6 +2219,10 @@ const ICONS = {
   wallet: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" style="vertical-align:-0.15em"><path d="M3 7a2 2 0 0 1 2-2h13a1 1 0 0 1 1 1v3H5a2 2 0 0 1-2-2z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M3 7v11a2 2 0 0 0 2 2h14a1 1 0 0 0 1-1v-9a1 1 0 0 0-1-1H6" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="17" cy="14" r="1.4" fill="currentColor"/></svg>',
   receipt: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" style="vertical-align:-0.15em"><path d="M6 3h12v18l-2.5-1.5L13 21l-1-1.5L11 21l-2.5-1.5L6 21z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><line x1="8.5" y1="8" x2="15.5" y2="8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><line x1="8.5" y1="12" x2="15.5" y2="12" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
   house: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-0.15em"><path d="M12 2.5 2 11h3v10h6v-6h2v6h6V11h3z"/></svg>',
+  clock: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" style="vertical-align:-0.15em"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><polyline points="12,7 12,12 16,14.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  person: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-0.15em"><circle cx="12" cy="7.5" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>',
+  users: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-0.15em"><circle cx="9" cy="8" r="3.4"/><path d="M2.5 20c0-3.6 2.9-6.5 6.5-6.5s6.5 2.9 6.5 6.5"/><circle cx="17.5" cy="9" r="2.6" opacity=".7"/><path d="M15.5 13.2c2.9.4 5 2.9 5 6.3h-3" opacity=".7"/></svg>',
+  badge: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" style="vertical-align:-0.15em"><circle cx="12" cy="9" r="6" stroke="currentColor" stroke-width="1.6"/><path d="M9 14.5 7.5 21 12 18.5 16.5 21 15 14.5" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>',
 };
 const PILLARS = {
   fitness:   {id:1, key:'fitness',   label:'Fitness',   color:'#E07840', icon:PILLAR_GLYPH.fitness, emoji:PILLAR_GLYPH.fitness},
@@ -9821,12 +9827,23 @@ async function loadRelationsMap() {
     : mostOverdueDays>0 ? `Reach out to ${mostOverdue.data?.name}`
     : `You're all caught up ✨`;
 
+  // Metric-card trend data for the Glass treatment -- both are real daily aggregates from
+  // the same connections fetched above (Social Time = minutes logged that day, Contacts
+  // Reached = how many distinct people that day, both genuinely time-stamped).
+  const socialTimeDaily=aggregateDaily(connections.map(c=>({logged_at:c.logged_at, value:(Number(c.value)||0)/60})));
+  const socialTimeVals=socialTimeDaily.map(x=>x.value);
+  const socialTimeDelta=computeWeekDelta(socialTimeDaily);
+  const byDay={};
+  connections.forEach(c=>{ const d=(c.logged_at||'').split('T')[0]; if(!d) return; (byDay[d]=byDay[d]||new Set()).add(c.data?.contactId||c.id); });
+  const reachedDaily=Object.keys(byDay).sort().map(d=>({logged_at:d, value:byDay[d].size}));
+  const reachedDelta=computeWeekDelta(reachedDaily);
+
   const html=`
     ${pillarMapHero({ color:p.color, ringPct:circleHealth/100, ringCenter:circleHealth+'%', ringLabel:'circle health', kicker:'Relations · This Week',
       headline: nextTaskName,
-      stats:[{icon:'⏱️',val:socialTimeWeek.toFixed(1)+'h',label:'social'},{icon:'🔥',val:streak,label:'streak'},{icon:'🏅',val:'Lv'+level,label:'friends'}] })}
+      stats:[{icon:ICONS.clock,val:socialTimeWeek.toFixed(1)+'h',label:'social'},{icon:ICONS.flame,val:streak,label:'streak'},{icon:ICONS.badge,val:'Lv'+level,label:'friends'}] })}
     <div class="pillar-task-card" style="background:${p.color}">
-      <div class="pt-icon">❤️</div>
+      <div class="pt-icon" style="color:#fff">${PILLAR_GLYPH.relations}</div>
       <div class="pt-info">
         <div class="pt-label">NEXT SOCIAL TASK</div>
         <div class="pt-name">${nextTaskName}</div>
@@ -9835,16 +9852,47 @@ async function loadRelationsMap() {
         <button class="pt-btn start" onclick="openConnectionLog(${mostOverdue?mostOverdue.id:'null'})">${mostOverdue?'Log':'Add'}</button>
       </div>
     </div>
-    ${hubButton('View Full Social Hub', p.color, 'openSocialHub()', '👥')}`;
+    <div style="display:flex;gap:10px;margin-top:14px">
+      ${glassCard(p.color, `
+        <div style="display:flex;align-items:center;gap:10px">
+          ${glassIcon(ICONS.clock, p.color)}
+          <div style="flex:1;min-width:0">
+            <div class="section-sub" style="margin:0">Social Time</div>
+            <div style="display:flex;align-items:baseline;gap:5px;flex-wrap:wrap">
+              <span style="font-family:'Syne',sans-serif;font-size:17px;font-weight:800;color:var(--text)">${socialTimeWeek.toFixed(1)}h</span>
+              ${deltaChipHtml(socialTimeDelta,'h',true)}
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:8px">${sparklineSvg(socialTimeVals.slice(-14), p.color, {w:130,h:28})}</div>
+        <div style="font-size:10px;color:var(--stone);margin-top:8px">Full social history ›</div>`,
+        {style:'flex:1', onclick:"showScreen('social-hub');switchSocialHubTab('trends','social_time')"})}
+      ${glassCard(p.color, `
+        <div style="display:flex;align-items:center;gap:10px">
+          ${glassIcon(ICONS.users, p.color)}
+          <div style="flex:1;min-width:0">
+            <div class="section-sub" style="margin:0">Contacts Reached</div>
+            <div style="display:flex;align-items:baseline;gap:5px;flex-wrap:wrap">
+              <span style="font-family:'Syne',sans-serif;font-size:17px;font-weight:800;color:var(--text)">${reachedDaily.length?reachedDaily[reachedDaily.length-1].value:0}</span>
+              ${deltaChipHtml(reachedDelta,'',true)}
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:8px">${sparklineSvg(reachedDaily.map(x=>x.value).slice(-14), p.color, {w:130,h:28})}</div>
+        <div style="font-size:10px;color:var(--stone);margin-top:8px">Full social history ›</div>`,
+        {style:'flex:1', onclick:"showScreen('social-hub');switchSocialHubTab('trends','contacts')"})}
+    </div>
+    ${hubButton('View Full Social Hub', p.color, 'openSocialHub()', ICONS.users)}`;
   container.innerHTML=html;
 }
 
 function openSocialHub() { showScreen('social-hub'); switchSocialHubTab('people'); }
 
-async function switchSocialHubTab(tab) {
+async function switchSocialHubTab(tab, metricView) {
   S.socialTab=tab;
-  ['people','history','planner'].forEach(t=>{
+  ['people','history','trends','planner'].forEach(t=>{
     const btn=document.getElementById('sh-tab-'+t);
+    if(!btn) return;
     btn.classList.toggle('sel', t===tab);
     btn.style.background = t===tab ? 'var(--relations)' : 'var(--bg4)';
   });
@@ -9870,10 +9918,91 @@ async function switchSocialHubTab(tab) {
     return;
   }
 
+  if(tab==='trends') {
+    await renderSocialTrendsTab(metricView || S.socialTrendsView || 'social_time');
+    return;
+  }
+
   // planner
   const data=await req('GET','/metrics?pillar_id='+p.id+'&log_type=social_event');
   S.socialEventsCache=(data?.logs||[]).sort((a,b)=>new Date(a.data?.dateTime||0)-new Date(b.data?.dateTime||0));
   renderSocialPlannerBody(S.socialEventsCache);
+}
+
+// ── Social Hub > Trends tab -- the "metric card on the Map taps through into a real Hub
+// drill-down" requirement, same pattern as every other pillar's Metrics/Nutrition tab.
+// Both metrics use the sparkline hero (plain trend framing fits daily social activity).
+async function renderSocialTrendsTab(view) {
+  S.socialTrendsView=view;
+  const body=document.getElementById('social-hub-body');
+  const p=PILLARS.relations;
+  const data=await req('GET','/metrics?pillar_id='+p.id+'&log_type=connection&days=90');
+  const connections=data?.logs||[];
+  const socialTimeDaily=aggregateDaily(connections.map(c=>({logged_at:c.logged_at, value:(Number(c.value)||0)/60})));
+  const byDay={};
+  connections.forEach(c=>{ const d=(c.logged_at||'').split('T')[0]; if(!d) return; (byDay[d]=byDay[d]||new Set()).add(c.data?.contactId||c.id); });
+  const reachedDaily=Object.keys(byDay).sort().map(d=>({logged_at:d, value:byDay[d].size}));
+  const toggle=`<div style="display:flex;gap:8px;margin-bottom:14px">
+    <button class="pg-btn" style="flex:1;font-size:11px;background:${view==='social_time'?'var(--relations)':'var(--bg4)'}" onclick="renderSocialTrendsTab('social_time')">Social Time</button>
+    <button class="pg-btn" style="flex:1;font-size:11px;background:${view==='contacts'?'var(--relations)':'var(--bg4)'}" onclick="renderSocialTrendsTab('contacts')">Contacts</button>
+  </div>`;
+  body.innerHTML = toggle + (view==='contacts' ? renderContactsTrendDetail(reachedDaily, p.color) : renderSocialTimeTrendDetail(socialTimeDaily, p.color));
+}
+function renderSocialTimeTrendDetail(chrono, color) {
+  if(!chrono.length) return `<div class="empty"><div class="empty-icon">${ICONS.clock}</div><div class="empty-text">No social activity logged yet.</div></div>`;
+  const vals=chrono.map(d=>d.value);
+  const delta=computeWeekDelta(chrono);
+  const weekCutoff=Date.now()-7*86400000;
+  const weekVals=chrono.filter(d=>new Date(d.logged_at).getTime()>weekCutoff).map(d=>d.value);
+  const weekTotal=weekVals.reduce((a,b)=>a+b,0);
+  const allAvg=vals.reduce((a,b)=>a+b,0)/vals.length;
+  const best=Math.max(...vals);
+  const hero=`<div class="glass-card" style="border:1px solid ${hexToRgba(color,.22)};text-align:center;padding:20px 16px">
+    <div class="section-sub" style="margin:0 0 4px">SOCIAL TIME TREND</div>
+    <div style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:var(--text)">${vals[vals.length-1].toFixed(1)}h/day ${deltaChipHtml(delta,'h',true)}</div>
+    <div style="margin-top:14px">${sparklineSvg(vals.slice(-30), color, {w:300,h:60})}</div>
+  </div>`;
+  const chips=`<div style="display:flex;gap:8px;margin:12px 0">
+    ${metricStatChip('This Week', weekTotal.toFixed(1)+'h', color)}
+    ${metricStatChip('Daily Avg', allAvg.toFixed(1)+'h', color)}
+    ${metricStatChip('Best Day', best.toFixed(1)+'h', color)}
+  </div>`;
+  const weeks=groupLogsByWeek([...chrono].reverse());
+  const history=weeks.map(w=>`
+    <div class="section-sub" style="margin:16px 0 8px">${weekLabel(w.weekStart)}</div>
+    ${w.logs.map(l=>`<div class="glass-card" style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;margin-bottom:8px;border:1px solid ${hexToRgba(color,.14)}">
+      <span style="font-size:12px;color:var(--stone)">${new Date(l.logged_at).toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'})}</span>
+      <span style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text)">${l.value.toFixed(1)}h</span>
+    </div>`).join('')}`).join('');
+  return hero+chips+history;
+}
+function renderContactsTrendDetail(chrono, color) {
+  if(!chrono.length) return `<div class="empty"><div class="empty-icon">${ICONS.users}</div><div class="empty-text">No social activity logged yet.</div></div>`;
+  const vals=chrono.map(d=>d.value);
+  const delta=computeWeekDelta(chrono);
+  const weekCutoff=Date.now()-7*86400000;
+  const weekVals=chrono.filter(d=>new Date(d.logged_at).getTime()>weekCutoff).map(d=>d.value);
+  const weekTotal=weekVals.reduce((a,b)=>a+b,0);
+  const allAvg=vals.reduce((a,b)=>a+b,0)/vals.length;
+  const best=Math.max(...vals);
+  const hero=`<div class="glass-card" style="border:1px solid ${hexToRgba(color,.22)};text-align:center;padding:20px 16px">
+    <div class="section-sub" style="margin:0 0 4px">CONTACTS REACHED TREND</div>
+    <div style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:var(--text)">${vals[vals.length-1]} ${deltaChipHtml(delta,'',true)}</div>
+    <div style="margin-top:14px">${sparklineSvg(vals.slice(-30), color, {w:300,h:60})}</div>
+  </div>`;
+  const chips=`<div style="display:flex;gap:8px;margin:12px 0">
+    ${metricStatChip('This Week', String(weekTotal), color)}
+    ${metricStatChip('Daily Avg', allAvg.toFixed(1), color)}
+    ${metricStatChip('Best Day', String(best), color)}
+  </div>`;
+  const weeks=groupLogsByWeek([...chrono].reverse());
+  const history=weeks.map(w=>`
+    <div class="section-sub" style="margin:16px 0 8px">${weekLabel(w.weekStart)}</div>
+    ${w.logs.map(l=>`<div class="glass-card" style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;margin-bottom:8px;border:1px solid ${hexToRgba(color,.14)}">
+      <span style="font-size:12px;color:var(--stone)">${new Date(l.logged_at).toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'})}</span>
+      <span style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text)">${l.value} contact${l.value===1?'':'s'}</span>
+    </div>`).join('')}`).join('');
+  return hero+chips+history;
 }
 
 function renderSocialSubfilter(tab) {
@@ -9898,7 +10027,7 @@ function setSocialFilter(tab, val) {
 
 function renderSocialPeopleBody(contacts, connections) {
   const body=document.getElementById('social-hub-body');
-  if(!contacts.length) { body.innerHTML=`<div class="empty"><div class="empty-icon">👥</div><div class="empty-text">No contacts yet — add the people you want to stay close to.</div></div>`+addContactFormHTML(); return; }
+  if(!contacts.length) { body.innerHTML=`<div class="empty"><div class="empty-icon">${ICONS.users}</div><div class="empty-text">No contacts yet — add the people you want to stay close to.</div></div>`+addContactFormHTML(); return; }
   const filter=S.socialPeopleFilter||'All';
   const filtered=filter==='All'?contacts:contacts.filter(c=>c.data?.category===filter);
   body.innerHTML = (filtered.length?filtered.map(c=>contactCard(c,connections)).join(''):`<div class="empty"><div class="empty-text">No one in this category yet.</div></div>`) + addContactFormHTML();
@@ -9909,7 +10038,7 @@ function renderSocialHistoryBody(connections) {
   const filter=S.socialHistoryFilter||'All';
   const filtered=filter==='All'?connections:connections.filter(c=>c.data?.type===filter);
   body.innerHTML = filtered.length ? filtered.map(connectionCard).join('') :
-    `<div class="empty"><div class="empty-icon">❤️</div><div class="empty-text">No social activity logged yet.</div></div>`;
+    `<div class="empty"><div class="empty-icon">${PILLAR_GLYPH.relations}</div><div class="empty-text">No social activity logged yet.</div></div>`;
 }
 
 function renderSocialPlannerBody(events) {
@@ -9929,14 +10058,16 @@ function eventCard(e) {
   const d=e.data||{};
   const dt=d.dateTime?new Date(d.dateTime):null;
   const dateStr=dt?dt.toLocaleDateString('en-US',{month:'short',day:'numeric'})+' · '+dt.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}):'';
-  return `<div class="sq-card">
-    <div class="sq-icon" style="background:var(--relations)22;color:var(--relations)">📅</div>
-    <div class="sq-info">
-      <div class="sq-name">${d.name||'Event'}</div>
-      <div class="sq-meta">${dateStr}${d.location?' · '+d.location:''}</div>
-      ${d.notes?`<div class="sq-meta">${d.notes}</div>`:''}
-    </div>
-  </div>`;
+  return glassCard(PILLARS.relations.color, `
+    <div style="display:flex;align-items:center;gap:12px">
+      ${glassIcon(ICONS.calendar, PILLARS.relations.color)}
+      <div style="flex:1;min-width:0">
+        <div class="sq-name">${d.name||'Event'}</div>
+        <div class="sq-meta">${dateStr}${d.location?' · '+d.location:''}</div>
+        ${d.notes?`<div class="sq-meta">${d.notes}</div>`:''}
+      </div>
+    </div>`,
+    {style:'margin-bottom:8px'});
 }
 
 // A per-contact streak counts consecutive interactions, most-recent-first, where
@@ -9959,27 +10090,31 @@ function contactCard(c,connections) {
   const last=theirConns[0];
   const daysSince=last?Math.floor((new Date()-new Date(last.logged_at))/86400000):null;
   const streak=contactStreak(theirConns, c.data?.cadenceDays||30);
-  return `<div class="sq-card" onclick="viewContactDetail(${c.id})">
-    <div class="sq-icon" style="background:var(--relations)22;color:var(--relations)">👤</div>
-    <div class="sq-info">
-      <div class="sq-name">${c.data?.name||''}</div>
-      <div class="sq-meta">${c.data?.category||''} · every ${c.data?.cadenceDays||30}d</div>
-      <div class="sq-meta">${daysSince===null?'Never contacted':daysSince===0?'Today':daysSince+' days ago'}${streak>1?` · 🔥 ${streak}x streak`:''}</div>
-    </div>
-  </div>`;
+  return glassCard(PILLARS.relations.color, `
+    <div style="display:flex;align-items:center;gap:12px">
+      ${glassIcon(ICONS.person, PILLARS.relations.color)}
+      <div style="flex:1;min-width:0">
+        <div class="sq-name">${c.data?.name||''}</div>
+        <div class="sq-meta">${c.data?.category||''} · every ${c.data?.cadenceDays||30}d</div>
+        <div class="sq-meta">${daysSince===null?'Never contacted':daysSince===0?'Today':daysSince+' days ago'}${streak>1?` · ${ICONS.flame} ${streak}x streak`:''}</div>
+      </div>
+    </div>`,
+    {style:'margin-bottom:8px', onclick:`viewContactDetail(${c.id})`});
 }
 
 function connectionCard(c) {
   const d=c.data||{};
   const date=c.logged_at?new Date(c.logged_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'';
-  return `<div class="sq-card">
-    <div class="sq-icon" style="background:var(--relations)22;color:var(--relations)">❤️</div>
-    <div class="sq-info">
-      <div class="sq-name">${d.type||'Connection'} with ${d.contactName||'someone'}</div>
-      <div class="sq-meta">${date}${c.value?' · '+c.value+' min':''} <span class="xp-tag">+${c.xp_gained??25} XP</span></div>
-      ${d.notes?`<div class="sq-meta">${d.notes}</div>`:''}
-    </div>
-  </div>`;
+  return glassCard(PILLARS.relations.color, `
+    <div style="display:flex;align-items:center;gap:12px">
+      ${glassIcon(PILLAR_GLYPH.relations, PILLARS.relations.color)}
+      <div style="flex:1;min-width:0">
+        <div class="sq-name">${d.type||'Connection'} with ${d.contactName||'someone'}</div>
+        <div class="sq-meta">${date}${c.value?' · '+c.value+' min':''} <span class="xp-tag">+${c.xp_gained??25} XP</span></div>
+        ${d.notes?`<div class="sq-meta">${d.notes}</div>`:''}
+      </div>
+    </div>`,
+    {style:'margin-bottom:8px'});
 }
 
 function addContactFormHTML() {
@@ -10008,13 +10143,13 @@ async function viewContactDetail(id) {
   const theirConns=(data?.logs||[]).filter(cn=>cn.data?.contactId===id).sort((a,b)=>new Date(b.logged_at)-new Date(a.logged_at));
   document.getElementById('contact-detail-body').innerHTML=`
     <div style="text-align:center;margin:16px 0">
-      <div style="font-size:36px">👤</div>
+      <div style="width:56px;height:56px;border-radius:50%;margin:0 auto;display:flex;align-items:center;justify-content:center;font-size:26px;background:${hexToRgba(PILLARS.relations.color,.16)};color:${tintColor(PILLARS.relations.color,.4)}">${ICONS.person}</div>
       <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:var(--text);margin-top:8px">${c.data?.name}</div>
       <div style="font-size:12px;color:var(--relations)">${c.data?.category} · every ${c.data?.cadenceDays} days</div>
     </div>
     <button class="btn-p filled" style="background:var(--relations);border-color:var(--relations)" onclick="openConnectionLog(${id})">+ Log Interaction</button>
     <div class="section-sub" style="margin-top:18px">HISTORY</div>
-    ${theirConns.length?theirConns.map(connectionCard).join(''):'<div class="empty"><div class="empty-icon">❤️</div><div class="empty-text">No interactions logged yet.</div></div>'}`;
+    ${theirConns.length?theirConns.map(connectionCard).join(''):`<div class="empty"><div class="empty-icon">${PILLAR_GLYPH.relations}</div><div class="empty-text">No interactions logged yet.</div></div>`}`;
 }
 
 let connectionLogContacts=[];
@@ -10053,27 +10188,31 @@ function renderConnectionLogForm() {
   const showPicker=S.connectionShowPicker||!contact;
   const body=document.getElementById('connection-log-body');
   if(!connectionLogContacts.length) {
-    body.innerHTML=`<div class="empty"><div class="empty-icon">👥</div><div class="empty-text">Add a contact first to log a real interaction with them.</div></div>
+    body.innerHTML=`<div class="empty"><div class="empty-icon">${ICONS.users}</div><div class="empty-text">Add a contact first to log a real interaction with them.</div></div>
       <button class="btn-p filled" style="background:var(--relations);border-color:var(--relations);margin-top:14px" onclick="showScreen('social-hub');switchSocialHubTab('people')">+ Add a Contact</button>`;
     return;
   }
   if(showPicker) {
     body.innerHTML=`
       <div class="section-sub" style="margin-top:0">WITH WHOM?</div>
-      ${connectionLogContacts.map(c=>`<div class="sq-card" onclick="selectConnectionContact(${c.id})">
-        <div class="sq-icon" style="background:var(--relations)22;color:var(--relations)">👤</div>
-        <div class="sq-info"><div class="sq-name">${c.data?.name||''}</div><div class="sq-meta">${c.data?.category||''}</div></div>
-      </div>`).join('')}`;
+      ${connectionLogContacts.map(c=>glassCard(PILLARS.relations.color, `
+        <div style="display:flex;align-items:center;gap:12px">
+          ${glassIcon(ICONS.person, PILLARS.relations.color)}
+          <div style="flex:1;min-width:0"><div class="sq-name">${c.data?.name||''}</div><div class="sq-meta">${c.data?.category||''}</div></div>
+        </div>`,
+        {style:'margin-bottom:8px', onclick:`selectConnectionContact(${c.id})`})).join('')}`;
     return;
   }
   const selType=S.connectionType||CONNECTION_TYPES[0];
   const selDuration=S.connectionDuration||30;
   body.innerHTML=`
     <div class="section-sub" style="margin-top:0">WITH</div>
-    <div class="sq-card" style="border:1.5px solid var(--relations)" onclick="S.connectionShowPicker=true;renderConnectionLogForm()">
-      <div class="sq-icon" style="background:var(--relations)22;color:var(--relations)">👤</div>
-      <div class="sq-info"><div class="sq-name">${contact.data?.name||''}</div><div class="sq-meta">Tap to change</div></div>
-    </div>
+    ${glassCard(PILLARS.relations.color, `
+      <div style="display:flex;align-items:center;gap:12px">
+        ${glassIcon(ICONS.person, PILLARS.relations.color)}
+        <div style="flex:1;min-width:0"><div class="sq-name">${contact.data?.name||''}</div><div class="sq-meta">Tap to change</div></div>
+      </div>`,
+      {onclick:'S.connectionShowPicker=true;renderConnectionLogForm()'})}
     <div class="section-sub" style="margin-top:16px">TYPE</div>
     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px">
       ${CONNECTION_TYPES.map(t=>`<button type="button" class="chip${selType===t?' sel':''}" onclick="selectConnectionType('${t.replace(/'/g,"\\'")}')">${t}</button>`).join('')}
