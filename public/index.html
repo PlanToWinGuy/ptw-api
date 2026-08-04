@@ -9433,7 +9433,7 @@ async function switchFinanceHubTab(tab) {
   else if(S.financeHistoryFilter==='Expense') txns=txns.filter(t=>t.data?.type==='expense');
   else if(FINANCE_CATEGORIES.includes(S.financeHistoryFilter)) txns=txns.filter(t=>t.data?.category===S.financeHistoryFilter);
   body.innerHTML = txns.length ? txns.map(transactionCard).join('') :
-    `<div class="empty"><div class="empty-icon">💵</div><div class="empty-text">No transactions logged yet.</div></div>`;
+    `<div class="empty"><div class="empty-icon">${ICONS.wallet}</div><div class="empty-text">No transactions logged yet.</div></div>`;
 }
 
 function setFinanceHistoryFilter(f) { S.financeHistoryFilter=f; switchFinanceHubTab('history'); }
@@ -9443,14 +9443,16 @@ function transactionCard(t) {
   const d=t.data||{};
   const isIncome=d.type==='income';
   const date=t.logged_at?new Date(t.logged_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'';
-  return `<div class="sq-card" onclick="viewTransactionDetail(${t.id})">
-    <div class="sq-icon" style="background:var(--finances)22;color:var(--finances)">${isIncome?'↑':'↓'}</div>
-    <div class="sq-info">
-      <div class="sq-name">${d.name||'Transaction'}</div>
-      <div class="sq-meta">${date}${d.category?' ('+d.category+')':''}</div>
-    </div>
-    <div style="font-family:'Syne',sans-serif;font-weight:800;color:${isIncome?'var(--finances)':'var(--text)'}">${isIncome?'+':'-'}$${Math.abs(Number(t.value)||0).toFixed(2)}</div>
-  </div>`;
+  return glassCard(PILLARS.finances.color, `
+    <div style="display:flex;align-items:center;gap:12px">
+      ${glassIcon(isIncome?ICONS.trendUp:ICONS.receipt, PILLARS.finances.color)}
+      <div style="flex:1;min-width:0">
+        <div class="sq-name">${d.name||'Transaction'}</div>
+        <div class="sq-meta">${date}${d.category?' ('+d.category+')':''}</div>
+      </div>
+      <div style="font-family:'Syne',sans-serif;font-weight:800;color:${isIncome?'var(--finances)':'var(--text)'}">${isIncome?'+':'-'}$${Math.abs(Number(t.value)||0).toFixed(2)}</div>
+    </div>`,
+    {style:'margin-bottom:8px', onclick:`viewTransactionDetail(${t.id})`});
 }
 
 async function viewTransactionDetail(id) {
@@ -9510,19 +9512,42 @@ function renderBudgetsTab() {
     const spendingByCategory={};
     thisMonthExpenses.forEach(t=>{ const c=t.data?.category; if(c) spendingByCategory[c]=(spendingByCategory[c]||0)+Math.abs(Number(t.value)||0); });
 
-    let html=`
+    // Spending-trend drill-down -- the "metric card on the Map taps through into a real Hub
+    // drill-down" requirement: a sparkline hero (plain trend framing fits daily spending)
+    // plus 3 stat chips and history grouped by week, built from real per-day expense totals.
+    const color=p.color;
+    const spendingDaily=aggregateDaily(txns.filter(t=>t.data?.type==='expense').map(t=>({logged_at:t.logged_at, value:Math.abs(Number(t.value)||0)})));
+    const spendingVals=spendingDaily.map(x=>x.value);
+    const spendDelta=computeWeekDelta(spendingDaily);
+    const weekCutoff=Date.now()-7*86400000;
+    const weekSpendVals=spendingDaily.filter(d=>new Date(d.logged_at).getTime()>weekCutoff).map(d=>d.value);
+    const weekSpendAvg=weekSpendVals.length ? weekSpendVals.reduce((a,b)=>a+b,0)/weekSpendVals.length : null;
+    const allSpendAvg=spendingVals.length ? spendingVals.reduce((a,b)=>a+b,0)/spendingVals.length : 0;
+    const bestSpendDay=spendingVals.length ? Math.min(...spendingVals) : 0;
+    const spendWeeks=groupLogsByWeek([...spendingDaily].reverse()).slice(0,4);
+    let html=spendingDaily.length ? `
+      <div class="glass-card" style="border:1px solid ${hexToRgba(color,.22)};text-align:center;padding:20px 16px;margin-top:14px">
+        <div class="section-sub" style="margin:0 0 4px">SPENDING TREND</div>
+        <div style="font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:var(--text)">$${Math.round(spendingVals[spendingVals.length-1]).toLocaleString()}/day ${deltaChipHtml(spendDelta,'',false)}</div>
+        <div style="margin-top:14px">${sparklineSvg(spendingVals.slice(-30), color, {w:300,h:60})}</div>
+      </div>
+      <div style="display:flex;gap:8px;margin:12px 0 18px">
+        ${metricStatChip('This Week', weekSpendAvg!=null?'$'+Math.round(weekSpendAvg).toLocaleString():'—', color)}
+        ${metricStatChip('Average', '$'+Math.round(allSpendAvg).toLocaleString(), color)}
+        ${metricStatChip('Best Day', '$'+Math.round(bestSpendDay).toLocaleString(), color)}
+      </div>` : '';
+    html+=`
       <div class="section-sub" style="margin-top:14px">MONTHLY BUDGET</div>
-      <div class="rm-goal-card">
+      ${glassCard(color, `
         <div style="display:flex;justify-content:space-between;margin-bottom:8px"><span style="font-family:'Syne',sans-serif;font-weight:700">$${monthSpending.toLocaleString()} / $${budgetTarget.toLocaleString()}</span><span style="color:var(--stone);font-size:12px">${pct}% Used</span></div>
         <div class="rm-progress-bar"><div class="rm-progress-fill" style="width:${pct}%;background:var(--finances)"></div></div>
         <div style="display:flex;gap:8px;margin-top:10px">
           <input type="number" id="budget-goal-input" placeholder="Set monthly budget" style="flex:1;padding:8px 12px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);outline:none">
           <button class="pt-btn" style="background:var(--finances)" onclick="setBudgetGoal()">Set</button>
-        </div>
-      </div>
+        </div>`)}
       ${allocations?`
       <div class="section-sub" style="margin-top:18px">RECOMMENDED BREAKDOWN</div>
-      <div class="rm-goal-card">
+      ${glassCard(color, `
         ${allocations.map(a=>{
           const actual=spendingByCategory[a.category]||0;
           const catPct=a.amount?Math.min(100,Math.round(actual/a.amount*100)):0;
@@ -9532,21 +9557,27 @@ function renderBudgetsTab() {
           </div>`;
         }).join('')}
         ${debtPlan?`<div style="font-size:12px;color:var(--stone);margin-top:6px">💡 ${debtPlan.strategy}: ${debtPlan.note}</div>`:''}
-      </div>`:''}
+      `)}`:''}
       <div class="section-sub" style="margin-top:18px">SAVINGS GOALS</div>
       ${goalsList.map(g=>{
         const cur=Number(g.data?.current_amount)||0, tgt=Number(g.value)||1;
         const p2=Math.min(100,Math.round(cur/tgt*100));
-        return `<div class="rm-goal-card" style="margin-bottom:10px">
+        return glassCard(color, `
           <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span style="font-family:'Syne',sans-serif;font-weight:700">${g.data?.name||'Goal'}</span><span style="font-size:12px;color:var(--stone)">$${cur.toLocaleString()}/$${tgt.toLocaleString()}</span></div>
           <div class="rm-progress-bar"><div class="rm-progress-fill" style="width:${p2}%;background:var(--finances)"></div></div>
-        </div>`;
-      }).join('') || '<div class="empty"><div class="empty-icon">🎯</div><div class="empty-text">No savings goals yet.</div></div>'}
+        `, {style:'margin-bottom:10px'});
+      }).join('') || `<div class="empty"><div class="empty-icon">${ICONS.target}</div><div class="empty-text">No savings goals yet.</div></div>`}
       <div style="display:flex;gap:8px;margin-top:10px">
         <input type="text" id="new-goal-name" placeholder="Goal name" style="flex:1;padding:8px 12px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);outline:none">
         <input type="number" id="new-goal-target" placeholder="Target $" style="width:90px;padding:8px 12px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);outline:none">
         <button class="pt-btn" style="background:var(--finances)" onclick="addSavingsGoal()">+</button>
-      </div>`;
+      </div>
+      ${spendWeeks.length ? `<div class="section-sub" style="margin-top:18px">RECENT SPENDING BY WEEK</div>${spendWeeks.map(w=>`
+        <div style="font-size:11px;color:var(--stone);margin:10px 0 6px">${weekLabel(w.weekStart)} — $${w.logs.reduce((s,l)=>s+l.value,0).toLocaleString()}</div>
+        ${w.logs.map(l=>`<div class="glass-card" style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;margin-bottom:6px;border:1px solid ${hexToRgba(color,.14)}">
+          <span style="font-size:12px;color:var(--stone)">${new Date(l.logged_at).toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'})}</span>
+          <span style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text)">$${Math.round(l.value).toLocaleString()}</span>
+        </div>`).join('')}`).join('')}` : ''}`;
     document.getElementById('finance-hub-body').innerHTML=html;
   })();
   document.getElementById('finance-hub-body').innerHTML='<div class="spinner"></div>';
@@ -9576,16 +9607,48 @@ function renderAssetsTab() {
     const logs=data?.logs||[];
     const bills=logs.filter(l=>l.log_type==='fixed_bill');
     const assets=logs.filter(l=>l.log_type==='asset');
-    let html=`
+    const color=p.color;
+
+    // Net Worth drill-down -- built from a genuine running total of when each asset was
+    // actually logged (cumulativeSeries), not a fabricated smooth curve. 3 stat chips +
+    // a week-grouped mini history of when assets were added, same pattern as every other
+    // pillar's metric drill-down.
+    const netWorthSeries=cumulativeSeries(assets);
+    const netWorthVals=netWorthSeries.map(x=>x.value);
+    const netWorth=netWorthVals.length?netWorthVals[netWorthVals.length-1]:0;
+    const nwDelta=computeWeekDelta(netWorthSeries);
+    const highestAsset=assets.length?Math.max(...assets.map(a=>Number(a.value)||0)):0;
+    let html=netWorthSeries.length ? `
+      <div class="glass-card" style="border:1px solid ${hexToRgba(color,.22)};text-align:center;padding:20px 16px;margin-top:14px">
+        <div class="section-sub" style="margin:0 0 4px">NET WORTH</div>
+        <div style="font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:var(--text)">$${netWorth.toLocaleString()} ${deltaChipHtml(nwDelta,'',true)}</div>
+        <div style="margin-top:14px">${sparklineSvg(netWorthVals.slice(-30), color, {w:300,h:60})}</div>
+      </div>
+      <div style="display:flex;gap:8px;margin:12px 0 18px">
+        ${metricStatChip('Total', '$'+netWorth.toLocaleString(), color)}
+        ${metricStatChip('Assets', String(assets.length), color)}
+        ${metricStatChip('Largest', '$'+highestAsset.toLocaleString(), color)}
+      </div>` : '';
+    html+=`
       <div class="section-sub" style="margin-top:14px">FIXED MONTHLY BILLS</div>
-      ${bills.map(b=>`<div class="sq-card"><div class="sq-icon" style="background:var(--finances)22;color:var(--finances)">📄</div><div class="sq-info"><div class="sq-name">${b.data?.name||''}</div><div class="sq-meta">Category: ${b.data?.category||''}</div></div><div style="font-weight:700">-$${(Number(b.value)||0).toLocaleString()}</div></div>`).join('') || '<div class="empty"><div class="empty-icon">📄</div><div class="empty-text">No fixed bills yet.</div></div>'}
+      ${bills.map(b=>glassCard(color, `
+        <div style="display:flex;align-items:center;gap:12px">
+          ${glassIcon(ICONS.receipt, color)}
+          <div style="flex:1;min-width:0"><div class="sq-name">${b.data?.name||''}</div><div class="sq-meta">Category: ${b.data?.category||''}</div></div>
+          <div style="font-weight:700">-$${(Number(b.value)||0).toLocaleString()}</div>
+        </div>`, {style:'margin-bottom:8px'})).join('') || `<div class="empty"><div class="empty-icon">${ICONS.receipt}</div><div class="empty-text">No fixed bills yet.</div></div>`}
       <div style="display:flex;gap:8px;margin:10px 0 20px">
         <input type="text" id="new-bill-name" placeholder="Bill name" style="flex:1;padding:8px 12px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);outline:none">
         <input type="number" id="new-bill-amount" placeholder="$" style="width:80px;padding:8px 12px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);outline:none">
         <button class="pt-btn" style="background:var(--finances)" onclick="addFixedBill()">+</button>
       </div>
       <div class="section-sub">MAJOR ASSETS</div>
-      ${assets.map(a=>`<div class="sq-card"><div class="sq-icon" style="background:var(--finances)22;color:var(--finances)">🏠</div><div class="sq-info"><div class="sq-name">${a.data?.name||''}</div><div class="sq-meta">Type: ${a.data?.type||''}</div></div><div style="font-weight:700;color:var(--finances)">+$${(Number(a.value)||0).toLocaleString()}</div></div>`).join('') || '<div class="empty"><div class="empty-icon">🏠</div><div class="empty-text">No assets yet.</div></div>'}
+      ${assets.map(a=>glassCard(color, `
+        <div style="display:flex;align-items:center;gap:12px">
+          ${glassIcon(ICONS.house, color)}
+          <div style="flex:1;min-width:0"><div class="sq-name">${a.data?.name||''}</div><div class="sq-meta">Type: ${a.data?.type||''}</div></div>
+          <div style="font-weight:700;color:var(--finances)">+$${(Number(a.value)||0).toLocaleString()}</div>
+        </div>`, {style:'margin-bottom:8px'})).join('') || `<div class="empty"><div class="empty-icon">${ICONS.house}</div><div class="empty-text">No assets yet.</div></div>`}
       <div style="display:flex;gap:8px;margin:10px 0 20px">
         <input type="text" id="new-asset-name" placeholder="Asset name" style="flex:1;padding:8px 12px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);outline:none">
         <input type="number" id="new-asset-value" placeholder="$" style="width:90px;padding:8px 12px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);outline:none">
