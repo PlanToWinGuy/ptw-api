@@ -1878,7 +1878,20 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
     <div style="font-size:13px;color:var(--stone);line-height:1.6">For now, explore our latest articles and guides on the official PTW blog.</div>
     <button class="btn-p filled" style="background:var(--blue);border-color:var(--blue)" onclick="window.open('https://plantowin.app','_blank')">🚀 Visit the PTW Blog</button>
     <div style="font-size:11px;color:var(--muted);margin-top:20px">Get exclusive guides and tools with Premium</div>
+    <button class="btn-p" style="margin-top:4px" onclick="openMembership()" id="vault-premium-btn">Go Premium</button>
   </div>
+</div>
+
+<!-- ══════════════════════════════════
+     MEMBERSHIP (Stripe billing)
+══════════════════════════════════ -->
+<div id="screen-membership" class="screen">
+  <div class="pillar-top-bar">
+    <button class="icon-btn ghost" onclick="openSettingsHub()">←</button>
+    <h2 style="font-size:15px">Membership</h2>
+    <span style="width:36px"></span>
+  </div>
+  <div class="scroll-body" id="membership-body" style="padding:20px 18px"></div>
 </div>
 
 <!-- ══════════════════════════════════
@@ -2610,6 +2623,56 @@ function settingsRow(icon, label, onclick, sub) {
 
 function openSettingsHub() { showScreen('settings'); renderSettingsBody(); }
 
+// ════════════════════════════════════════
+// MEMBERSHIP (Stripe billing) -- Checkout/Portal are hosted Stripe pages, so both
+// actions here just redirect the whole tab; there's nothing to render client-side
+// beyond the URL Stripe hands back. Real status always comes from S.userData
+// (subscription_tier/plan/renews_at), refreshed by loadUserData() -- never trust local
+// state about whether the user is actually premium.
+// ════════════════════════════════════════
+function openMembership() { showScreen('membership'); renderMembershipBody(); }
+
+function renderMembershipBody() {
+  const body=document.getElementById('membership-body');
+  const isPremium = S.userData?.subscription_tier==='premium';
+  if(isPremium) {
+    const renews = S.userData?.subscription_renews_at
+      ? new Date(S.userData.subscription_renews_at).toLocaleDateString(undefined,{month:'long',day:'numeric',year:'numeric'})
+      : null;
+    const planLabel = S.userData?.subscription_plan==='annual' ? 'Annual' : 'Monthly';
+    body.innerHTML = `
+      <div style="background:var(--bg3);border-radius:14px;padding:22px;text-align:center;margin-bottom:16px">
+        <div style="font-size:32px;margin-bottom:8px">💎</div>
+        <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:var(--text);margin-bottom:4px">PTW Premium</div>
+        <div style="font-size:13px;color:var(--stone)">${planLabel} plan${renews?' · renews '+renews:''}</div>
+      </div>
+      <button class="btn-p filled" style="background:var(--blue);border-color:var(--blue);width:100%" onclick="openBillingPortal()">Manage Subscription</button>
+    `;
+  } else {
+    body.innerHTML = `
+      <div style="text-align:center;margin-bottom:20px">
+        <div style="font-size:32px;margin-bottom:8px">💎</div>
+        <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:var(--text);margin-bottom:6px">Go Premium</div>
+        <div style="font-size:13px;color:var(--stone);line-height:1.6">Unlock the full PTW experience — deeper AI insights, the full Vault, and more.</div>
+      </div>
+      <button class="btn-p filled" style="background:var(--blue);border-color:var(--blue);width:100%;margin-bottom:10px" onclick="startCheckout('monthly')">Monthly</button>
+      <button class="btn-p" style="width:100%" onclick="startCheckout('annual')">Annual — best value</button>
+    `;
+  }
+}
+
+async function startCheckout(plan) {
+  const result = await req('POST','/billing/checkout',{plan});
+  if(result?.url) { window.location.href = result.url; }
+  else { toast('Could not start checkout — try again.'); }
+}
+
+async function openBillingPortal() {
+  const result = await req('POST','/billing/portal',{});
+  if(result?.url) { window.location.href = result.url; }
+  else { toast('Could not open billing portal.'); }
+}
+
 // Dev/testing only -- not wired to any visible button. Unlocks every pillar at once so
 // cross-pillar behavior can be tested without grinding through the real phase-gated
 // unlock pacing first. Call from the console: activateAllPillarsForTesting()
@@ -2652,7 +2715,9 @@ function submitPromoCode() {
 
 function renderSettingsBody() {
   const body=document.getElementById('settings-body');
+  const isPremium = S.userData?.subscription_tier==='premium';
   let html = `<div class="section-sub" style="margin-top:14px">ACCOUNT</div>`
+    + settingsRow('💎','Membership',"openMembership()", isPremium ? (S.userData?.subscription_plan==='annual'?'Premium · Annual':'Premium · Monthly') : 'Free plan')
     + settingsRow('👤','Edit Profile',"openProfileEditScreen()")
     + settingsRow('🔑','Account & Security',"openAccountSecurity()");
 
@@ -6290,7 +6355,11 @@ async function loadProfileMetrics() {
   `).join('')}</div>`;
 }
 
-function openProfileTools() { showScreen('vault'); }
+function openProfileTools() {
+  showScreen('vault');
+  const btn=document.getElementById('vault-premium-btn');
+  if(btn) btn.style.display = S.userData?.subscription_tier==='premium' ? 'none' : '';
+}
 
 function openProfileTrophies() {
   const key=S.unlocked[0];
@@ -6458,7 +6527,7 @@ function renderChatMessages() {
   </div>`:'';
   const lastMsg=S.chatMessages[S.chatMessages.length-1];
   const learnMore=(lastMsg?.role==='assistant' && lastMsg.text.includes(UPSELL_TEXT))
-    ? `<div style="margin:6px 0 12px"><button class="btn-p filled" style="background:var(--blue);border-color:var(--blue)" onclick="toast('Premium plans are coming soon ✨')">Learn More</button></div>` : '';
+    ? `<div style="margin:6px 0 12px"><button class="btn-p filled" style="background:var(--blue);border-color:var(--blue)" onclick="openMembership()">Learn More</button></div>` : '';
   el.innerHTML=bubbles+learnMore+quickReplies;
   el.scrollTop=el.scrollHeight;
 }
@@ -11421,6 +11490,16 @@ window.addEventListener('message',e=>{
     S.token=urlToken;
     localStorage.setItem('ptw_token',urlToken);
     history.replaceState({screen:initialScreen},'',location.pathname);
+  }
+  // Checkout/Billing Portal redirect back here as a full page load (?billing=success|
+  // cancel|return) -- loadUserData() inside enterApp() below already re-fetches
+  // subscription_tier fresh from the server, this just surfaces the outcome and cleans
+  // the URL so a refresh doesn't re-show the toast.
+  const billingResult=new URLSearchParams(location.search).get('billing');
+  if(billingResult) {
+    history.replaceState({screen:initialScreen},'',location.pathname);
+    if(billingResult==='success') setTimeout(()=>toast('Welcome to PTW Premium 💎'),600);
+    else if(billingResult==='cancel') setTimeout(()=>toast('Checkout canceled'),600);
   }
   if(S.token) {
     enterApp();
