@@ -1903,7 +1903,12 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
 </div>
 
 <!-- ══════════════════════════════════
-     RESOURCES / VAULT (4.18.C)
+     RESOURCES / VAULT (4.18.C) -- a real, searchable, PTW-curated library of short
+     practical guides (habit science, budgeting, training, etc.), one layer beneath
+     Help/FAQ: FAQ explains how the app works, the Vault helps with the life stuff the
+     app is scheduling time for. Same search+chips+accordion pattern as the Essential
+     Apps open library (4.19) so it feels like a natural part of the app, not a bolted-on
+     screen.
 ══════════════════════════════════ -->
 <div id="screen-vault" class="screen">
   <div class="pillar-top-bar">
@@ -1911,13 +1916,17 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
     <h2 style="font-size:15px">The Vault</h2>
     <span style="width:36px"></span>
   </div>
-  <div class="scroll-body" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 28px;text-align:center;gap:16px">
-    <div style="font-size:60px">📚</div>
-    <div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:700;color:var(--text)">The full Vault is coming soon.</div>
-    <div style="font-size:13px;color:var(--stone);line-height:1.6">For now, explore our latest articles and guides on the official PTW blog.</div>
-    <button class="btn-p filled" style="background:var(--blue);border-color:var(--blue)" onclick="window.open('https://plantowin.app','_blank')">🚀 Visit the PTW Blog</button>
-    <div style="font-size:11px;color:var(--muted);margin-top:20px">Get exclusive guides and tools with Premium</div>
-    <button class="btn-p" style="margin-top:4px" onclick="openMembership()" id="vault-premium-btn">Go Premium</button>
+  <div class="scroll-body" style="padding:0 18px">
+    <input type="text" id="vault-search" placeholder="Search guides…" oninput="filterVaultLibrary()" style="width:100%;padding:10px 12px;margin-top:14px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:10px;color:var(--text);outline:none;font-size:14px">
+    <div id="vault-categories" style="display:flex;gap:6px;overflow-x:auto;margin-top:10px;padding-bottom:2px"></div>
+    <div id="vault-count" style="font-size:11px;color:var(--muted);margin:12px 0 2px"></div>
+    <div id="vault-list" style="margin-top:6px"></div>
+    <div style="text-align:center;margin:24px 0 12px;padding-top:16px;border-top:1px solid rgba(196,184,168,.1)">
+      <div style="font-size:12px;color:var(--stone);margin-bottom:10px">Want more? Read the latest on the official PTW blog.</div>
+      <button class="btn-p" onclick="window.open('https://plantowin.app','_blank')">🚀 Visit the PTW Blog</button>
+      <div style="font-size:11px;color:var(--muted);margin-top:20px">Get exclusive guides and tools with Premium</div>
+      <button class="btn-p" style="margin-top:4px" onclick="openMembership()" id="vault-premium-btn">Go Premium</button>
+    </div>
   </div>
 </div>
 
@@ -3294,6 +3303,8 @@ const FAQ_ITEMS=[
   ['How do the pillars unlock?', "You start with the one pillar your Valueprint recommends. As you build consistency you move through phases, and each phase unlocks more pillars — so you're never asked to fix your whole life at once. You can also set your pillar priority in Settings."],
   ['How does the AI build my plan?', "When you set a goal, the AI writes a real phased roadmap with scheduled tasks, habits, and tips tailored to your answers. You can refine any plan later without regenerating the whole thing — just tell it what to change."],
   ['What is the Reshuffle / Shuffle Day button?', "Life happens. Tap it when your day goes sideways, tell it why, and it rebalances what's left — deferring, shortening, and protecting your streaks — and can suggest a saved to-do that now fits your changed day."],
+  ['What are Routines, and how are they different from To-Dos?', "Routines are the recurring backbone of your day — things like your Morning and Wind-Down blocks — that generate real scheduled tasks automatically on their own cadence. To-Dos are one-off items you add yourself. Both live under To-Do & Routines, and each routine builds its own named streak on the Trophies tab as you keep showing up for it."],
+  ['What are Streak Save tokens?', "Each pillar you're active in banks up to 2 Streak Save tokens, earned by hitting 90%+ completion in a week. If a day's completion drops below 50%, a token is spent automatically to protect that streak from breaking — you'll see exactly which past days were covered by a token (versus genuinely completed) on the Streaks tab."],
   ['What is LifeScore?', "LifeScore is a projected healthspan estimate in years that rises as you invest across your pillars. It's a motivational north star, not medical advice."],
   ['Can I import my class or work schedule?', "Yes — in Settings, import a PDF or Word schedule and it becomes fixed commitments the planner schedules around."],
   ['Is my data private?', "Your data is yours. See the Privacy Policy for details. We never sell your personal information."],
@@ -6475,10 +6486,90 @@ async function loadProfileMetrics() {
   `).join('')}</div>`;
 }
 
+// ─── THE VAULT (4.18.C) -- a real, curated resource library ───
+// No dedicated backend exists for this (no api/vault route), and there's nothing here that
+// needs one: this is static editorial content PTW itself authors, not user data, so it ships
+// as a plain in-app array like FAQ_ITEMS/STATIC_PAGES above rather than an unused endpoint.
+// Each entry: [pillarKey|'general', title, body]. 'general' articles are about the system
+// itself (habits, Shuffle Day, Streak Save tokens) rather than any one pillar.
+const VAULT_ARTICLES=[
+  ['general','Small daily reps beat big weekly pushes', "The task circle on Home only ever shows you one thing. That's deliberate: research on habit formation is consistent that a small action repeated daily builds a real habit far faster than an occasional heroic effort. If a task feels too big to want to start, it's too big — split it into something under 10 minutes and let the streak, not the size, do the work."],
+  ['general','How to actually use Shuffle Day', "Shuffle Day isn't a skip button — it's damage control. Reach for it when your actual day has already gone sideways (a schedule collision, a sick kid, a crisis at work), not preemptively because today looks hard. Tell it what happened; it defers and shortens what's left and tries to protect your active streaks rather than just wiping the day. Used well, it's the reason one bad day doesn't turn into a bad month."],
+  ['general','Streak Save tokens, and how not to waste them', "Every pillar you're active in quietly banks up to 2 Streak Save tokens, earned by hitting 90%+ completion in a week. If a day's completion falls below 50%, PTW spends a token automatically to keep that streak alive — you'll see which past days were covered by a token on the Streaks tab rather than genuine completion. They're a safety net for a rough day, not a budget for skipping on purpose: a token spent covering a day you could've shown up for is one you won't have left when you actually need it."],
+  ['fitness','Progressive overload without a gym plan', "You don't need a spreadsheet to progress — you need one variable moving over time: more weight, more reps, more distance, or less rest. Pick one, nudge it slightly every week or two, and let everything else stay the same long enough to notice the trend. Your Fitness Map's sparklines exist for exactly this: look for a slow upward drift over weeks, not a straight line from one workout to the next."],
+  ['fitness','Why steps count as a workout', "Walking is the most underrated training tool there is — it builds a real aerobic base, aids recovery between harder sessions, and is the one form of exercise almost nobody quits from burnout. If your Fitness pillar feels intimidating right now, log walks. A consistent 20-30 minute daily walk logged honestly will move your streak and your LifeScore more than a workout plan you attempt twice and abandon."],
+  ['fitness','Recover instead of pushing through soreness', "Ordinary muscle soreness (DOMS) peaks 24-48 hours after a new or harder-than-usual effort and is not a sign to train through it — that's how minor fatigue turns into an overuse injury. Log a lighter session, a walk, or a rest day instead; your streak logic already treats consistent light activity as real progress, so backing off doesn't cost you the way skipping entirely does."],
+  ['diet','Protein first: the simplest nutrition rule that works', "If tracking every gram feels like too much, track one thing: put a protein source at the start of every meal before anything else goes on the plate. It's the single change with the best evidence for appetite control and muscle maintenance, and it's far easier to sustain than counting calories from day one. Add other targets later once this one is automatic."],
+  ['diet','How much water you actually need', "Rough rule of thumb: roughly half your body weight in pounds, in ounces, per day — more on hot days or hard training days. Thirst is a lagging indicator, not a reliable early one, so don't wait for it. Your Diet Map's water sparkline is a good gut-check: if the line is consistently flat and low, that's worth fixing before anything fancier."],
+  ['diet','Meal logging without it becoming a chore', "Perfect logs aren't the goal — a pattern you can actually see is. Log the same way every time (photo, quick estimate, whatever's fastest for you) rather than switching methods when you're busy, since a broken habit is harder to restart than an imperfect one is to continue. A rough log today beats a perfect log you skip because it felt like too much effort."],
+  ['finances','The 50/30/20 rule, adapted for irregular income', "The classic split — 50% needs, 30% wants, 20% savings/debt — assumes a steady paycheck. With variable income, apply the percentages to your trailing 3-month average instead of any single month, and build a buffer in a good month rather than resetting your budget every time income moves. Your Finances Map's spending sparkline over a longer window is more honest than any one week."],
+  ['finances','Build an emergency fund before anything else', "Before extra debt payoff, before investing, before anything optimized — a small buffer (even $500-1,000 to start) is what keeps one bad month from becoming new debt. It's not exciting, but it's the single change most likely to keep the rest of your financial plan intact when life doesn't cooperate."],
+  ['finances','Tracking net worth beats tracking spending', "Spending logs tell you where money went; net worth tells you whether you're actually ahead. It's the metric that survives a single expensive-but-worth-it month without feeling like a failure, because it nets against savings and debt paid down. Log it monthly rather than daily — it moves slowly by design, and your Finances Map's trend line is built to show that arc, not day-to-day noise."],
+  ['relations','The cadence trick: scheduling friendship like a task', "Relationships fade less from conflict than from simple neglect — nobody decided to drift, the check-ins just stopped happening. Set a cadence per contact (PTW tracks this per-connection) instead of relying on remembering: a monthly text to a close friend, a quarterly call to family further away. A streak here isn't a game — it's proof you actually followed through instead of meaning to."],
+  ['relations','Small check-ins beat big gestures', "A two-line text sent consistently does more for a relationship over a year than one elaborate gesture you attempt once. Low-effort, high-frequency contact keeps you present in someone's life; showing up occasionally and intensely, ironically, often lands as less reliable. If reaching out feels like a big ask, make it smaller, not less frequent."],
+  ['relations','How to reconnect after months of silence', "The instinct to apologize at length for going quiet usually makes re-opening a conversation feel heavier than it needs to be. A short, warm, no-explanation-needed message — “thinking of you, how've you been” — almost always lands better than a paragraph justifying the gap. Log the contact once you've sent it; the streak starts today, not from whenever it lapsed."],
+  ['personal','Reading 10 pages beats reading zero', "A tiny, done-daily reading habit compounds into more books finished per year than an ambitious “read for an hour” goal that gets skipped on busy days. Set the bar low enough that skipping it feels harder to justify than doing it, and let good days go longer on their own rather than raising the daily minimum."],
+  ['personal','A 10-minute mindfulness habit that sticks', "Meditation apps and long sits fail for a lot of people not because mindfulness doesn't work, but because 20+ minutes is a hard daily ask. Ten minutes, same time each day (right after you wake, or right before wind-down), is far more sustainable and still measurably lowers reported stress within a few weeks of consistent practice."],
+  ['personal','Journaling prompts for a bad day', "On a day that felt like a loss, skip “what went well” — it can feel dishonest. Try instead: “what's one thing I handled better than I would have a year ago,” or “what do I actually need right now.” Logging even a rough day keeps your Personal streak honest and gives future-you real data instead of a gap."],
+  ['work','Deep work blocks: protect 90 minutes', "Most meaningful work output happens in sustained blocks, not scattered between notifications. Ninety minutes is roughly the sweet spot before focus genuinely degrades — schedule it like a meeting you can't move, phone in another room, notifications off, one task only. A single protected block most days beats a full day nominally “focused” but constantly interrupted."],
+  ['work','The 2-minute rule for your to-do list', "If a task takes less than two minutes, do it the moment it appears instead of adding it to the list — the overhead of tracking it often costs more than just finishing it. Reserve your actual To-Do list for things that genuinely need scheduling, so it stays a real plan instead of a junk drawer you stop trusting."],
+  ['work','Ending the day with a shutdown ritual', "Work stress that follows you into the evening is usually less about workload and more about an unfinished mental list. A two-minute end-of-day ritual — glance tomorrow's plan, jot down the one open loop, close the laptop — signals to your brain that work is actually done. Pair it with your Wind-Down routine and it becomes automatic instead of one more thing to remember."],
+];
+let vaultSelectedCategory='';
+function renderVaultCategoryChips() {
+  const el=document.getElementById('vault-categories');
+  if(!el) return;
+  const chip=(val,label,color)=>`<button type="button" onclick="selectVaultCategory('${val}')" style="flex-shrink:0;padding:5px 12px;border-radius:20px;font-size:12px;white-space:nowrap;border:1px solid rgba(196,184,168,.25);background:${vaultSelectedCategory===val?(color||'var(--blue)'):'var(--bg4)'};color:${vaultSelectedCategory===val?'#fff':'var(--text)'}">${label}</button>`;
+  el.innerHTML = chip('','All')
+    + chip('general','General')
+    + Object.values(PILLARS).map(p=>chip(p.key, p.label, p.color)).join('');
+}
+function selectVaultCategory(cat) {
+  vaultSelectedCategory=cat;
+  renderVaultCategoryChips();
+  filterVaultLibrary();
+}
+function filterVaultLibrary() {
+  const q=(document.getElementById('vault-search')?.value||'').trim().toLowerCase();
+  const matches=VAULT_ARTICLES.filter(([cat,title,body]) =>
+    (!vaultSelectedCategory || cat===vaultSelectedCategory) &&
+    (!q || title.toLowerCase().includes(q) || body.toLowerCase().includes(q))
+  );
+  document.getElementById('vault-count').textContent = `${matches.length} guide${matches.length===1?'':'s'}`;
+  const list=document.getElementById('vault-list');
+  list.innerHTML = matches.length ? matches.map(([cat,title,body],i)=>{
+    const p=PILLARS[cat];
+    const color=p?p.color:'var(--blue)';
+    const label=p?p.label:'General';
+    const origIdx=VAULT_ARTICLES.indexOf(matches[i]);
+    return `<div class="sq-card" style="flex-direction:column;align-items:stretch;cursor:pointer" onclick="toggleVaultArticle(this)" data-idx="${origIdx}">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <div>
+          <div style="font-size:10px;font-weight:700;letter-spacing:.5px;color:${color};text-transform:uppercase;margin-bottom:3px">${label}</div>
+          <div style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text);font-size:14px">${title}</div>
+        </div>
+        <span class="vault-chevron" style="color:var(--muted);transition:transform .2s;flex-shrink:0">▾</span>
+      </div>
+      <div class="vault-body" style="display:none;font-size:13px;color:var(--stone);line-height:1.65;margin-top:10px">${body}</div>
+    </div>`;
+  }).join('') : '<div style="text-align:center;color:var(--stone);font-size:13px;padding:30px 0">No guides match that search.</div>';
+}
+function toggleVaultArticle(card) {
+  const body=card.querySelector('.vault-body');
+  const chevron=card.querySelector('.vault-chevron');
+  const open=body.style.display!=='none';
+  body.style.display = open ? 'none' : 'block';
+  chevron.style.transform = open ? '' : 'rotate(180deg)';
+}
 function openProfileTools() {
   showScreen('vault');
   const btn=document.getElementById('vault-premium-btn');
   if(btn) btn.style.display = S.userData?.subscription_tier==='premium' ? 'none' : '';
+  vaultSelectedCategory='';
+  const search=document.getElementById('vault-search');
+  if(search) search.value='';
+  renderVaultCategoryChips();
+  filterVaultLibrary();
 }
 
 function openProfileTrophies() {
@@ -7155,84 +7246,6 @@ async function loadPillarMap(pillarKey) {
   if(pillarKey==='relations') { await loadRelationsMap(); return; }
   if(pillarKey==='personal') { await loadPersonalMap(); return; }
   if(pillarKey==='work') { await loadWorkMap(); return; }
-  const p=PILLARS[pillarKey];
-  const userData=S.userData;
-
-  // Fetch tasks for today + user data
-  const today=new Date().toISOString().split('T')[0];
-  const [proj, tasks] = await Promise.all([
-    req('POST','/user-projects',{date:today}),
-    req('GET','/simple-tasks'),
-  ]);
-
-  const allTasks=(Array.isArray(tasks)?tasks:(tasks?.data||[]));
-  const pillarTasks=allTasks.filter(t=>getPillarKey(t.pillar||t.pillar_id)===pillarKey);
-  const todayTasks=(proj?.data||[]).filter(t=>getPillarKey(t.category||t.pillar)===pillarKey||pillarTasks.length>0);
-  const currentTask=pillarTasks.find(t=>t.status==='Pending')||todayTasks[0];
-
-  // LifeScore
-  const ls=userData?.lifeScore||0;
-  document.getElementById('pillar-lifescore').textContent=(ls||'—')+(ls?'yrs':'');
-
-  // Mock pillar-specific metrics until specific endpoints are confirmed
-  const metrics = getMockMetrics(pillarKey);
-
-  let html = `
-    <!-- LifeScore Hero -->
-    <div class="ls-card" style="background:${p.color}">
-      <div class="ls-label">${p.label.toUpperCase()} SCORE</div>
-      <div class="ls-value">${ls||'—'}<span style="font-size:18px;font-weight:600">yrs</span></div>
-      <div class="ls-sub">Contribution to LifeScore</div>
-      <div class="ls-change" style="color:rgba(255,255,255,.9)">+8 Life Score this week</div>
-    </div>
-
-    <!-- Metrics -->
-    <div class="metric-row">`;
-
-  metrics.forEach(m=>{
-    html+=`<div class="metric-card">
-      <div class="metric-icon">${m.icon}</div>
-      <div class="metric-val">${m.val}</div>
-      <div class="metric-label">${m.label}</div>
-      <div class="metric-delta ${m.delta>0?'delta-pos':'delta-neg'}">${m.delta>0?'↑':'↓'} ${Math.abs(m.delta)}${m.unit||''} ${m.deltaLabel||''}</div>
-    </div>`;
-  });
-
-  html+=`</div>`;
-
-  // Current task
-  if(currentTask) {
-    const taskName=currentTask.name||currentTask.task||currentTask.task_name||'Task';
-    const dur=currentTask.estimated_duration_minutes||currentTask.duration||30;
-    html+=`
-    <div class="pillar-task-card" style="background:${p.color}">
-      <div class="pt-icon">${p.emoji}</div>
-      <div class="pt-info">
-        <div class="pt-label">CURRENT TASK</div>
-        <div class="pt-name">${taskName}</div>
-        <div class="pt-dur">${dur} min</div>
-      </div>
-      <div class="pt-actions">
-        <button class="pt-btn start" onclick="startPillarTask(${currentTask.id||0})">Start</button>
-        <button class="pt-btn" onclick="openAddTask()">✏</button>
-      </div>
-    </div>`;
-  } else {
-    html+=`
-    <div class="pillar-task-card" style="background:var(--bg3)">
-      <div class="pt-icon">${p.emoji}</div>
-      <div class="pt-info">
-        <div class="pt-label">TODAY</div>
-        <div class="pt-name" style="color:var(--stone)">No tasks planned</div>
-        <div class="pt-dur" style="color:var(--muted)">Add one below</div>
-      </div>
-      <button class="pt-btn" style="background:${p.color}" onclick="openAddTask()">+ Add</button>
-    </div>`;
-  }
-
-  html+=`<button class="view-log-btn" onclick="switchPillarTab('roadmap')">[ View ${p.label} Roadmap ]</button>`;
-
-  container.innerHTML=html;
 }
 
 // ════════════════════════════════════════
@@ -11664,18 +11677,6 @@ async function renderWorkAnalyticsBody() {
     ${glassCard(color, `<div style="display:flex;justify-content:space-between;align-items:center"><span class="sq-name">Completed Late</span><span style="font-weight:800;color:var(--work)">${pctOf(lateCount)}%</span></div>`, {style:'margin-bottom:8px'})}
     ${glassCard(color, `<div style="display:flex;justify-content:space-between;align-items:center"><span class="sq-name">Overdue</span><span style="font-weight:800;color:var(--work)">${pctOf(overdueCount)}%</span></div>`, {style:'margin-bottom:8px'})}
   `;
-}
-
-function getMockMetrics(key) {
-  const m = {
-    fitness:   [{icon:'🏃',val:'7,584',label:'Steps',delta:12,unit:'%',deltaLabel:'vs yesterday'},{icon:'🔥',val:'485',label:'Calories Burned',delta:12,unit:'%',deltaLabel:'vs yesterday'}],
-    diet:      [{icon:'🥗',val:'1,840',label:'Calories',delta:-5,unit:'%',deltaLabel:'vs target'},{icon:'💧',val:'2.1L',label:'Water',delta:8,unit:'%',deltaLabel:'above goal'}],
-    finances:  [{icon:'💰',val:'$2,840',label:'Saved',delta:15,unit:'%',deltaLabel:'this month'},{icon:'📊',val:'92%',label:'Budget Hit',delta:7,unit:'%',deltaLabel:'vs last month'}],
-    relations: [{icon:'❤️',val:'4',label:'Connections',delta:1,unit:'',deltaLabel:'this week'},{icon:'📞',val:'3',label:'Calls Made',delta:2,unit:'',deltaLabel:'above avg'}],
-    personal:  [{icon:'📚',val:'42',label:'Pages Read',delta:20,unit:'%',deltaLabel:'above goal'},{icon:'🧘',val:'15m',label:'Meditation',delta:5,unit:'min',deltaLabel:'more than yesterday'}],
-    work:      [{icon:'⚡',val:'4.2h',label:'Deep Work',delta:12,unit:'%',deltaLabel:'above avg'},{icon:'✓',val:'87%',label:'Completion',delta:5,unit:'%',deltaLabel:'vs last week'}],
-  };
-  return m[key]||m.personal;
 }
 
 async function startPillarTask(taskId) {
