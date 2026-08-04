@@ -409,3 +409,12 @@ ALTER TABLE users
   ADD COLUMN IF NOT EXISTS subscription_plan TEXT,
   ADD COLUMN IF NOT EXISTS subscription_current_period_end TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS idx_users_stripe_customer ON users(stripe_customer_id);
+
+-- 4.20 -- Essential Apps "add your own app" fallback. No new table: reuses the existing
+-- generic `preferences` table above with scope = 'custom_apps', data = {apps:[{id,
+-- appName, urlScheme, webFallback, addedAt}]}. Neither iOS nor Android lets a third-party
+-- app enumerate everything actually installed on a device, so the curated catalog in
+-- api/essential-apps.js can never be complete -- this lets a user add their own entry
+-- (a name + a URL or URL-scheme they provide), merged server-side into every Essential
+-- Apps response so it renders identically to a curated app. See api/preferences/[scope].js
+-- (VALID_SCOPES) and api/essential-apps.js (getCustomApps/customAppToEntry).

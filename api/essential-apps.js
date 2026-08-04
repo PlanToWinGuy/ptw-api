@@ -172,6 +172,33 @@ function resolveApps(keys) {
   return keys.map(k => CATALOG[k]).filter(Boolean);
 }
 
+// "Add your own app" fallback (4.20) -- neither iOS nor Android lets a third-party app
+// enumerate everything actually installed on the device, so the curated CATALOG above can
+// never be complete. Instead of pretending otherwise, a user can add their own entry (name
+// + a URL or URL-scheme they provide) via Settings > Preferred Apps, stored per-user in
+// preferences (scope 'custom_apps', {apps:[{id,appName,urlScheme,webFallback,addedAt}]}) --
+// reusing the existing generic preferences table/endpoint rather than a new one, since this
+// is small, per-user, arbitrary-shaped data that fits it exactly. Merged in here so a custom
+// app shows up identically to a curated one everywhere Essential Apps renders (context
+// suggestions, break/task drawers, and the open-library search).
+async function getCustomApps(sql, userId) {
+  const rows = await sql`SELECT data FROM preferences WHERE user_id = ${userId} AND scope = 'custom_apps'`;
+  const apps = rows[0]?.data?.apps;
+  if (!Array.isArray(apps)) return [];
+  return apps.filter(a => a && typeof a.appName === 'string' && a.appName.trim() && (a.urlScheme || a.webFallback));
+}
+function customAppToEntry(a) {
+  return {
+    key: 'custom_' + a.id,
+    appName: a.appName.trim().slice(0, 60),
+    iconName: 'custom_icon',
+    category: 'custom',
+    urlScheme: a.urlScheme || undefined,
+    webFallback: a.webFallback || undefined,
+    isCustom: true,
+  };
+}
+
 const ALL_CATALOG_KEYS = Object.keys(CATALOG);
 // A curated context list is often short (2-6 real fits) -- pad it out with the rest of
 // the catalog so the drawer never feels thin, capped so it never becomes an unscannable
@@ -282,15 +309,21 @@ export default async function handler(req, res) {
 
   if (req.method !== 'GET') return res.status(405).json({ message: 'Method not allowed' });
 
+  const customApps = await getCustomApps(sql, user.id).catch(() => []);
+  const customEntries = customApps.map(customAppToEntry);
+
   if (req.query.library) {
     // The full browsable catalog behind the "open library" search bar (4.19), and also
     // the shared source for Settings > Preferred Apps and Task Detail's Pin-an-App picker
     // -- one list instead of three hand-maintained copies, so a new catalog app added
     // above automatically shows up everywhere instead of silently drifting out of sync.
-    // Sorted by category then name so it reads like a real launcher's app drawer.
+    // Sorted by category then name so it reads like a real launcher's app drawer. A user's
+    // own custom apps (4.20) are appended after sorting the curated set so they always
+    // land together at the end under a 'custom' category, easy to spot as "mine."
     const entries = LIBRARY_KEYS
       .map(k => ({ key: k, ...CATALOG[k] }))
-      .sort((a, b) => (a.category || '').localeCompare(b.category || '') || a.appName.localeCompare(b.appName));
+      .sort((a, b) => (a.category || '').localeCompare(b.category || '') || a.appName.localeCompare(b.appName))
+      .concat(customEntries);
     return res.status(200).json({ apps: entries });
   }
 
@@ -300,7 +333,9 @@ export default async function handler(req, res) {
 
   if (breakType) {
     const keys = padKeys(prioritize(APPS_BY_BREAK[breakType] || DEFAULT_KEYS, preferredKeys));
-    return res.status(200).json({ apps: resolveApps(keys), habitStack: HABIT_STACK_HINT[breakType] || null });
+    // Custom apps (4.20) always show alongside the curated set -- appended after padKeys'
+    // cap rather than competing for one of its slots, since a user added these on purpose.
+    return res.status(200).json({ apps: resolveApps(keys).concat(customEntries), habitStack: HABIT_STACK_HINT[breakType] || null });
   }
 
   if (taskId) {
@@ -316,7 +351,7 @@ export default async function handler(req, res) {
     // preferredKeys and came first in baseKeys). Pin is forced to the front, unconditionally.
     let keys = padKeys(prioritize(baseKeys, preferredKeys));
     if (pinnedKey) keys = [pinnedKey, ...keys.filter(k => k !== pinnedKey)];
-    return res.status(200).json({ apps: resolveApps(keys), habitStack: null, pinnedKey });
+    return res.status(200).json({ apps: resolveApps(keys).concat(customEntries), habitStack: null, pinnedKey });
   }
 
   // The "main Essential Apps folder" case -- opened straight from Home with no task or
@@ -337,7 +372,7 @@ export default async function handler(req, res) {
   const nextTaskDesc = nextTask ? `${nextTask.name} (${PILLARS[nextTask.pillar_id] || 'general'})` : null;
   const hour = new Date().getUTCHours();
   const suggested = await aiSuggest(Object.keys(CATALOG), hour, nextTaskDesc, preferredKeys);
-  if (suggested && suggested.length) return res.status(200).json({ apps: suggested, habitStack: null, aiSuggested: true });
+  if (suggested && suggested.length) return res.status(200).json({ apps: suggested.concat(customEntries), habitStack: null, aiSuggested: true });
 
-  return res.status(200).json({ apps: resolveApps(padKeys(prioritize(IDLE_KEYS, preferredKeys))), habitStack: null });
+  return res.status(200).json({ apps: resolveApps(padKeys(prioritize(IDLE_KEYS, preferredKeys))).concat(customEntries), habitStack: null });
 }

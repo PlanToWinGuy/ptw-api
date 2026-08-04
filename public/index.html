@@ -1693,6 +1693,18 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
   <div class="scroll-body" style="padding:0 18px">
     <div style="font-size:12px;color:var(--stone);margin:14px 0 16px;line-height:1.5">Tell us which of these you actually use — Essential Apps suggestions (on Home, during breaks, and mid-task) will favor these first.</div>
     <div id="ea-prefs-body"></div>
+
+    <!-- "Add your own app" fallback (4.20) -- neither iOS nor Android lets a third-party
+         app enumerate everything actually installed on a device, so our curated catalog
+         above can never cover everything. This is the honest fix: let someone add their
+         own entry (name + a link they provide) and it shows up identically to a built-in
+         app everywhere Essential Apps renders. -->
+    <div class="section-sub" style="margin-top:22px">YOUR OWN APPS</div>
+    <div style="font-size:12px;color:var(--stone);margin:6px 0 12px;line-height:1.5">Not in our list? Add it yourself — a name and a link (a web address, or an app link like <span style="font-family:monospace">spotify://</span>) is enough. It'll show up right alongside the built-in apps.</div>
+    <div id="ea-custom-list" style="margin-bottom:10px"></div>
+    <div class="field"><label>APP NAME</label><input type="text" id="ea-custom-name" placeholder="e.g. Signal" maxlength="60"></div>
+    <div class="field"><label>LINK</label><input type="text" id="ea-custom-url" placeholder="https://... or myapp://" maxlength="300"></div>
+    <button class="btn-p" style="width:100%;margin:4px 0 20px" onclick="addCustomEssentialApp()">+ Add App</button>
   </div>
 </div>
 
@@ -6862,7 +6874,7 @@ const ESSENTIAL_ICONS = { mail_icon:'✉️', calendar_icon:'📅', notes_icon:'
   amazon_icon:'🛒', ubereats_icon:'🍔', doordash_icon:'🥡', target_icon:'🎯', walmart_icon:'🏬', instacart_icon:'🥕',
   uber_icon:'🚗', lyft_icon:'🚕', airbnb_icon:'🏠', waze_icon:'🧭',
   disneyplus_icon:'🏰', hulu_icon:'📺', twitch_icon:'🕹️', soundcloud_icon:'🔊',
-  fitbit_icon:'⌚', calm_icon:'🧘', headspace_icon:'🧠', medium_icon:'✍️' };
+  fitbit_icon:'⌚', calm_icon:'🧘', headspace_icon:'🧠', medium_icon:'✍️', custom_icon:'🔗' };
 let essentialAppsCache=[]; // whatever's currently rendered/launchable -- context suggestions OR library search results
 let essentialAppsBreakType=null; // set when opened mid-break, so the back button returns there
 let essentialContextCache=[]; // the original context suggestions, kept aside so clearing search can restore them
@@ -7048,12 +7060,15 @@ async function openEssentialAppsPrefs() {
   eaPreferredKeys=Array.isArray(prefs.preferredKeys)?prefs.preferredKeys:[];
   const lib=await ensureEssentialLibrary();
   const byCategory={};
-  lib.filter(a=>a.key!=='scan_food').forEach(a=>{ (byCategory[a.category]=byCategory[a.category]||[]).push(a); });
+  // 'custom' (a user's own added apps, 4.20) is excluded from this favorites picker --
+  // they're already always-shown (see api/essential-apps.js), favoriting one is a no-op.
+  lib.filter(a=>a.key!=='scan_food' && a.category!=='custom').forEach(a=>{ (byCategory[a.category]=byCategory[a.category]||[]).push(a); });
   body.innerHTML = Object.entries(byCategory).sort(([a],[b])=>a.localeCompare(b)).map(([cat,apps])=>`
     <div style="font-size:11px;color:var(--stone);letter-spacing:.3px;margin:16px 0 8px">${cat.toUpperCase()}</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
       ${apps.map(a=>`<button type="button" class="q-opt${eaPreferredKeys.includes(a.key)?' sel':''}" data-key="${a.key}" onclick="toggleEssentialAppPref(this)">${a.appName}</button>`).join('')}
     </div>`).join('');
+  loadCustomEssentialApps();
 }
 function toggleEssentialAppPref(btn) {
   btn.classList.toggle('sel');
@@ -7065,6 +7080,63 @@ async function saveEssentialAppsPrefs() {
   await req('PUT','/preferences/essential_apps',{preferredKeys:eaPreferredKeys});
   toast('Preferred apps saved ✓');
   openSettingsHub();
+}
+
+// ─── "ADD YOUR OWN APP" FALLBACK (4.20) ───
+// PTW's Essential Apps catalog is real and curated, but it can never be complete -- no
+// third-party app can enumerate everything actually installed on a device on either iOS or
+// Android. This lets a user add their own entry (name + a link they provide, either a plain
+// web URL or an app URL-scheme like spotify://); saved per-user via the existing generic
+// preferences endpoint (scope 'custom_apps') and merged server-side into every Essential
+// Apps response (see api/essential-apps.js's getCustomApps/customAppToEntry) so it appears
+// identically to a curated app in the actual drawer, not just here in Settings.
+let eaCustomApps=[];
+async function loadCustomEssentialApps() {
+  const prefs=await req('GET','/preferences/custom_apps')||{};
+  eaCustomApps=Array.isArray(prefs.apps)?prefs.apps:[];
+  renderCustomEssentialApps();
+}
+function renderCustomEssentialApps() {
+  const el=document.getElementById('ea-custom-list');
+  if(!el) return;
+  el.innerHTML = eaCustomApps.length ? eaCustomApps.map(a=>`
+    <div class="sq-card" style="align-items:center">
+      <div class="sq-icon" style="background:var(--blue)22;color:var(--blue)">🔗</div>
+      <div class="sq-info" style="flex:1;min-width:0">
+        <div class="sq-name">${a.appName}</div>
+        <div class="sq-meta" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.urlScheme||a.webFallback||''}</div>
+      </div>
+      <button class="icon-btn ghost" onclick="removeCustomEssentialApp('${a.id}')" title="Remove">×</button>
+    </div>`).join('') : '<div style="font-size:12px;color:var(--muted);margin-bottom:4px">None added yet.</div>';
+}
+async function addCustomEssentialApp() {
+  const nameEl=document.getElementById('ea-custom-name');
+  const urlEl=document.getElementById('ea-custom-url');
+  const appName=(nameEl?.value||'').trim();
+  const url=(urlEl?.value||'').trim();
+  if(!appName) { toast('Give it a name'); return; }
+  if(!url) { toast('Add a link — a web address or an app link like spotify://'); return; }
+  const isWeb=/^https?:\/\//i.test(url);
+  const entry={
+    id: (window.crypto?.randomUUID ? crypto.randomUUID() : (Date.now()+'-'+Math.random().toString(36).slice(2))),
+    appName: appName.slice(0,60),
+    urlScheme: isWeb ? null : url,
+    webFallback: isWeb ? url : null,
+    addedAt: new Date().toISOString(),
+  };
+  eaCustomApps.push(entry);
+  await req('PUT','/preferences/custom_apps',{apps:eaCustomApps});
+  nameEl.value=''; urlEl.value='';
+  renderCustomEssentialApps();
+  essentialLibraryCache=null; essentialLibraryPromise=null; // force a refetch so it shows up in the drawer/search right away
+  toast('Added ✓');
+}
+async function removeCustomEssentialApp(id) {
+  eaCustomApps=eaCustomApps.filter(a=>a.id!==id);
+  await req('PUT','/preferences/custom_apps',{apps:eaCustomApps});
+  renderCustomEssentialApps();
+  essentialLibraryCache=null; essentialLibraryPromise=null;
+  toast('Removed');
 }
 
 // ─── PILLAR PRIORITY (Settings) ───

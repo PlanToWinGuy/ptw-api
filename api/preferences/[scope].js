@@ -12,7 +12,12 @@ import { getUserFromRequest } from '../../lib/auth.js';
 // Detail. Its own scope (not folded into essential_apps) because that scope's Settings
 // save already does a blind overwrite of the whole preferences row -- sharing one scope
 // would let picking a pinned app wipe someone's Preferred Quick-Add list or vice versa.
-const VALID_SCOPES = new Set(['fitness', 'diet', 'finances', 'relations', 'personal', 'work', 'units', 'notifications', 'daily_briefings', 'essential_apps', 'home_background', 'pillar_priority', 'app_pairings']);
+// custom_apps: { apps: [{id, appName, urlScheme, webFallback, addedAt}] } -- the "add your
+// own app" fallback (Essential Apps can never enumerate everything actually installed on a
+// device, see essential-apps.js's CATALOG comment) -- a user-maintained list merged in
+// alongside the curated CATALOG by api/essential-apps.js, stored here rather than a new
+// table since it's small, per-user, arbitrary-shaped data that fits this table exactly.
+const VALID_SCOPES = new Set(['fitness', 'diet', 'finances', 'relations', 'personal', 'work', 'units', 'notifications', 'daily_briefings', 'essential_apps', 'home_background', 'pillar_priority', 'app_pairings', 'custom_apps']);
 
 export default async function handler(req, res) {
   if (cors(req, res)) return;
