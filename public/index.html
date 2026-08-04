@@ -373,6 +373,31 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
 .metric-delta{font-size:11px;font-weight:600;margin-top:3px}
 .delta-pos{color:var(--finances)} .delta-neg{color:var(--relations)}
 
+/* ══════════════════════════════════
+   GLASS TREATMENT -- pillar Map + Hub screens (approved mockup direction).
+   Deliberately paired with SOLID pillar-coloured hero cards for hierarchy: the day's
+   main CTA and a pillar's signature ring/hero stat stay opaque/filled ("our old style"),
+   while secondary elements -- metric cards, history rows, stat chips -- get this glass
+   treatment. Never applied uniformly to every card ("premium", not "cheap all-the-same
+   glass"). Border colour is per-pillar-accent and set inline (see glassCard() in JS).
+══════════════════════════════════ */
+.glass-card{
+  background:rgba(255,255,255,.045);
+  border-radius:20px;
+  box-shadow:0 8px 30px -14px rgba(0,0,0,.5);
+  backdrop-filter:blur(18px) saturate(160%);
+  -webkit-backdrop-filter:blur(18px) saturate(160%);
+  padding:14px;
+}
+.glass-icon{
+  width:40px;height:40px;border-radius:13px;
+  display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;
+}
+/* Faint full-screen accent wash behind everything -- a single fixed element per screen,
+   its background gradient set inline (per-pillar colour) by JS since #screen-pillar's
+   Map/Quests/Roadmap/Trophies tabs are one shared template reused across all 6 pillars. */
+.accent-wash{position:absolute;inset:0;z-index:-1;pointer-events:none;opacity:.16}
+
 /* Current task in pillar */
 .pillar-task-card{
   border-radius:14px;padding:16px;margin-bottom:14px;
@@ -853,6 +878,7 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
      one reusable screen structure
 ══════════════════════════════════ -->
 <div id="screen-pillar" class="screen pillar-screen">
+  <div class="accent-wash" id="pillar-screen-wash"></div>
   <div class="pillar-top-bar" id="pillar-topbar">
     <button class="icon-btn ghost" onclick="showScreen('home')" title="Home">🏠</button>
     <h2 id="pillar-title">Fitness</h2>
@@ -1021,14 +1047,16 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
      FITNESS: WORKOUT HUB + WORKOUT LOG
 ══════════════════════════════════ -->
 <div id="screen-workout-hub" class="screen">
+  <div class="accent-wash" style="background:radial-gradient(120% 70% at 50% -10%, var(--fitness) 0%, transparent 60%)"></div>
   <div class="pillar-top-bar">
     <button class="icon-btn ghost" onclick="showPillarScreen('fitness')">←</button>
     <h2>Workout Hub</h2>
     <span style="width:36px"></span>
   </div>
   <div style="display:flex;gap:8px;padding:0 18px 10px">
-    <button class="pg-btn" id="wh-tab-history" style="background:var(--bg4);flex:1" onclick="switchWorkoutHubTab('history')">History</button>
-    <button class="pg-btn sel" id="wh-tab-myplans" style="background:var(--fitness);flex:1" onclick="switchWorkoutHubTab('myplans')">My Plans</button>
+    <button class="pg-btn" id="wh-tab-history" style="background:var(--bg4);flex:1;font-size:12px" onclick="switchWorkoutHubTab('history')">History</button>
+    <button class="pg-btn sel" id="wh-tab-myplans" style="background:var(--fitness);flex:1;font-size:12px" onclick="switchWorkoutHubTab('myplans')">My Plans</button>
+    <button class="pg-btn" id="wh-tab-metrics" style="background:var(--bg4);flex:1;font-size:12px" onclick="switchWorkoutHubTab('metrics')">Metrics</button>
   </div>
   <div class="scroll-body" style="padding:0 18px" id="workout-hub-body"></div>
 </div>
@@ -2146,6 +2174,22 @@ const PILLAR_GLYPH = {
   relations: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-0.15em"><path d="M12,21.35 L10.55,20.03 C5.4,15.36 2,12.28 2,8.5 C2,5.42 4.42,3 7.5,3 C9.24,3 10.91,3.81 12,5.09 C13.09,3.81 14.76,3 16.5,3 C19.58,3 22,5.42 22,8.5 C22,12.28 18.6,15.36 13.45,20.04 L12,21.35 Z"/></svg>',
   personal: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-0.15em"><path d="M8.5 3.8c-1.7 0-3 1.2-3.3 2.8-1.4.5-2.4 1.8-2.4 3.4 0 .9.3 1.7.9 2.3-.5.6-.9 1.4-.9 2.3 0 1.7 1.1 3.1 2.7 3.5.1 1.8 1.6 3.2 3.4 3.2 1 0 1.9-.5 2.5-1.2V5c-.6-.7-1.5-1.2-2.9-1.2z"/><path d="M15.5 3.8c1.7 0 3 1.2 3.3 2.8 1.4.5 2.4 1.8 2.4 3.4 0 .9-.3 1.7-.9 2.3.5.6.9 1.4.9 2.3 0 1.7-1.1 3.1-2.7 3.5-.1 1.8-1.6 3.2-3.4 3.2-1 0-1.9-.5-2.5-1.2V5c.6-.7 1.5-1.2 2.9-1.2z"/></svg>',
   work: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-0.15em"><path d="M20,6h-4V4c0-1.11-0.89-2-2-2h-4C8.89,2,8,2.89,8,4v2H4C2.89,6,2.01,6.89,2.01,8L2,19c0,1.11,0.89,2,2,2h16c1.11,0,2-0.89,2-2V8C22,6.89,21.11,6,20,6z M14,6h-4V4h4V6z"/></svg>',
+};
+// Small reusable currentColor line/glyph icons for functional icon containers
+// (.sq-icon / .glass-icon / .empty-icon / stat-pill icons etc.) across pillar Map+Hub
+// screens -- replaces emoji used as icons (not decorative/celebration emoji, which stay).
+// Same minimal-geometric-shape, ~24x24 viewBox, 1em-sized style as PILLAR_GLYPH above.
+const ICONS = {
+  flame: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-0.15em"><path d="M12 2c1.5 2.5-1 4-1 7a3.5 3.5 0 003.5 3.5c1 0 1.5-.5 1.5-1.5 0-1-.5-1.5-.5-2.5 2 1.5 3.5 4 3.5 6.5a7 7 0 01-14 0c0-5 3-8 7-13z"/></svg>',
+  star: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-0.15em"><path d="M12 2l2.9 6.3 6.9.9-5 4.8 1.3 6.9L12 17.9 5.9 20.9l1.3-6.9-5-4.8 6.9-.9z"/></svg>',
+  footprint: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-0.15em"><path d="M4 17c0-1.5.8-2 2-2.5 1.5-.6 2-1 2.3-2.3.3-1.3 1.2-2.2 3-2.2 3 0 5.7 2 6.7 4.3.6 1.4.3 2.7-1 2.7H6c-1.2 0-2-.9-2-2z"/><circle cx="7" cy="10" r="1"/><circle cx="9.5" cy="8.5" r="1"/><circle cx="12" cy="7.7" r="1"/></svg>',
+  scale: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" style="vertical-align:-0.15em"><rect x="3" y="8" width="18" height="13" rx="3" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="14.5" r="3" stroke="currentColor" stroke-width="1.5"/><line x1="12" y1="14.5" x2="13.6" y2="12.8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><rect x="9" y="4" width="6" height="3" rx="1" fill="currentColor"/></svg>',
+  heartPulse: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" style="vertical-align:-0.15em"><path d="M12 20s-7-4.35-9.5-8.8C1 8.4 2.4 5 5.8 5c1.9 0 3.3 1 4.2 2.4C11 6 12.4 5 14.2 5 17.6 5 19 8.4 17.5 11.2 15 15.65 12 20 12 20z" stroke="currentColor" stroke-width="1.5"/><polyline points="6,12 9,12 10.5,9 12.5,15 14,12 18,12" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  stopwatch: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" style="vertical-align:-0.15em"><circle cx="12" cy="13" r="8" stroke="currentColor" stroke-width="1.7"/><line x1="12" y1="13" x2="12" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="12" y1="13" x2="15" y2="14.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="9" y1="2" x2="15" y2="2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>',
+  stretch: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" style="vertical-align:-0.15em"><path d="M12 3v6M12 3l-2.5 2.5M12 3l2.5 2.5M12 21v-6M12 21l-2.5-2.5M12 21l2.5-2.5M3 12h6M3 12l2.5-2.5M3 12l2.5 2.5M21 12h-6M21 12l-2.5-2.5M21 12l-2.5 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  calendar: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" style="vertical-align:-0.15em"><rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.6"/><line x1="3" y1="9" x2="21" y2="9" stroke="currentColor" stroke-width="1.6"/><line x1="7" y1="3" x2="7" y2="7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><line x1="17" y1="3" x2="17" y2="7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+  bolt: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-0.15em"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"/></svg>',
+  pencil: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" style="vertical-align:-0.15em"><path d="M3 21l1.5-5.5L15.5 4.5a2 2 0 0 1 2.8 0l1.2 1.2a2 2 0 0 1 0 2.8L8.5 19.5 3 21z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>',
 };
 const PILLARS = {
   fitness:   {id:1, key:'fitness',   label:'Fitness',   color:'#E07840', icon:PILLAR_GLYPH.fitness, emoji:PILLAR_GLYPH.fitness},
@@ -6921,6 +6965,7 @@ async function showPillarScreen(pillarKey, preserveTab) {
   document.getElementById('pillar-title').textContent=p.label+' Pillar';
   document.getElementById('pillar-topbar').style.borderBottom='2px solid '+p.color+'33';
   document.getElementById('pnav-add').style.background=p.color;
+  document.getElementById('pillar-screen-wash').style.background='radial-gradient(120% 70% at 50% -10%, '+p.color+' 0%, transparent 60%)';
 
   // Show screen
   showScreen('pillar');
@@ -7106,9 +7151,135 @@ function hubButton(label, color, onclick, icon) {
     <span style="font-size:17px;line-height:1">›</span>
   </button>`;
 }
+// ── Glass treatment helpers (shared across every pillar's Map + Hub) ──
+function hexToRgba(hex, a) {
+  hex=String(hex||'').replace('#','');
+  if(hex.length===3) hex=hex.split('').map(c=>c+c).join('');
+  const r=parseInt(hex.slice(0,2),16)||0, g=parseInt(hex.slice(2,4),16)||0, b=parseInt(hex.slice(4,6),16)||0;
+  return `rgba(${r},${g},${b},${a})`;
+}
+// Lightens a pillar hex colour toward white by `amt` (0-1) -- used for icon glyph tint
+// inside a glass icon container (a saturated icon on a barely-tinted glass bg needs to
+// read lighter than the flat pillar colour to stay legible).
+function tintColor(hex, amt) {
+  hex=String(hex||'').replace('#','');
+  if(hex.length===3) hex=hex.split('').map(c=>c+c).join('');
+  const r=parseInt(hex.slice(0,2),16)||0, g=parseInt(hex.slice(2,4),16)||0, b=parseInt(hex.slice(4,6),16)||0;
+  const nr=Math.round(r+(255-r)*amt), ng=Math.round(g+(255-g)*amt), nb=Math.round(b+(255-b)*amt);
+  return `rgb(${nr},${ng},${nb})`;
+}
+// A couple of pillar colours (diet's mustard-gold, most notably) are light enough that
+// white text loses contrast -- everything else defaults to white.
+function pillarTextOn(color) {
+  return (String(color).toUpperCase()==='#C9A832') ? '#1A1611' : '#fff';
+}
+// THE glass card -- secondary/list elements on every pillar Map+Hub (metric cards,
+// history rows, stat chips). Border is the pillar accent at .22 alpha per the approved
+// mockup spec. Deliberately never used for the hero ring/CTA -- see heroCtaCard() below.
+function glassCard(color, inner, opts) {
+  opts=opts||{};
+  const border=hexToRgba(color, opts.borderAlpha!=null?opts.borderAlpha:.22);
+  const cursor=opts.onclick?'cursor:pointer;':'';
+  const clickAttr=opts.onclick?` onclick="${opts.onclick}"`:'';
+  return `<div class="glass-card" style="border:1px solid ${border};${cursor}${opts.style||''}"${clickAttr}>${inner}</div>`;
+}
+function glassIcon(svg, color) {
+  return `<div class="glass-icon" style="background:${hexToRgba(color,.16)};color:${tintColor(color,.4)}">${svg}</div>`;
+}
+// The solid, filled-with-pillar-colour hero treatment for primary elements (the day's
+// main CTA card) -- the deliberate opposite of glassCard(), for hierarchy.
+function heroCtaCard(color, inner, opts) {
+  opts=opts||{};
+  return `<div class="rm-goal-card" style="background:${color};border:none;box-shadow:0 12px 28px -12px rgba(0,0,0,.5);${opts.style||''}"${opts.onclick?` onclick="${opts.onclick}"`:''}>${inner}</div>`;
+}
+function accentWash(color) {
+  return `<div class="accent-wash" style="background:radial-gradient(120% 70% at 50% -10%, ${color} 0%, transparent 60%)"></div>`;
+}
+// A thin trend sparkline for a metric card -- real recent history only; if there aren't
+// at least 2 points to draw a line, shows a flat dotted "not enough history yet" state
+// instead of fabricating a trend.
+function sparklineSvg(values, color, opts) {
+  opts=opts||{};
+  const w=opts.w||120, h=opts.h||32, pad=2;
+  const vals=(values||[]).filter(v=>v!=null && !isNaN(v)).map(Number);
+  if(vals.length<2) {
+    return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:${h}px;display:block"><line x1="${pad}" y1="${h/2}" x2="${w-pad}" y2="${h/2}" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-dasharray="1 5" opacity=".35"/></svg>`;
+  }
+  const min=Math.min(...vals), max=Math.max(...vals), range=(max-min)||1;
+  const stepX=(w-pad*2)/(vals.length-1);
+  const pts=vals.map((v,i)=>[pad+i*stepX, pad+(1-(v-min)/range)*(h-pad*2)]);
+  const line=pts.map(pt=>`${pt[0].toFixed(1)},${pt[1].toFixed(1)}`).join(' ');
+  const area=`${pad},${h-pad} ${line} ${(w-pad).toFixed(1)},${h-pad}`;
+  const last=pts[pts.length-1];
+  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:${h}px;display:block">
+    <polygon points="${area}" fill="${color}" opacity=".15"/>
+    <polyline points="${line}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="2.6" fill="${color}"/>
+  </svg>`;
+}
+// Week-over-week comparison for a metric card's delta chip -- only returns a pair when a
+// log actually exists ~7+ days before the latest one, so the chip never shows a fabricated
+// comparison off too little history (caller should render nothing when this is null).
+function computeWeekDelta(chronoLogs) {
+  if(!chronoLogs || chronoLogs.length<2) return null;
+  const current=chronoLogs[chronoLogs.length-1];
+  const cutoff=new Date(current.logged_at).getTime()-7*86400000;
+  let previous=null;
+  for(let i=chronoLogs.length-2;i>=0;i--) {
+    if(new Date(chronoLogs[i].logged_at).getTime()<=cutoff) { previous=chronoLogs[i]; break; }
+  }
+  if(!previous) return null;
+  return {current:Number(current.value), previous:Number(previous.value)};
+}
+function deltaChipHtml(delta, unit, higherIsBetter) {
+  if(!delta) return '';
+  const diff=delta.current-delta.previous;
+  if(Math.abs(diff)<0.05) return '';
+  const good = higherIsBetter ? diff>0 : diff<0;
+  const arrow = diff>0 ? '▲' : '▼';
+  const color = good ? 'var(--finances)' : 'var(--relations)';
+  const mag = Math.abs(diff)>=100 ? Math.round(Math.abs(diff)).toLocaleString() : Math.abs(diff).toFixed(1);
+  return `<span style="display:inline-flex;align-items:center;gap:2px;font-size:10px;font-weight:700;color:${color};background:${color}22;padding:2px 7px;border-radius:20px">${arrow} ${mag}${unit||''}</span>`;
+}
+// Collapses raw same-day logs (e.g. multiple step entries) into one chronological
+// (oldest-first) point per calendar day.
+function aggregateDaily(logs) {
+  const byDate={};
+  (logs||[]).forEach(l=>{ const d=(l.logged_at||'').split('T')[0]; if(!d) return; byDate[d]=(byDate[d]||0)+(Number(l.value)||0); });
+  return Object.keys(byDate).sort().map(d=>({logged_at:d, value:byDate[d]}));
+}
+// Groups any date-stamped log list into Monday-start weeks, newest week first -- the
+// "history grouped by week (not one flat list)" Hub drill-down requirement.
+function groupLogsByWeek(logs) {
+  const groups=new Map();
+  (logs||[]).forEach(l=>{
+    const d=new Date(l.logged_at);
+    if(isNaN(d)) return;
+    const monday=new Date(d); monday.setHours(0,0,0,0); monday.setDate(monday.getDate()-((monday.getDay()+6)%7));
+    const key=monday.toISOString().split('T')[0];
+    if(!groups.has(key)) groups.set(key, {weekStart:monday, logs:[]});
+    groups.get(key).logs.push(l);
+  });
+  return Array.from(groups.values()).sort((a,b)=>b.weekStart-a.weekStart);
+}
+function weekLabel(monday) {
+  const now=new Date(); const thisMonday=new Date(now); thisMonday.setHours(0,0,0,0); thisMonday.setDate(thisMonday.getDate()-((thisMonday.getDay()+6)%7));
+  if(monday.getTime()===thisMonday.getTime()) return 'This Week';
+  const lastMonday=new Date(thisMonday); lastMonday.setDate(thisMonday.getDate()-7);
+  if(monday.getTime()===lastMonday.getTime()) return 'Last Week';
+  return `Week of ${monday.toLocaleDateString(undefined,{month:'short',day:'numeric'})}`;
+}
+// One of the Hub drill-down's 3 supporting stat chips (this week / average / best) --
+// glass-styled, pillar-accented.
+function metricStatChip(label, val, color) {
+  return `<div class="glass-card" style="flex:1;text-align:center;padding:10px 6px;border:1px solid ${hexToRgba(color,.22)}">
+    <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:800;color:var(--text)">${val}</div>
+    <div style="font-size:9.5px;color:var(--stone);text-transform:uppercase;letter-spacing:.3px;margin-top:2px">${label}</div>
+  </div>`;
+}
 function pillarMapHero(o) {
   const stats=(o.stats||[]).map(s=>heroStatPill(s.icon, s.val, s.label)).join('');
-  return `<div style="background:linear-gradient(150deg, ${o.color}, ${o.color}bb);border-radius:22px;padding:18px 20px;margin-bottom:14px">
+  return `<div style="background:linear-gradient(150deg, ${o.color}, ${o.color}bb);border-radius:22px;padding:18px 20px;margin-bottom:14px;box-shadow:0 12px 28px -12px rgba(0,0,0,.5)">
     <div style="display:flex;align-items:center;gap:16px">
       <div style="position:relative;width:116px;height:116px;flex-shrink:0">
         ${svgRing(o.ringPct, '#fff', {size:116, stroke:11})}
@@ -7680,8 +7851,8 @@ async function loadFitnessMap() {
     req('GET','/metrics?pillar_id='+p.id+'&days=30'),
     req('GET','/goals?pillar_id='+p.id),
     req('GET','/metrics?pillar_id='+p.id+'&log_type=workout_plan'),
-    req('GET','/metrics?pillar_id='+p.id+'&log_type=weight'),
-    req('GET','/metrics?pillar_id='+p.id+'&log_type=steps&days=1'),
+    req('GET','/metrics?pillar_id='+p.id+'&log_type=weight&days=60'),
+    req('GET','/metrics?pillar_id='+p.id+'&log_type=steps&days=14'),
   ]);
   const logs=(data?.logs||[]).filter(l=>l.log_type==='workout');
   const dateOf=l=>(l.logged_at||'').split('T')[0];
@@ -7720,6 +7891,17 @@ async function loadFitnessMap() {
   const todayStr=today.toISOString().split('T')[0];
   const stepsToday=(stepsData?.logs||[]).filter(l=>dateOf(l)===todayStr).reduce((s,l)=>s+(Number(l.value)||0),0);
 
+  // Metric-card trend data for the Glass treatment -- real recent history only, sourced
+  // from the same requests above. Weight logs are already ~1/day so used as-is; steps can
+  // have multiple logs/day so get collapsed to one point per calendar day first.
+  const weightChrono=[...(weightLogs?.logs||[])].reverse();
+  const weightVals=weightChrono.map(l=>Number(l.value));
+  const weightDelta=computeWeekDelta(weightChrono);
+  const weightUnit=latestWeight?.unit||'kg';
+  const dailySteps=aggregateDaily(stepsData?.logs||[]);
+  const stepsVals=dailySteps.map(d=>d.value);
+  const stepsDelta=computeWeekDelta(dailySteps);
+
   // Layout order matches every other pillar's Map tab (metrics first, then the pillar's
   // own action card, then "View Full Hub") -- Pass 4 originally put the action card first,
   // which broke that shared layout; fixed per live feedback.
@@ -7737,39 +7919,71 @@ async function loadFitnessMap() {
   const headline = streak>1 ? `${streak}-day streak — keep it alive`
     : metTarget ? "Target hit. Strong week." : "Let's move today.";
   const volDisplay = weeklyVolume>=1000 ? (weeklyVolume/1000).toFixed(1)+'k' : weeklyVolume.toLocaleString();
+  // Hero CTA (Today's Workout / Rest Day / No plans yet) is the day's main action card --
+  // stays SOLID, filled with the pillar colour, per the approved Glass direction (hero
+  // elements opaque, secondary elements glass). Weight + Steps below are the secondary
+  // metric cards and get the glass treatment instead, each with a real sparkline of recent
+  // history, a week-over-week delta chip when there's enough history for one, and now tap
+  // through into the Workout Hub's new Metrics tab for the full drill-down.
+  const textColor=pillarTextOn(p.color);
+  const mutedText='rgba(255,255,255,.75)';
   const html=`
     ${pillarMapHero({ color:p.color, ringPct:wkPct, ringCenter, ringLabel, kicker:'Fitness',
-      headline, stats:[{icon:'🔥',val:streak,label:'streak'},{icon:'🏋️',val:volDisplay,label:'kg vol'},{icon:'✨',val:prCount,label:'PRs'}] })}
-    <div class="rm-goal-card" style="text-align:center;margin-top:14px;border:1.5px solid ${todaysPlan?p.color:'rgba(196,184,168,.12)'}">
-      ${todaysPlan ? `
-        <div style="font-size:11px;color:${p.color};letter-spacing:.5px;font-weight:700">TODAY'S WORKOUT</div>
-        <div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:var(--text);margin:6px 0 14px">${todaysPlan.data?.name||'Workout'}</div>
+      headline, stats:[{icon:ICONS.flame,val:streak,label:'streak'},{icon:PILLAR_GLYPH.fitness,val:volDisplay,label:'kg vol'},{icon:ICONS.star,val:prCount,label:'PRs'}] })}
+    ${heroCtaCard(p.color, todaysPlan ? `
+        <div style="text-align:center">
+        <div style="font-size:11px;color:${mutedText};letter-spacing:.5px;font-weight:700">TODAY'S WORKOUT</div>
+        <div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:${textColor};margin:6px 0 14px">${todaysPlan.data?.name||'Workout'}</div>
         <div style="display:flex;gap:10px;justify-content:center">
-          <button class="btn-p filled" style="background:${p.color};color:#fff;border-color:${p.color}" onclick="startTodaysWorkout(${todaysPlan.id})">Start Workout</button>
-          <button class="btn-p" style="border-color:${p.color};color:${p.color}" onclick="openWorkoutHub()">Edit</button>
-        </div>` : plans.length ? `
-        <div style="font-size:11px;color:var(--stone);letter-spacing:.5px;font-weight:700">TODAY</div>
-        <div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:var(--text);margin:6px 0 14px">😴 Rest Day${weeklyTarget?` — ${workoutsThisWeek}/${weeklyTarget} this week`:''}</div>
-        <button class="btn-p" style="border-color:${p.color};color:${p.color}" onclick="openWorkoutHub()">Modify Plan</button>` : `
-        <div style="font-size:11px;color:var(--stone);letter-spacing:.5px;font-weight:700">TODAY</div>
-        <div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:var(--text);margin:6px 0 14px">No plans yet</div>
-        <button class="btn-p filled" style="background:${p.color};border-color:${p.color}" onclick="openWorkoutHub()">Build a Plan</button>`}
-    </div>
+          <button class="btn-p filled" style="background:${textColor};color:${p.color};border-color:${textColor}" onclick="startTodaysWorkout(${todaysPlan.id})">Start Workout</button>
+          <button class="btn-p" style="border-color:${textColor};color:${textColor}" onclick="openWorkoutHub()">Edit</button>
+        </div></div>` : plans.length ? `
+        <div style="text-align:center">
+        <div style="font-size:11px;color:${mutedText};letter-spacing:.5px;font-weight:700">TODAY</div>
+        <div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:${textColor};margin:6px 0 14px">😴 Rest Day${weeklyTarget?` — ${workoutsThisWeek}/${weeklyTarget} this week`:''}</div>
+        <button class="btn-p" style="border-color:${textColor};color:${textColor}" onclick="openWorkoutHub()">Modify Plan</button></div>` : `
+        <div style="text-align:center">
+        <div style="font-size:11px;color:${mutedText};letter-spacing:.5px;font-weight:700">TODAY</div>
+        <div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:${textColor};margin:6px 0 14px">No plans yet</div>
+        <button class="btn-p filled" style="background:${textColor};color:${p.color};border-color:${textColor}" onclick="openWorkoutHub()">Build a Plan</button></div>`,
+      {style:'margin-top:14px'})}
     <div style="display:flex;gap:10px;margin-top:14px">
-      <div class="rm-goal-card" style="flex:1;background:var(--bg2);padding:12px" onclick="openLogWeight()">
-        <div class="section-sub">Weight</div>
-        <div style="font-family:'Syne',sans-serif;font-size:17px;font-weight:800;color:var(--text);margin:2px 0 6px">${latestWeight?`${latestWeight.value} ${latestWeight.unit||'kg'}`:'—'}</div>
-        ${weightTrendHtml(weightLogs?.logs||[], true)}
-        <div style="display:inline-block;font-size:11px;color:${p.color};font-weight:700;margin-top:8px;padding:4px 10px;border:1.5px solid ${p.color};border-radius:20px">+ Log Weight</div>
-      </div>
-      <div class="rm-goal-card" style="flex:1;background:${p.color};padding:12px" onclick="openStepsLogger(null)">
-        <div class="section-sub" style="color:rgba(255,255,255,.75)">Steps Today</div>
-        <div style="font-family:'Syne',sans-serif;font-size:17px;font-weight:800;color:#fff;margin:2px 0 6px">${stepsToday?stepsToday.toLocaleString():'0'}</div>
-        <div style="font-size:11px;color:rgba(255,255,255,.85);line-height:1.4">Tap to log more steps</div>
-        <div style="display:inline-block;font-size:11px;color:#fff;font-weight:700;margin-top:8px;padding:4px 10px;border:1.5px solid rgba(255,255,255,.7);border-radius:20px">+ Log Steps</div>
-      </div>
+      ${glassCard(p.color, `
+        <div style="display:flex;align-items:center;gap:10px">
+          ${glassIcon(ICONS.scale, p.color)}
+          <div style="flex:1;min-width:0">
+            <div class="section-sub" style="margin:0">Weight</div>
+            <div style="display:flex;align-items:baseline;gap:5px;flex-wrap:wrap">
+              <span style="font-family:'Syne',sans-serif;font-size:17px;font-weight:800;color:var(--text)">${latestWeight?`${latestWeight.value} ${weightUnit}`:'—'}</span>
+              ${deltaChipHtml(weightDelta, weightUnit, false)}
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:8px">${sparklineSvg(weightVals.slice(-14), p.color, {w:130,h:28})}</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+          <span style="font-size:10px;color:var(--stone)">Full history ›</span>
+          <span onclick="event.stopPropagation();openLogWeight()" style="font-size:10px;color:${p.color};font-weight:700;padding:3px 9px;border:1px solid ${hexToRgba(p.color,.4)};border-radius:20px">+ Log</span>
+        </div>`,
+        {style:'flex:1', onclick:"showScreen('workout-hub');switchWorkoutHubTab('metrics','weight')"})}
+      ${glassCard(p.color, `
+        <div style="display:flex;align-items:center;gap:10px">
+          ${glassIcon(ICONS.footprint, p.color)}
+          <div style="flex:1;min-width:0">
+            <div class="section-sub" style="margin:0">Steps Today</div>
+            <div style="display:flex;align-items:baseline;gap:5px;flex-wrap:wrap">
+              <span style="font-family:'Syne',sans-serif;font-size:17px;font-weight:800;color:var(--text)">${stepsToday?stepsToday.toLocaleString():'0'}</span>
+              ${deltaChipHtml(stepsDelta, '', true)}
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:8px">${sparklineSvg(stepsVals.slice(-14), p.color, {w:130,h:28})}</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+          <span style="font-size:10px;color:var(--stone)">Full history ›</span>
+          <span onclick="event.stopPropagation();openStepsLogger(null)" style="font-size:10px;color:${p.color};font-weight:700;padding:3px 9px;border:1px solid ${hexToRgba(p.color,.4)};border-radius:20px">+ Log</span>
+        </div>`,
+        {style:'flex:1', onclick:"showScreen('workout-hub');switchWorkoutHubTab('metrics','steps')"})}
     </div>
-    ${hubButton('View Full Workout Hub', p.color, 'openWorkoutHub()', '🏋️')}`;
+    ${hubButton('View Full Workout Hub', p.color, 'openWorkoutHub()', PILLAR_GLYPH.fitness)}`;
   container.innerHTML=html;
 }
 
@@ -7844,31 +8058,6 @@ function startTodaysWorkout(planId) {
 // A single number ("74 kg") doesn't say whether that's progress -- the trend (gain or
 // loss over the last 30 days of logs, GET /metrics's default window) is the part that
 // actually matters for a weight-management goal. Needs at least 2 points to draw a line.
-function weightTrendHtml(logs, compact) {
-  if(!logs || logs.length<2) return '';
-  const points=[...logs].reverse(); // API returns newest-first; chart reads left-to-right chronologically
-  const vals=points.map(l=>Number(l.value));
-  const min=Math.min(...vals), max=Math.max(...vals);
-  const range=(max-min)||1;
-  const w=280, h=50, pad=4;
-  const stepX=points.length>1 ? (w-pad*2)/(points.length-1) : 0;
-  const coords=vals.map((v,i)=>{
-    const x=pad+i*stepX;
-    const y=pad+(1-(v-min)/range)*(h-pad*2);
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(' ');
-  const delta=vals[vals.length-1]-vals[0];
-  const unit=points[points.length-1].unit||'kg';
-  // The glanceable 50/50 dashboard card needs a short label ("-1.8 kg") -- the fuller
-  // "over last N logs" framing still shows on the standalone Weight Hub view.
-  const deltaLabel = delta===0 ? 'No change' : compact ? `${delta>0?'+':''}${delta.toFixed(1)} ${unit}` : `${delta>0?'+':''}${delta.toFixed(1)} ${unit} over last ${points.length} logs`;
-  return `
-    <svg viewBox="0 0 ${w} ${h}" style="width:100%;height:${compact?28:44}px;margin-top:${compact?4:12}px;display:block" preserveAspectRatio="none">
-      <polyline points="${coords}" fill="none" stroke="var(--fitness)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-    </svg>
-    <div style="font-size:11px;color:var(--stone);margin-top:4px">${deltaLabel}</div>`;
-}
-
 async function openLogWeight() {
   const prefs=await req('GET','/preferences/units')||{};
   S.editingWeightUnit = prefs.weight==='lbs' ? 'lbs' : 'kg';
@@ -7895,15 +8084,15 @@ function openWorkoutHub() { showScreen('workout-hub'); switchWorkoutHubTab('mypl
 function openWorkoutQuickAdd() {
   document.getElementById('workout-quick-add-list').innerHTML = `
     <div class="sq-card" onclick="closeModal('modal-workout-quick-add');openLogPastActivityPicker()">
-      <div class="sq-icon" style="background:var(--fitness)22;color:var(--fitness)">🗓️</div>
+      <div class="sq-icon" style="background:var(--fitness)22;color:var(--fitness)">${ICONS.calendar}</div>
       <div class="sq-info"><div class="sq-name">Log Past Activity</div><div class="sq-meta">Record a workout you already did</div></div>
     </div>
     <div class="sq-card" onclick="closeModal('modal-workout-quick-add');S.pendingTaskId=null;openCreateWorkoutTemplate('start')">
-      <div class="sq-icon" style="background:var(--fitness)22;color:var(--fitness)">⚡</div>
+      <div class="sq-icon" style="background:var(--fitness)22;color:var(--fitness)">${ICONS.bolt}</div>
       <div class="sq-info"><div class="sq-name">Start Spontaneous Activity</div><div class="sq-meta">Type anything -- squash, a run, a hike -- and jump in</div></div>
     </div>
     <div class="sq-card" onclick="closeModal('modal-workout-quick-add');openCreateWorkoutTemplate()">
-      <div class="sq-icon" style="background:var(--fitness)22;color:var(--fitness)">✏️</div>
+      <div class="sq-icon" style="background:var(--fitness)22;color:var(--fitness)">${ICONS.pencil}</div>
       <div class="sq-info"><div class="sq-name">Create New Template</div><div class="sq-meta">Build a reusable workout plan</div></div>
     </div>`;
   document.getElementById('modal-workout-quick-add').classList.add('open');
@@ -7959,10 +8148,10 @@ function addTemplateRow() { S.tplRows.push({name:'',sets:3,reps:10,weight:0}); r
 // hunting down every consumer. 'strength' stays the default for AI-generated plans
 // (api/goals.js's FITNESS_ADDENDUM predates this and never sets activityType).
 const ACTIVITY_TYPES=[
-  {key:'strength', label:'Strength', icon:'🏋️'},
-  {key:'cardio', label:'Cardio', icon:'🏃'},
-  {key:'hiit', label:'HIIT', icon:'⏱️'},
-  {key:'mobility', label:'Mobility', icon:'🧘'},
+  {key:'strength', label:'Strength', icon:PILLAR_GLYPH.fitness},
+  {key:'cardio', label:'Cardio', icon:ICONS.heartPulse},
+  {key:'hiit', label:'HIIT', icon:ICONS.stopwatch},
+  {key:'mobility', label:'Mobility', icon:ICONS.stretch},
 ];
 function activityIcon(type) { return (ACTIVITY_TYPES.find(t=>t.key===type)||ACTIVITY_TYPES[0]).icon; }
 
@@ -8104,9 +8293,10 @@ function renderTplTypeBody() {
   }
 }
 
-async function switchWorkoutHubTab(tab) {
-  ['history','myplans'].forEach(t=>{
+async function switchWorkoutHubTab(tab, metricView) {
+  ['history','myplans','metrics'].forEach(t=>{
     const btn=document.getElementById('wh-tab-'+t);
+    if(!btn) return;
     btn.classList.toggle('sel', t===tab);
     btn.style.background = t===tab ? 'var(--fitness)' : 'var(--bg4)';
   });
@@ -8118,25 +8308,118 @@ async function switchWorkoutHubTab(tab) {
     const data=await req('GET','/metrics?pillar_id='+p.id+'&log_type=workout_plan');
     const plans=data?.logs||[];
     body.innerHTML = plans.length ? plans.map(workoutPlanCard).join('') :
-      `<div class="empty"><div class="empty-icon">🏋️</div><div class="empty-text">No workout plans yet — accept a Fitness goal to generate some.</div></div>`;
+      `<div class="empty"><div class="empty-icon">${PILLAR_GLYPH.fitness}</div><div class="empty-text">No workout plans yet — accept a Fitness goal to generate some.</div></div>`;
+    return;
+  }
+  if(tab==='metrics') {
+    await renderWorkoutMetricsTab(metricView || S.workoutMetricView || 'weight');
     return;
   }
   const data=await req('GET','/metrics?pillar_id='+p.id+'&log_type=workout');
   const workouts=data?.logs||[];
   body.innerHTML = workouts.length ? workouts.map(workoutHistoryCard).join('') :
-    `<div class="empty"><div class="empty-icon">🏋️</div><div class="empty-text">No workouts logged yet.</div></div>`;
+    `<div class="empty"><div class="empty-icon">${PILLAR_GLYPH.fitness}</div><div class="empty-text">No workouts logged yet.</div></div>`;
+}
+
+// ── Workout Hub > Metrics tab -- the "metric card on the Map taps through into a real Hub
+// drill-down" requirement. Weight uses a trend/sparkline hero (plain "over time" framing
+// fits a scale reading); Steps uses the shared svgRing hero (percentage-of-weekly-goal
+// framing fits a daily-target metric). Both share the same 3-stat-chip row and
+// week-grouped history below, built from the shared glass helpers above.
+async function renderWorkoutMetricsTab(view) {
+  S.workoutMetricView=view;
+  const body=document.getElementById('workout-hub-body');
+  const p=PILLARS.fitness;
+  const [weightData, stepsData]=await Promise.all([
+    req('GET','/metrics?pillar_id='+p.id+'&log_type=weight&days=90'),
+    req('GET','/metrics?pillar_id='+p.id+'&log_type=steps&days=90'),
+  ]);
+  const weightChrono=[...(weightData?.logs||[])].reverse();
+  const stepsChrono=aggregateDaily(stepsData?.logs||[]);
+  const toggle=`<div style="display:flex;gap:8px;margin-bottom:14px">
+    <button class="pg-btn" style="flex:1;font-size:11px;background:${view==='weight'?'var(--fitness)':'var(--bg4)'}" onclick="renderWorkoutMetricsTab('weight')">Weight</button>
+    <button class="pg-btn" style="flex:1;font-size:11px;background:${view==='steps'?'var(--fitness)':'var(--bg4)'}" onclick="renderWorkoutMetricsTab('steps')">Steps</button>
+  </div>`;
+  body.innerHTML = toggle + (view==='steps' ? renderStepsMetricDetail(stepsChrono, p.color) : renderWeightMetricDetail(weightChrono, p.color));
+}
+function renderWeightMetricDetail(chrono, color) {
+  if(!chrono.length) return `<div class="empty"><div class="empty-icon">${ICONS.scale}</div><div class="empty-text">No weight logged yet.</div></div>`;
+  const vals=chrono.map(l=>Number(l.value));
+  const unit=chrono[chrono.length-1]?.unit||'kg';
+  const current=vals[vals.length-1];
+  const delta=computeWeekDelta(chrono);
+  const weekCutoff=Date.now()-7*86400000;
+  const weekVals=chrono.filter(l=>new Date(l.logged_at).getTime()>weekCutoff).map(l=>Number(l.value));
+  const weekAvg=weekVals.length ? weekVals.reduce((a,b)=>a+b,0)/weekVals.length : null;
+  const allAvg=vals.reduce((a,b)=>a+b,0)/vals.length;
+  const best=Math.min(...vals);
+  const hero=`<div class="glass-card" style="border:1px solid ${hexToRgba(color,.22)};text-align:center;padding:20px 16px">
+    <div class="section-sub" style="margin:0 0 4px">CURRENT WEIGHT</div>
+    <div style="font-family:'Syne',sans-serif;font-size:30px;font-weight:800;color:var(--text)">${current} ${unit} ${deltaChipHtml(delta,unit,false)}</div>
+    <div style="margin-top:14px">${sparklineSvg(vals.slice(-30), color, {w:300,h:70})}</div>
+  </div>`;
+  const chips=`<div style="display:flex;gap:8px;margin:12px 0">
+    ${metricStatChip('This Week', weekAvg!=null?weekAvg.toFixed(1)+' '+unit:'—', color)}
+    ${metricStatChip('Average', allAvg.toFixed(1)+' '+unit, color)}
+    ${metricStatChip('Best', best.toFixed(1)+' '+unit, color)}
+  </div>`;
+  const weeks=groupLogsByWeek([...chrono].reverse());
+  const history=weeks.map(w=>`
+    <div class="section-sub" style="margin:16px 0 8px">${weekLabel(w.weekStart)}</div>
+    ${w.logs.map(l=>`<div class="glass-card" style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;margin-bottom:8px;border:1px solid ${hexToRgba(color,.14)}">
+      <span style="font-size:12px;color:var(--stone)">${new Date(l.logged_at).toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'})}</span>
+      <span style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text)">${l.value} ${l.unit||unit}</span>
+    </div>`).join('')}`).join('');
+  return hero+chips+history;
+}
+function renderStepsMetricDetail(chrono, color) {
+  if(!chrono.length) return `<div class="empty"><div class="empty-icon">${ICONS.footprint}</div><div class="empty-text">No steps logged yet.</div></div>`;
+  const target=8000; // matches the default daily step target used by the Steps logger
+  const weekCutoff=Date.now()-7*86400000;
+  const weekChrono=chrono.filter(d=>new Date(d.logged_at).getTime()>weekCutoff);
+  const weekTotal=weekChrono.reduce((s,d)=>s+d.value,0);
+  const pct=Math.min(1, weekTotal/(target*7));
+  const today=chrono[chrono.length-1];
+  const todaySteps=today ? today.value : 0;
+  const delta=computeWeekDelta(chrono);
+  const allAvg=Math.round(chrono.reduce((s,d)=>s+d.value,0)/chrono.length);
+  const best=Math.max(...chrono.map(d=>d.value));
+  const hero=`<div class="glass-card" style="border:1px solid ${hexToRgba(color,.22)};text-align:center;padding:20px 16px">
+    <div style="position:relative;width:150px;height:150px;margin:0 auto">
+      ${svgRing(pct, color, {size:150, stroke:13, track:hexToRgba(color,.15)})}
+      <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
+        <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--text)">${weekTotal.toLocaleString()}</div>
+        <div style="font-size:9px;color:var(--stone);text-transform:uppercase;letter-spacing:.4px;margin-top:2px">this week</div>
+      </div>
+    </div>
+    <div style="margin-top:10px;font-size:12px;color:var(--stone)">${todaySteps.toLocaleString()} steps today ${deltaChipHtml(delta,'',true)}</div>
+  </div>`;
+  const chips=`<div style="display:flex;gap:8px;margin:12px 0">
+    ${metricStatChip('This Week', weekTotal.toLocaleString(), color)}
+    ${metricStatChip('Daily Avg', allAvg.toLocaleString(), color)}
+    ${metricStatChip('Best Day', best.toLocaleString(), color)}
+  </div>`;
+  const weeks=groupLogsByWeek([...chrono].reverse());
+  const history=weeks.map(w=>`
+    <div class="section-sub" style="margin:16px 0 8px">${weekLabel(w.weekStart)} — ${w.logs.reduce((s,l)=>s+l.value,0).toLocaleString()} steps</div>
+    ${w.logs.map(l=>`<div class="glass-card" style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;margin-bottom:8px;border:1px solid ${hexToRgba(color,.14)}">
+      <span style="font-size:12px;color:var(--stone)">${new Date(l.logged_at).toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'})}</span>
+      <span style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text)">${l.value.toLocaleString()} steps</span>
+    </div>`).join('')}`).join('');
+  return hero+chips+history;
 }
 
 function workoutPlanCard(plan) {
   workoutPlansCache[plan.id]=plan.data;
   const d=plan.data||{};
-  return `<div class="rm-goal-card" style="margin-bottom:10px">
+  const color=PILLARS.fitness.color;
+  return glassCard(color, `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-      <span style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text);cursor:pointer" onclick="viewWorkoutPlanDetail(${plan.id})">${activityIcon(d.activityType)} ${d.name||'Plan'} <span style="color:var(--stone);font-size:11px">›</span></span>
+      <span style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;gap:6px" onclick="viewWorkoutPlanDetail(${plan.id})"><span style="color:${color}">${activityIcon(d.activityType)}</span> ${d.name||'Plan'} <span style="color:var(--stone);font-size:11px">›</span></span>
     </div>
     <div style="font-size:12px;color:var(--stone);margin-bottom:10px">${workoutPlanSummary(d)}</div>
-    <button class="btn-p filled" style="background:var(--fitness);border-color:var(--fitness)" onclick="startWorkout(${plan.id})">Start Workout</button>
-  </div>`;
+    <button class="btn-p filled" style="background:${color};border-color:${color}" onclick="startWorkout(${plan.id})">Start Workout</button>
+  `, {style:'margin-bottom:10px'});
 }
 
 // Read-only preview of an un-started plan template -- mirrors viewWorkoutDetail()'s
@@ -8185,14 +8468,17 @@ function workoutLogSummary(w) {
 function workoutHistoryCard(w) {
   const d=w.data||{};
   const date=w.logged_at?new Date(w.logged_at).toLocaleDateString():'';
-  return `<div class="sq-card" onclick="viewWorkoutDetail(${w.id})">
-    <div class="sq-icon" style="background:var(--fitness)22;color:var(--fitness)">${activityIcon(d.activityType)}</div>
-    <div class="sq-info">
-      <div class="sq-name">${d.planName||'Workout'}</div>
-      <div class="sq-meta">${date} · ${d.durationMin||0} min</div>
-      <div class="sq-meta" style="color:var(--fitness);font-weight:600">${workoutLogSummary(w)}</div>
-    </div>
-  </div>`;
+  const color=PILLARS.fitness.color;
+  return glassCard(color, `
+    <div style="display:flex;align-items:center;gap:12px">
+      ${glassIcon(activityIcon(d.activityType), color)}
+      <div style="flex:1;min-width:0">
+        <div class="sq-name">${d.planName||'Workout'}</div>
+        <div class="sq-meta">${date} · ${d.durationMin||0} min</div>
+        <div class="sq-meta" style="color:${color};font-weight:600">${workoutLogSummary(w)}</div>
+      </div>
+    </div>`,
+    {style:'margin-bottom:8px', onclick:`viewWorkoutDetail(${w.id})`});
 }
 
 async function viewWorkoutDetail(id) {
