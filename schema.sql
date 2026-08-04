@@ -395,3 +395,17 @@ CREATE TABLE IF NOT EXISTS task_reschedule_log (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_task_reschedule_log_lookup ON task_reschedule_log(user_id, from_date);
+
+-- PTW Membership (Stripe subscriptions) -- stripe_customer_id is the join key the
+-- webhook uses to find a user from any subsequent Stripe event (checkout only gives us
+-- client_reference_id, but renewals/cancellations only carry the customer/subscription
+-- id). subscription_status mirrors Stripe's own status strings ('active' | 'trialing' |
+-- 'past_due' | 'canceled' | ...) rather than a boolean, so past_due can be surfaced
+-- distinctly from a real cancellation.
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT,
+  ADD COLUMN IF NOT EXISTS stripe_subscription_id TEXT,
+  ADD COLUMN IF NOT EXISTS subscription_status TEXT,
+  ADD COLUMN IF NOT EXISTS subscription_plan TEXT,
+  ADD COLUMN IF NOT EXISTS subscription_current_period_end TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS idx_users_stripe_customer ON users(stripe_customer_id);

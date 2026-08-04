@@ -8,6 +8,7 @@
     "@vercel/blob": "^2.6.1",
     "bcryptjs": "^2.4.3",
     "mammoth": "^1.12.0",
-    "pdf-parse": "^2.4.5"
+    "pdf-parse": "^2.4.5",
+    "stripe": "^17.7.0"
   }
 }

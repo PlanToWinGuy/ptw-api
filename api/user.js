@@ -120,7 +120,10 @@ export default async function handler(req, res) {
       pillar_caps: PILLAR_CAPS,
       xp: user.xp,
       recommended_pillar: user.recommended_pillar,
-      subscription_tier: null,
+      subscription_tier: ['active', 'trialing'].includes(user.subscription_status) ? 'premium' : null,
+      subscription_status: user.subscription_status || null,
+      subscription_plan: user.subscription_plan || null,
+      subscription_renews_at: user.subscription_current_period_end || null,
       valueprint_data: user.valueprint_data || null,
     },
   });
