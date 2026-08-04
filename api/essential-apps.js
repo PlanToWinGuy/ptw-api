@@ -47,7 +47,83 @@ const CATALOG = {
   // the same "worth doing with idle time" slot as Duolingo/Brilliant -- staying informed
   // is a real skill-building/wellness activity, not just entertainment filler.
   ground_news: { appName: 'Ground News', iconName: 'news_icon',   category: 'skill',        webFallback: 'https://ground.news/' },
+
+  // ── LIBRARY EXPANSION (4.19) ──────────────────────────────────────────────
+  // Grows Essential Apps from a curated ~20-app suggestion set into a genuinely
+  // browsable "open library" (see GET /essential-apps?library=1) with a search bar --
+  // the product ask was "an open library and search bar... to find whatever they need
+  // easy on device." Neither iOS nor Android lets a third-party app enumerate every app
+  // actually installed on the device (iOS: canOpenURL only answers yes/no for schemes
+  // YOU pre-declare, capped at 50, never "list everything"; Android: QUERY_ALL_PACKAGES
+  // is gated behind Play Console's declared-use review for launcher/antivirus-class apps
+  // and would put a general productivity app like this one at real risk of rejection).
+  // So this grows the thing that's actually buildable: a large, well-organized, PTW-
+  // curated catalog, same urlScheme-first/webFallback-always deep-link pattern as above.
+  // New categories beyond the original utility/entertainment/skill/wellness: 'social',
+  // 'productivity', 'finance', 'shopping', 'travel' -- real launcher-style groupings.
+  // urlScheme is still only ever set when it's a long-standing, publicly documented
+  // scheme (verified, not guessed) -- same discipline as the original list. Most of
+  // these entries are webFallback-only, which is honest: it just means the native
+  // scheme isn't confidently known-good, not that the app can't be reached at all --
+  // launchEssentialApp() already opens webFallback directly whenever urlScheme is absent.
+  instagram:  { appName: 'Instagram',  iconName: 'instagram_icon',  category: 'social',       urlScheme: 'instagram://',  webFallback: 'https://www.instagram.com/' },
+  facebook:   { appName: 'Facebook',   iconName: 'facebook_icon',   category: 'social',       webFallback: 'https://www.facebook.com/' },
+  twitter:    { appName: 'X',          iconName: 'twitter_icon',    category: 'social',       urlScheme: 'twitter://',    webFallback: 'https://x.com/' },
+  tiktok:     { appName: 'TikTok',     iconName: 'tiktok_icon',     category: 'social',       webFallback: 'https://www.tiktok.com/' },
+  snapchat:   { appName: 'Snapchat',   iconName: 'snapchat_icon',   category: 'social',       webFallback: 'https://www.snapchat.com/' },
+  linkedin:   { appName: 'LinkedIn',   iconName: 'linkedin_icon',   category: 'social',       urlScheme: 'linkedin://',   webFallback: 'https://www.linkedin.com/' },
+  reddit:     { appName: 'Reddit',     iconName: 'reddit_icon',     category: 'social',       webFallback: 'https://www.reddit.com/' },
+  pinterest:  { appName: 'Pinterest',  iconName: 'pinterest_icon',  category: 'social',       webFallback: 'https://www.pinterest.com/' },
+  telegram:   { appName: 'Telegram',   iconName: 'telegram_icon',   category: 'social',       urlScheme: 'tg://',         webFallback: 'https://web.telegram.org/' },
+  discord:    { appName: 'Discord',    iconName: 'discord_icon',    category: 'social',       webFallback: 'https://discord.com/app' },
+
+  notion:     { appName: 'Notion',     iconName: 'notion_icon',     category: 'productivity', webFallback: 'https://www.notion.so/' },
+  todoist:    { appName: 'Todoist',    iconName: 'todoist_icon',    category: 'productivity', webFallback: 'https://todoist.com/app' },
+  trello:     { appName: 'Trello',     iconName: 'trello_icon',     category: 'productivity', urlScheme: 'trello://',     webFallback: 'https://trello.com/' },
+  teams:      { appName: 'Teams',      iconName: 'teams_icon',      category: 'productivity', webFallback: 'https://teams.microsoft.com/' },
+  outlook:    { appName: 'Outlook',    iconName: 'outlook_icon',    category: 'productivity', webFallback: 'https://outlook.com/' },
+  drive:      { appName: 'Drive',      iconName: 'drive_icon',      category: 'productivity', webFallback: 'https://drive.google.com/' },
+  dropbox:    { appName: 'Dropbox',    iconName: 'dropbox_icon',    category: 'productivity', webFallback: 'https://www.dropbox.com/' },
+  onepassword:{ appName: '1Password',  iconName: 'onepassword_icon',category: 'productivity', webFallback: 'https://my.1password.com/' },
+
+  venmo:      { appName: 'Venmo',      iconName: 'venmo_icon',      category: 'finance',      webFallback: 'https://venmo.com/' },
+  paypal:     { appName: 'PayPal',     iconName: 'paypal_icon',     category: 'finance',      webFallback: 'https://www.paypal.com/' },
+  cashapp:    { appName: 'Cash App',   iconName: 'cashapp_icon',    category: 'finance',      webFallback: 'https://cash.app/' },
+  robinhood:  { appName: 'Robinhood',  iconName: 'robinhood_icon',  category: 'finance',      webFallback: 'https://robinhood.com/' },
+  coinbase:   { appName: 'Coinbase',   iconName: 'coinbase_icon',   category: 'finance',      webFallback: 'https://www.coinbase.com/' },
+
+  amazon:     { appName: 'Amazon',     iconName: 'amazon_icon',     category: 'shopping',     webFallback: 'https://www.amazon.com/' },
+  ubereats:   { appName: 'Uber Eats',  iconName: 'ubereats_icon',   category: 'shopping',     webFallback: 'https://www.ubereats.com/' },
+  doordash:   { appName: 'DoorDash',   iconName: 'doordash_icon',   category: 'shopping',     webFallback: 'https://www.doordash.com/' },
+  target:     { appName: 'Target',     iconName: 'target_icon',     category: 'shopping',     webFallback: 'https://www.target.com/' },
+  walmart:    { appName: 'Walmart',    iconName: 'walmart_icon',    category: 'shopping',     webFallback: 'https://www.walmart.com/' },
+  instacart:  { appName: 'Instacart',  iconName: 'instacart_icon',  category: 'shopping',     webFallback: 'https://www.instacart.com/' },
+
+  uber:       { appName: 'Uber',       iconName: 'uber_icon',       category: 'travel',       urlScheme: 'uber://',       webFallback: 'https://www.uber.com/' },
+  lyft:       { appName: 'Lyft',       iconName: 'lyft_icon',       category: 'travel',       webFallback: 'https://www.lyft.com/' },
+  airbnb:     { appName: 'Airbnb',     iconName: 'airbnb_icon',     category: 'travel',       webFallback: 'https://www.airbnb.com/' },
+  waze:       { appName: 'Waze',       iconName: 'waze_icon',       category: 'travel',       urlScheme: 'waze://',       webFallback: 'https://www.waze.com/' },
+  google_maps:{ appName: 'Google Maps',iconName: 'maps_icon',       category: 'travel',       urlScheme: 'comgooglemaps://', webFallback: 'https://maps.google.com/' },
+
+  disneyplus: { appName: 'Disney+',    iconName: 'disneyplus_icon', category: 'entertainment',webFallback: 'https://www.disneyplus.com/' },
+  hulu:       { appName: 'Hulu',       iconName: 'hulu_icon',       category: 'entertainment',webFallback: 'https://www.hulu.com/' },
+  twitch:     { appName: 'Twitch',     iconName: 'twitch_icon',     category: 'entertainment',webFallback: 'https://www.twitch.tv/' },
+  apple_music:{ appName: 'Apple Music',iconName: 'spotify_icon',    category: 'entertainment',webFallback: 'https://music.apple.com/' },
+  soundcloud: { appName: 'SoundCloud', iconName: 'soundcloud_icon', category: 'entertainment',webFallback: 'https://soundcloud.com/' },
+
+  myfitnesspal:{ appName: 'MyFitnessPal', iconName: 'health_icon',  category: 'wellness',     webFallback: 'https://www.myfitnesspal.com/' },
+  fitbit:     { appName: 'Fitbit',     iconName: 'fitbit_icon',     category: 'wellness',     webFallback: 'https://www.fitbit.com/' },
+  calm:       { appName: 'Calm',       iconName: 'calm_icon',       category: 'wellness',     webFallback: 'https://www.calm.com/' },
+  headspace:  { appName: 'Headspace',  iconName: 'headspace_icon',  category: 'wellness',     webFallback: 'https://www.headspace.com/' },
+
+  pocket:     { appName: 'Pocket',     iconName: 'notes_icon',      category: 'skill',        webFallback: 'https://getpocket.com/' },
+  medium:     { appName: 'Medium',     iconName: 'medium_icon',     category: 'skill',        webFallback: 'https://medium.com/' },
 };
+
+// Keys shown in the browsable "open library" (GET /essential-apps?library=1) and in the
+// Preferred Apps / Pin-an-App pickers -- excludes 'scan_food' (an in-app action, not a
+// real external app to browse/prefer/pin) so those UIs never show a dead-looking tile.
+const LIBRARY_KEYS = Object.keys(CATALOG).filter(k => k !== 'scan_food');
 
 const APPS_BY_PILLAR = {
   Work:      ['mail', 'calendar', 'notes', 'slack', 'zoom', 'whatsapp'],
@@ -205,6 +281,18 @@ export default async function handler(req, res) {
   }
 
   if (req.method !== 'GET') return res.status(405).json({ message: 'Method not allowed' });
+
+  if (req.query.library) {
+    // The full browsable catalog behind the "open library" search bar (4.19), and also
+    // the shared source for Settings > Preferred Apps and Task Detail's Pin-an-App picker
+    // -- one list instead of three hand-maintained copies, so a new catalog app added
+    // above automatically shows up everywhere instead of silently drifting out of sync.
+    // Sorted by category then name so it reads like a real launcher's app drawer.
+    const entries = LIBRARY_KEYS
+      .map(k => ({ key: k, ...CATALOG[k] }))
+      .sort((a, b) => (a.category || '').localeCompare(b.category || '') || a.appName.localeCompare(b.appName));
+    return res.status(200).json({ apps: entries });
+  }
 
   const taskId = req.query.taskId ? Number(req.query.taskId) : null;
   const breakType = req.query.breakType || null;

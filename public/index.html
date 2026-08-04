@@ -2403,6 +2403,19 @@ let suppressHistoryPush=false;
 // before one of these becomes active; re-entering the same log screen from within itself
 // (e.g. re-rendering mid-flow) doesn't overwrite the original origin.
 const LOGGING_SCREENS = new Set(['meal-log','workout-log','transaction-log','connection-log','log-session','log-work-session']);
+// Shadow stack of screenIds mirroring the real browser history entries *we've* pushed
+// (top of array = current screen). Needed because every in-app "back" button/arrow just
+// calls showScreen(targetScreen) like any other navigation -- it doesn't know it's a
+// "back" action, so it used to fall into the same pushState branch below and leave a
+// *duplicate* history entry for a screen we were already on. That's harmless visually
+// (the target screen shown is still correct) but it meant the *next* hardware/gesture
+// back press only popped that duplicate and bounced the user right back to the screen
+// they'd just deliberately left, instead of continuing further back. Comparing the
+// target against the entry right below current here tells "this is really a back
+// navigation" apart from "this is a forward jump to a new place" and reuses the real
+// history.back() for the former so no duplicate is ever created.
+let screenNavStack=[];
+let programmaticBack=false;
 function showScreen(name) {
   if(LOGGING_SCREENS.has(name)) {
     const activeBefore=document.querySelector('.screen.active');
@@ -2412,14 +2425,29 @@ function showScreen(name) {
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   const el = document.getElementById('screen-'+name) || document.getElementById(name);
   if(el) el.classList.add('active');
-  if(!suppressHistoryPush) {
-    const screenId = el ? el.id.replace(/^screen-/,'') : name;
-    if(history.state?.screen !== screenId) history.pushState({screen:screenId}, '', location.pathname);
+  if(suppressHistoryPush) return;
+  const screenId = el ? el.id.replace(/^screen-/,'') : name;
+  if(history.state?.screen === screenId) return; // already here, nothing to do
+  const backTarget = screenNavStack.length>1 ? screenNavStack[screenNavStack.length-2] : null;
+  if(backTarget===screenId) {
+    screenNavStack.pop();
+    programmaticBack=true;
+    history.back();
+    return;
   }
+  screenNavStack.push(screenId);
+  history.pushState({screen:screenId}, '', location.pathname);
 }
 
 window.addEventListener('popstate', (e)=>{
   suppressHistoryPush=true;
+  if(!programmaticBack) {
+    // A genuine hardware/gesture back (not one showScreen() triggered itself above,
+    // which already popped the shadow stack synchronously) -- keep the shadow stack in
+    // sync so the next in-app back tap still collapses correctly instead of drifting.
+    screenNavStack.pop();
+  }
+  programmaticBack=false;
   if(e.state?.screen) {
     showScreen(e.state.screen);
   } else {
@@ -2429,6 +2457,7 @@ window.addEventListener('popstate', (e)=>{
     const fallback = S.token ? 'home' : 'splash';
     showScreen(fallback);
     history.pushState({screen:fallback}, '', location.pathname);
+    screenNavStack.push(fallback);
   }
   suppressHistoryPush=false;
 });
