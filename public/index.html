@@ -3542,7 +3542,10 @@ const TOOL_HINT_OPEN = {
   steps:        (t)=>openStepsLogger(t),
   transaction:  ()=>openLogTransaction('expense'),
   connection:   ()=>openConnectionLog(null),
-  work_session: (t)=>openLogWorkSession(null,t.name),
+  // Same live-ring "Start Now" flow every other task type gets (see startManualTask) --
+  // this used to open a static form asking you to type a duration guess and submit it
+  // retroactively, with no actual timer running anywhere while you worked.
+  work_session: (t)=>startManualTask(t),
   // "Review your logged X" tasks land on that pillar's real history/log view instead
   // of the same new-entry form as "log an X" -- see REVIEW_INTENT in
   // lib/scheduling.js for how these get distinguished server-side.
@@ -3710,6 +3713,22 @@ async function confirmTaskCompletion() {
       showScreen('project-detail');
       await renderProjectDetail();
     }
+    return;
+  }
+  // A project sub-task that's actively running in the Home ring's live timer (see
+  // startProjectSubtaskSession) -- completing it here needs the same sub-task /toggle
+  // endpoint as the checkbox path above (real completion percentage recompute on the
+  // parent project), not the plain task-completion endpoint the branch below uses.
+  if(S.manualTaskOverride?.projectSubtaskId) {
+    const subTaskId=S.manualTaskOverride.projectSubtaskId;
+    const projectId=S.manualTaskOverride.projectId;
+    const wantsComplete=pct>=50;
+    clearManualTaskOverride();
+    if(wantsComplete) await req('POST','/projects/sub-tasks/'+subTaskId+'/toggle');
+    toast(wantsComplete?'Sub-task complete ⚡':'Kept as pending');
+    S.activeProjectId=projectId;
+    showScreen('project-detail');
+    await renderProjectDetail();
     return;
   }
   if(!S.currentTask) { showScreen('home'); return; }
@@ -10134,9 +10153,9 @@ function renderProjectActiveState(project,p) {
     <div class="sq-meta" style="text-align:center;margin-bottom:4px">Sub-tasks: ${done} / ${subs.length} Completed</div>
     <div style="height:6px;background:var(--bg4);border-radius:4px;overflow:hidden;margin-bottom:16px"><div style="height:100%;width:${project.overallProgressPercent}%;background:${p.color}"></div></div>
     <div class="section-sub">${activeIdx>=0?'ACTIVE SUB-TASK':'ALL SUB-TASKS DONE'}</div>
-    ${activeIdx>=0?`<div class="sq-card" style="border:1.5px solid ${p.color}" onclick="toggleProjectSubtaskCheck(${subs[activeIdx].subTaskId})">
-      <div class="sq-icon" style="background:${p.color}22;color:${p.color}">○</div>
-      <div class="sq-info"><div class="sq-name">${subs[activeIdx].name}</div><div class="sq-meta">${subs[activeIdx].estimatedDurationMinutes||0} min</div></div>
+    ${activeIdx>=0?`<div class="sq-card" style="border:1.5px solid ${p.color}" onclick="startProjectSubtaskSession(${subs[activeIdx].subTaskId})">
+      <div class="sq-icon" style="background:${p.color}22;color:${p.color}" onclick="event.stopPropagation();toggleProjectSubtaskCheck(${subs[activeIdx].subTaskId})" title="Mark complete without timing it">○</div>
+      <div class="sq-info"><div class="sq-name">${subs[activeIdx].name}</div><div class="sq-meta">${subs[activeIdx].estimatedDurationMinutes||0} min · tap to start</div></div>
     </div>`:''}
     ${subs.length>activeIdx+1?`<div class="section-sub" style="margin-top:14px">UPCOMING SUB-TASKS</div>${subs.slice(activeIdx+1).map(s=>projectSubtaskRow(s,p)).join('')}`:''}
     <button class="btn-p filled" style="background:${p.color};border-color:${p.color};margin-top:16px;margin-bottom:20px" onclick="markProjectComplete()">✓ Mark Project Complete</button>
@@ -10163,6 +10182,38 @@ function renderProjectCompletedState(project,p) {
 async function startProjectSession() {
   await req('POST','/projects/'+S.activeProjectId+'/start-session');
   await renderProjectDetail();
+  // "Start Session" used to just flip a status flag with no actual timer anywhere --
+  // now it goes straight into the same live-ring flow every other task uses, on
+  // whichever sub-task is first up.
+  const subs=S.activeProjectData?.subTasks||[];
+  const activeIdx=subs.findIndex(s=>s.status!=='Completed');
+  if(activeIdx>=0) startProjectSubtaskSession(subs[activeIdx].subTaskId);
+}
+
+// Reuses the exact same manualTaskOverride shape as startManualTask (regular tasks'
+// "Start Now") so a project sub-task gets a real running countdown in the Home CTA
+// ring instead of the old static log-a-duration form -- tagged with projectSubtaskId/
+// projectId so confirmTaskCompletion knows to complete it via the sub-task /toggle
+// endpoint (which recomputes the parent project's progress) instead of the plain
+// task-completion endpoint that regular tasks use.
+function startProjectSubtaskSession(subTaskId) {
+  const sub=(S.activeProjectData?.subTasks||[]).find(s=>s.subTaskId===subTaskId);
+  if(!sub) return;
+  const project=S.activeProjectData;
+  const durationMinutes=sub.estimatedDurationMinutes||20;
+  const now=new Date();
+  const startTime=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+  const endDate=new Date(now.getTime()+durationMinutes*60000);
+  const endTime=String(endDate.getHours()).padStart(2,'0')+':'+String(endDate.getMinutes()).padStart(2,'0');
+  S.manualTaskOverride = {
+    taskId: sub.subTaskId, name: sub.name, pillar: project?.pillar||'work',
+    durationMinutes, startTime, endTime,
+    elapsedMs: 0, running: true, lastResumeAt: Date.now(),
+    projectSubtaskId: sub.subTaskId, projectId: S.activeProjectId,
+  };
+  applyCtaState();
+  showScreen('home');
+  toast('Session started — live timer on your Home ring');
 }
 
 async function addProjectSubtask() {
