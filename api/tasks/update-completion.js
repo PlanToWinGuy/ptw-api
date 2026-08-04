@@ -230,10 +230,35 @@ export default async function handler(req, res) {
       `;
     }
     if (Array.isArray(deferred_ids) && deferred_ids.length) {
-      const deferredRows = await sql`SELECT id, name, pillar_id FROM tasks WHERE id = ANY(${deferred_ids}) AND user_id = ${user.id}`;
-      await sql`UPDATE tasks SET due_date = NULL, start_time = NULL, end_time = NULL WHERE id = ANY(${deferred_ids}) AND user_id = ${user.id}`;
+      const deferredRows = await sql`SELECT id, name, pillar_id, parent_task_id FROM tasks WHERE id = ANY(${deferred_ids}) AND user_id = ${user.id}`;
+      // Project sub-tasks (parent_task_id set) have no backlog of their own to fall into --
+      // Plan Shift (lib/planShift.js's applyPlanShiftForUser) is the only thing that ever
+      // picks a Dynamic goal's Pending sub-tasks back up, and it only looks at *overdue*
+      // due_date (`due_date < today`); NULL never satisfies that comparison in SQL. Nulling
+      // due_date here exactly like a standalone task would silently strand the sub-task
+      // forever -- unscheduled today, but also invisible to the one system that would
+      // otherwise reschedule it. Worse, if it was the project's last Pending sub-task, the
+      // whole project (and its goal's end_date) would stop shifting too, since
+      // applyPlanShiftForUser's overdueProjects query never surfaces a project with no
+      // overdue due_date to group on. So: standalone tasks (no parent) go to the real
+      // backlog (due_date NULL) as before -- the "Feeling productive" shuffle context
+      // explicitly pulls from that exact pool. A project sub-task instead just gets
+      // un-scheduled for *today* (start/end time cleared) while its due_date stays put --
+      // already-past by the time Plan Shift next runs, so the normal overdue path picks the
+      // whole remaining sequence back up together instead of this one task drifting off on
+      // its own. logTaskReschedule no-ops when fromDate===toDate, so this logs nothing for
+      // the sub-task case (nothing actually moved) and still logs the real move for standalone tasks.
+      const standaloneIds = deferredRows.filter(t => t.parent_task_id == null).map(t => t.id);
+      const projectSubtaskIds = deferredRows.filter(t => t.parent_task_id != null).map(t => t.id);
+      if (standaloneIds.length) {
+        await sql`UPDATE tasks SET due_date = NULL, start_time = NULL, end_time = NULL WHERE id = ANY(${standaloneIds}) AND user_id = ${user.id}`;
+      }
+      if (projectSubtaskIds.length) {
+        await sql`UPDATE tasks SET start_time = NULL, end_time = NULL WHERE id = ANY(${projectSubtaskIds}) AND user_id = ${user.id}`;
+      }
       for (const t of deferredRows) {
-        await logTaskReschedule(sql, { userId: user.id, taskId: t.id, taskName: t.name, pillarId: t.pillar_id, fromDate: date, toDate: null, reason: 'Shuffle Day (deferred to backlog)' });
+        const isProjectSubtask = t.parent_task_id != null;
+        await logTaskReschedule(sql, { userId: user.id, taskId: t.id, taskName: t.name, pillarId: t.pillar_id, fromDate: date, toDate: isProjectSubtask ? date : null, reason: isProjectSubtask ? 'Shuffle Day (unscheduled today; Plan Shift will pick it up)' : 'Shuffle Day (deferred to backlog)' });
       }
     }
     return res.status(200).json({ message: 'Your schedule for the day has been successfully updated.' });
