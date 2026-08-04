@@ -5351,20 +5351,51 @@ function selectShuffleContext(el) {
   updateShuffleWakeField();
 }
 
+// Redesigned from a single comma-joined "Deferred to another day: X, Y, Z, ..." paragraph
+// (unreadable past 2-3 tasks) into real per-item rows using the same sq-card component
+// as every other list in the app, plus a one-line reasoning banner up top so it's
+// immediately clear WHAT changed and WHY before scanning the details below.
 function showShuffleProposal(result) {
   showScreen('shuffle-proposal');
   const summary=result?.proposal_summary||{};
   const deferred=summary.tasks_deferred||[];
   const shortened=summary.tasks_shortened||[];
   const schedule=result?.proposed_schedule||[];
+  const shortenedById=new Map(shortened.map(t=>[t.id, t]));
+
+  const deferredRows = deferred.map(t=>`
+    <div class="sq-card">
+      <div class="sq-icon" style="background:rgba(196,184,168,.12)">💤</div>
+      <div class="sq-info"><div class="sq-name">${t.name}</div><div class="sq-meta">Moved to your backlog</div></div>
+    </div>`).join('');
+
+  const shortenedRows = shortened.map(t=>`
+    <div class="sq-card">
+      <div class="sq-icon" style="background:rgba(91,164,220,.15)">✂️</div>
+      <div class="sq-info"><div class="sq-name">${t.name}</div><div class="sq-meta">${t.originalMinutes} min → ${t.newMinutes} min</div></div>
+    </div>`).join('');
+
+  const scheduleRows = schedule.length ? schedule.map(t=>{
+    const p=Object.values(PILLARS).find(pl=>pl.id===t.pillarId);
+    const wasShortened=shortenedById.has(t.taskId);
+    return `<div class="sq-card">
+      <div class="sq-icon" style="background:${p?p.color+'1f':'rgba(196,184,168,.12)'}">${t.icon||p?.emoji||'•'}</div>
+      <div class="sq-info"><div class="sq-name">${t.name}</div><div class="sq-meta">${formatTimeOfDay(t.startTime)} – ${formatTimeOfDay(t.endTime)}${wasShortened?' · shortened':''}</div></div>
+    </div>`;
+  }).join('') : '<div class="empty-text" style="padding:0">Nothing to shuffle today.</div>';
+
   document.getElementById('shuffle-proposal-body').innerHTML=`
-    <div class="section-sub" style="margin-top:14px">PROPOSED CHANGES</div>
-    ${deferred.length?`<div class="rm-strategy" style="background:var(--blue);margin-bottom:8px">Deferred to another day: ${deferred.join(', ')}</div>`:''}
-    ${shortened.length?`<div class="rm-strategy" style="background:var(--bg4);color:var(--text);margin-bottom:8px">${shortened.join('<br>')}</div>`:''}
-    ${!deferred.length&&!shortened.length?'<div class="empty-text" style="padding:0">Everything fits — nothing changed.</div>':''}
-    <div class="rm-strategy" style="background:var(--bg3);color:var(--text);margin-top:8px">${summary.streak_protection_note||''}</div>
-    <div class="section-sub" style="margin-top:18px">NEW SCHEDULE</div>
-    ${schedule.length?schedule.map(t=>`<div class="sq-card"><div class="sq-info"><div class="sq-name">${formatTimeOfDay(t.startTime)} — ${t.name}</div></div></div>`).join(''):'<div class="empty-text" style="padding:0">Nothing to shuffle today.</div>'}
+    <div style="background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:16px;padding:16px;margin-top:14px">
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <span style="font-size:18px;line-height:1.3">🛡️</span>
+        <div style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text);font-size:14px;line-height:1.4">${summary.streak_protection_note||'Your day has been rebalanced.'}</div>
+      </div>
+      ${deferred.length||shortened.length?`<div style="font-size:12px;color:var(--stone);margin-top:8px;padding-left:28px">${deferred.length?deferred.length+' moved to backlog':''}${deferred.length&&shortened.length?' · ':''}${shortened.length?shortened.length+' shortened':''}</div>`:''}
+    </div>
+    ${deferred.length?`<div class="section-sub" style="margin-top:18px">MOVED TO BACKLOG</div>${deferredRows}`:''}
+    ${shortened.length?`<div class="section-sub" style="margin-top:18px">SHORTENED</div>${shortenedRows}`:''}
+    <div class="section-sub" style="margin-top:18px">YOUR NEW SCHEDULE TODAY</div>
+    ${scheduleRows}
     <div id="shuffle-suggestions"></div>
     <button class="btn-p filled" style="background:var(--blue);border-color:var(--blue);margin-top:18px" onclick="confirmShuffle()">✓ Accept & Update My Day</button>
     <button class="btn-p" style="border-color:transparent;color:var(--stone);margin-top:8px;margin-bottom:20px" onclick="showScreen('daily')">Discard</button>
@@ -7392,9 +7423,63 @@ function renderMealReview() {
     </div>
     ${d.note?`<div class="section-sub" style="margin-top:10px;color:var(--muted)">${d.note}</div>`:''}
     ${d.ingredients?.length?`<div style="font-size:12px;color:var(--stone);margin-top:10px">Logging this will remove ${d.ingredients.length} ingredient${d.ingredients.length===1?'':'s'} from your Grocery List.</div>`:''}
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:16px">
+      <div class="section-sub" style="margin:0">INGREDIENTS</div>
+      ${mealLogDraft?.imageBase64?`<span style="font-size:11px;color:var(--blue);cursor:pointer;text-decoration:underline;text-underline-offset:2px" onclick="recalcMealFromIngredients()">Recalculate nutrition ↻</span>`:''}
+    </div>
+    <div id="ml-ingredients-list" style="margin-top:8px"></div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <input type="text" id="ml-new-ingredient" placeholder="Add an ingredient" onkeydown="if(event.key==='Enter'){event.preventDefault();addMealIngredient();}" style="flex:1;padding:10px 12px;background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:8px;color:var(--text);font-size:13px;font-family:'Inter',sans-serif;outline:none">
+      <button type="button" onclick="addMealIngredient()" style="width:38px;height:38px;flex-shrink:0;border-radius:8px;border:none;background:var(--diet);color:#0A0908;font-size:18px;font-weight:700;line-height:1;cursor:pointer">+</button>
+    </div>
     <div class="field" style="margin-top:14px"><label>DESCRIPTION (optional)</label><textarea id="ml-desc" rows="2" placeholder="e.g. Extra sauce, no rice, ate half" style="width:100%;padding:12px;background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:10px;color:var(--text);font-size:13px;font-family:'Inter',sans-serif;outline:none;resize:none">${d.description||''}</textarea></div>
     <button class="btn-p filled" style="margin-top:18px" onclick="confirmLogMeal()">Log This Meal</button>
     <button class="btn-p" style="margin-top:8px;border-color:transparent;color:var(--stone)" onclick="saveMealTemplate()">Save as Meal</button>`;
+  renderMealIngredientsList();
+}
+
+// Editable list of what's actually in the meal -- separate from the plan-sourced
+// `ingredients` field above (which drives grocery-list deduction). Add/remove here just
+// edits mealLogDraft.scanned_ingredients directly rather than re-rendering the whole
+// review screen, so in-progress edits to the calorie/macro number fields aren't wiped out.
+function renderMealIngredientsList() {
+  const list=mealLogDraft?.scanned_ingredients||[];
+  const holder=document.getElementById('ml-ingredients-list');
+  if(!holder) return;
+  holder.innerHTML = list.length ? list.map((ing,i)=>`
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--bg3);border-radius:8px;margin-bottom:6px">
+      <span style="font-size:13px;color:var(--text)">${ing}</span>
+      <button type="button" onclick="removeMealIngredient(${i})" style="width:24px;height:24px;flex-shrink:0;border-radius:50%;border:none;background:var(--bg4);color:var(--stone);font-size:16px;line-height:1;cursor:pointer">−</button>
+    </div>`).join('') : '<div style="font-size:12px;color:var(--stone)">No ingredients listed yet — add what\'s actually in it.</div>';
+}
+function addMealIngredient() {
+  const input=document.getElementById('ml-new-ingredient');
+  const val=(input?.value||'').trim();
+  if(!val || !mealLogDraft) return;
+  mealLogDraft.scanned_ingredients=[...(mealLogDraft.scanned_ingredients||[]), val];
+  input.value='';
+  renderMealIngredientsList();
+}
+function removeMealIngredient(i) {
+  if(!mealLogDraft) return;
+  mealLogDraft.scanned_ingredients=(mealLogDraft.scanned_ingredients||[]).filter((_,idx)=>idx!==i);
+  renderMealIngredientsList();
+}
+// Resends the SAME photo with the user's own edited ingredient list as authoritative
+// context -- the AI recalculates macros to match what's actually in the meal instead of
+// the user having to hand-compute new totals every time they add or drop an item.
+async function recalcMealFromIngredients() {
+  if(!mealLogDraft?.imageBase64) { toast('No photo to recalculate from'); return; }
+  const list=mealLogDraft.scanned_ingredients||[];
+  if(!list.length) { toast('Add at least one ingredient first'); return; }
+  document.getElementById('meal-log-body').innerHTML=`<div style="padding:80px 0;text-align:center"><div class="spinner"></div><div style="font-size:13px;color:var(--stone);margin-top:12px">Recalculating…</div></div>`;
+  const contextText=`The meal actually contains exactly these ingredients: ${list.join(', ')}. Recalculate the nutrition estimate based on this list rather than just your own visual read of the photo.`;
+  const data=await req('POST','/metrics/scan-meal',{image_base64:mealLogDraft.imageBase64, media_type:mealLogDraft.imageMediaType, context_text:contextText});
+  if(!data || data.message) { toast(data?.message||'Could not recalculate'); renderMealReview(); return; }
+  // Keep the user's own edited list as authoritative -- discard whatever ingredient
+  // re-guess came back in this response so it can't silently overwrite their edits.
+  mealLogDraft={...mealLogDraft, ...data.data, scanned_ingredients:list};
+  renderMealReview();
 }
 
 function readMealForm() {
@@ -7413,7 +7498,8 @@ async function confirmLogMeal() {
   const p=PILLARS.diet;
   const taskId=S.pendingTaskId; S.pendingTaskId=null;
   const ingredients=mealLogDraft?.ingredients||null;
-  const result=await req('POST','/metrics',{pillar_id:p.id, log_type:'meal', value:m.calories, unit:'kcal', task_id:taskId||undefined, data:{name:m.name, protein_g:m.protein_g, carbs_g:m.carbs_g, fat_g:m.fat_g, meal_type:mealLogMealType, description:m.description||''}});
+  const scannedIngredients=mealLogDraft?.scanned_ingredients||null;
+  const result=await req('POST','/metrics',{pillar_id:p.id, log_type:'meal', value:m.calories, unit:'kcal', task_id:taskId||undefined, data:{name:m.name, protein_g:m.protein_g, carbs_g:m.carbs_g, fat_g:m.fat_g, meal_type:mealLogMealType, description:m.description||'', ...(scannedIngredients?.length?{scanned_ingredients:scannedIngredients}:{})}});
   // The "logging it clears what you used" half of the plan <-> grocery sync -- only fires
   // when this meal came from a plan (readMealForm() alone can't carry ingredients).
   if(ingredients?.length) await removeIngredientsFromGroceryList(ingredients);

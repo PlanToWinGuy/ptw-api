@@ -132,14 +132,18 @@ export default async function handler(req, res) {
 
     // Real, deterministic per-context rules (no AI call -- these are simple enough to
     // be honest rules rather than something worth spending on a live model for).
+    // tasksDeferred/tasksShortened carry structured {id,name,...} objects rather than
+    // pre-formatted strings -- the old "'Name' is now 25 mins" strings had to be crammed
+    // into one comma-joined paragraph on the frontend since there was nothing to key
+    // rows off of; structured data lets the proposal screen render each as its own row.
     if (context === 'Low energy / Mental off-day') {
       const lowPri = rows.filter(t => t.priority === 'Low');
-      lowPri.forEach(t => { tasksDeferred.push(t.name); deferredIds.push(t.id); });
+      lowPri.forEach(t => { tasksDeferred.push({ id: t.id, name: t.name }); deferredIds.push(t.id); });
       rows = rows.filter(t => t.priority !== 'Low').map(t => {
         if (t.estimated_duration_minutes) {
           const shortened = Math.max(5, Math.round(t.estimated_duration_minutes * 0.67));
           if (shortened < t.estimated_duration_minutes) {
-            tasksShortened.push(`'${t.name}' is now ${shortened} mins`);
+            tasksShortened.push({ id: t.id, name: t.name, originalMinutes: t.estimated_duration_minutes, newMinutes: shortened });
             return { ...t, estimated_duration_minutes: shortened };
           }
         }
@@ -148,11 +152,11 @@ export default async function handler(req, res) {
       streakNote = 'Your core habits are still on track today.';
     } else if (context === 'Hungover or sick') {
       const coreHabit = rows.find(t => t.kind === 'habit');
-      rows.filter(t => t !== coreHabit).forEach(t => { tasksDeferred.push(t.name); deferredIds.push(t.id); });
+      rows.filter(t => t !== coreHabit).forEach(t => { tasksDeferred.push({ id: t.id, name: t.name }); deferredIds.push(t.id); });
       rows = coreHabit ? [coreHabit] : [];
       streakNote = coreHabit ? `Your '${coreHabit.name}' streak is safe because you selected "Sick" as your reason.` : 'Nothing mandatory today -- rest up.';
     } else if (context === 'Social surprise / Change of plans') {
-      rows.filter(t => t.priority !== 'High' && t.priority !== 'Urgent').forEach(t => { tasksDeferred.push(t.name); deferredIds.push(t.id); });
+      rows.filter(t => t.priority !== 'High' && t.priority !== 'Urgent').forEach(t => { tasksDeferred.push({ id: t.id, name: t.name }); deferredIds.push(t.id); });
       rows = rows.filter(t => t.priority === 'High' || t.priority === 'Urgent');
       streakNote = 'High-priority tasks were protected around your change of plans.';
     } else if (context === 'Travel / Errands took longer') {
@@ -193,10 +197,10 @@ export default async function handler(req, res) {
 
     const proposed = [];
     for (const t of rows) {
-      if (cursor >= dayCutoff) { tasksDeferred.push(t.name); deferredIds.push(t.id); continue; }
+      if (cursor >= dayCutoff) { tasksDeferred.push({ id: t.id, name: t.name }); deferredIds.push(t.id); continue; }
       const durationMin = t.estimated_duration_minutes || 30;
       const tentativeEnd = new Date(cursor.getTime() + durationMin * 60000);
-      if (tentativeEnd > dayCutoff) { tasksDeferred.push(t.name); deferredIds.push(t.id); continue; }
+      if (tentativeEnd > dayCutoff) { tasksDeferred.push({ id: t.id, name: t.name }); deferredIds.push(t.id); continue; }
       const startStr = cursor.toTimeString().slice(0, 8);
       cursor = tentativeEnd;
       const endStr = cursor.toTimeString().slice(0, 8);
@@ -208,8 +212,9 @@ export default async function handler(req, res) {
         tasks_deferred: tasksDeferred,
         tasks_shortened: tasksShortened,
         streak_protection_note: streakNote,
+        context,
       },
-      proposed_schedule: proposed.map(t => ({ taskId: t.id, name: t.name, startTime: t.start_time, endTime: t.end_time, estimatedDurationMinutes: t.estimated_duration_minutes })),
+      proposed_schedule: proposed.map(t => ({ taskId: t.id, name: t.name, startTime: t.start_time, endTime: t.end_time, estimatedDurationMinutes: t.estimated_duration_minutes, icon: t.icon || null, pillarId: t.pillar_id })),
       _deferredIds: deferredIds, // internal, used by confirm-shuffle
     });
   }

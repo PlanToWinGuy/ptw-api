@@ -5,9 +5,14 @@ import { completeTask } from '../lib/tasks.js';
 import { BASE_TASK_XP } from '../lib/lifescore.js';
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
+// scanned_ingredients is deliberately NOT named "ingredients" -- that field is reserved
+// (see confirmLogMeal/removeIngredientsFromGroceryList) for meals logged FROM a saved
+// meal plan, where logging the meal also deducts those exact items from the Grocery
+// List. Reusing the name here would make a plain AI photo scan silently trigger grocery
+// deductions it has no business doing.
 const SCAN_SYSTEM = `You identify food in a photo and estimate its nutrition. Return ONLY JSON, no markdown fences:
-{"name":"<short meal name>","calories":<number>,"protein_g":<number>,"carbs_g":<number>,"fat_g":<number>,"confidence":"low"|"medium"|"high","note":"<one short caveat if the estimate is rough, else empty string>"}
-Estimates are approximate — say so honestly via confidence/note rather than pretending precision.`;
+{"name":"<short meal name>","calories":<number>,"protein_g":<number>,"carbs_g":<number>,"fat_g":<number>,"confidence":"low"|"medium"|"high","note":"<one short caveat if the estimate is rough, else empty string>","scanned_ingredients":["<item 1>","<item 2>"]}
+List each distinct food item you can identify in scanned_ingredients as its own short string (e.g. "grilled chicken breast", "steamed broccoli", "white rice") -- typically 2-6 items. Estimates are approximate — say so honestly via confidence/note rather than pretending precision.`;
 
 // Draft-only, not saved -- the client reviews/edits this then POSTs it back to /api/metrics
 // (log_type: "meal") to actually save it. Uses Haiku for vision since this doesn't need
