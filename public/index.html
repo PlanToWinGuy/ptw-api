@@ -309,7 +309,14 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
   display:flex;align-items:center;gap:12px;padding:14px 18px 10px;flex-shrink:0;
   transition:border-color .25s ease;
 }
-.pillar-top-bar h2{font-family:'Syne',sans-serif;font-size:17px;font-weight:700;color:var(--text);flex:1}
+/* min-width:0 is required for text-overflow to actually work on a flex child -- flex
+   items default to min-width:auto (never shrink below their content's natural size),
+   which silently defeats ellipsis/overflow entirely and was letting a long AI-generated
+   title (task/project/pillar names routinely run 60-90+ chars) wrap to 2-3 lines, grow
+   this header past its intended height, and get clipped by .screen's overflow:hidden --
+   taking whichever button shared the row down with it, especially at larger accessibility
+   text-scale settings where the effect is magnified. Now it truncates with "..." instead. */
+.pillar-top-bar h2{font-family:'Syne',sans-serif;font-size:17px;font-weight:700;color:var(--text);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pillar-subtitle{font-size:12px;flex:0 0 auto}
 
 /* Pillar bottom nav */
@@ -11203,6 +11210,19 @@ window.addEventListener('message',e=>{
   const vpId=new URLSearchParams(location.search).get('vp_id');
   if(vpId) {
     localStorage.setItem('ptw_pending_vp_id',vpId);
+    history.replaceState({screen:initialScreen},'',location.pathname);
+  }
+  // The Valueprint hand-off's redirect fallback (map-of-you's continueToApp, used
+  // whenever postMessage back to an opener tab isn't reliable -- routinely the case from
+  // a standalone/installed PWA on mobile) passes the session token back as a URL param
+  // specifically so this lands already logged in. Without reading it here, that param
+  // was silently ignored and the user landed on the splash screen with the pending
+  // vp_id sitting unused in storage until they happened to log in again on that same
+  // browser/storage context.
+  const urlToken=new URLSearchParams(location.search).get('ptw_token');
+  if(urlToken && !S.token) {
+    S.token=urlToken;
+    localStorage.setItem('ptw_token',urlToken);
     history.replaceState({screen:initialScreen},'',location.pathname);
   }
   if(S.token) {
