@@ -225,13 +225,31 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
    shift position every time the banner appeared/disappeared. */
 .home-center{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;min-height:0}
 
-/* CTA Circle */
+/* CTA Circle -- premium-glass treatment: a soft blurred glass disc + colour-matched
+   ambient glow (#cta-ring-halo, set/tinted via setCtaAccent() in JS) sits behind the ring
+   itself, the same "the current focus sits in its own soft light" language as an Apple
+   Fitness ring glow or a Material You dynamic-colour surface, rather than a plain circle
+   dropped straight onto the background. The ring itself also picks up the app's glass
+   fill (translucent + blur) instead of a flat --bg3 tile, consistent with every other
+   card in the app now. */
+.cta-ring-wrap{position:relative;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+#cta-ring-halo{
+  position:absolute;width:270px;height:270px;border-radius:50%;
+  background:rgba(255,255,255,.04);
+  backdrop-filter:blur(22px) saturate(160%);
+  -webkit-backdrop-filter:blur(22px) saturate(160%);
+  box-shadow:0 0 60px 8px rgba(91,164,220,.3);
+  pointer-events:none;z-index:0;
+  transition:box-shadow .4s ease;
+}
 #cta-ring{
   width:224px;height:224px;border-radius:50%;
-  background:var(--bg3);border:2.5px solid var(--blue);
+  background:rgba(255,255,255,.05);border:2.5px solid var(--blue);
+  backdrop-filter:blur(18px) saturate(160%);
+  -webkit-backdrop-filter:blur(18px) saturate(160%);
   display:flex;flex-direction:column;align-items:center;justify-content:center;
-  cursor:pointer;position:relative;transition:transform .15s;
-  box-shadow:0 0 0 0 rgba(91,164,220,0);
+  cursor:pointer;position:relative;z-index:1;transition:transform .15s,border-color .3s ease;
+  box-shadow:0 14px 34px -14px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.14);
 }
 #cta-ring.active{animation:ctaPulse 3.5s ease-in-out infinite}
 #cta-ring:active{transform:scale(.97)}
