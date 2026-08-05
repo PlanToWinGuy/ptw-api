@@ -262,11 +262,13 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
 .next-txt{font-size:13px;color:var(--stone);text-align:center;flex:1;line-height:1.3;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
 .shuffle-fab{
   position:absolute;right:18px;bottom:calc(18px + var(--sb));z-index:20;
-  width:52px;height:52px;border-radius:50%;background:var(--blue);
-  border:none;cursor:pointer;color:#fff;font-size:22px;
+  width:52px;height:52px;border-radius:50%;
+  background:linear-gradient(155deg, #AAD0ED, var(--blue));
+  border:none;cursor:pointer;color:#fff;font-size:23px;
   display:flex;align-items:center;justify-content:center;
-  box-shadow:0 4px 16px rgba(91,164,220,.4);
+  box-shadow:0 6px 18px -4px rgba(91,164,220,.55), inset 0 1px 0 rgba(255,255,255,.25);
 }
+.shuffle-fab svg{filter:drop-shadow(0 1px 1px rgba(0,0,0,.15))}
 .shuffle-fab:active{transform:scale(.94)}
 .plus-fab{
   width:40px;height:40px;border-radius:50%;background:var(--blue);
@@ -275,39 +277,52 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
   box-shadow:0 0 16px rgba(91,164,220,.3);
 }
 
-/* Pillar Apps strip */
+/* Pillar Apps strip -- deliberately NOT a contained "bar"/"shelf": no full-width surface,
+   no top divider line. Follows the iOS dock / Android app-drawer / Meta-family convention
+   of a bottom icon row where each icon is its own individually-elevated surface (soft
+   colour-matched shadow + a subtle top gloss baked into its own background, see
+   renderPillarApps() in JS) floating directly on the screen background -- the icons do
+   the visual work, not a containing bar. Generous gap/padding so the row itself reads as
+   premium spacing rather than a cramped strip. */
 .pillar-apps{
-  flex-shrink:0;padding:14px 6px calc(14px + var(--sb));
-  display:flex;gap:4px;justify-content:center;flex-wrap:nowrap;
+  flex-shrink:0;padding:20px 10px calc(20px + var(--sb));
+  display:flex;gap:14px;justify-content:center;flex-wrap:nowrap;
   /* Sized so all 6 unlocked pillars genuinely fit on one row even on a narrow phone
      (~360px wide) while using close to the full width of the strip -- icon size, gap,
      and padding below are all tuned together for the 6-icon case; fewer unlocked
      pillars just center with more breathing room. */
-  background:linear-gradient(to top, var(--bg) 60%, transparent);
+  background:linear-gradient(to top, var(--bg) 45%, transparent);
 }
 .pillar-app-btn{
-  display:flex;flex-direction:column;align-items:center;gap:5px;
+  display:flex;flex-direction:column;align-items:center;gap:6px;
   cursor:pointer;border:none;background:none;flex-shrink:0;
   animation:appPop .4s ease both;
+  transition:transform .15s ease;
 }
+.pillar-app-btn:active{transform:scale(.93)}
 @keyframes appPop{from{opacity:0;transform:scale(.6) translateY(10px)}to{opacity:1;transform:scale(1) translateY(0)}}
 .pillar-app-icon{
-  width:54px;height:68px;border-radius:14px;
+  width:56px;height:68px;border-radius:18px;
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
   font-size:21px;position:relative;
-  box-shadow:0 4px 12px rgba(0,0,0,.3);
+  /* box-shadow is set inline per-pillar (a soft glow tinted with that pillar's own
+     colour, plus a crisp inset top highlight for glass-like depth) -- see
+     renderPillarApps(); the background itself also layers a subtle gloss gradient over
+     the solid pillar colour the same way, both replacing the old flat single-colour tile
+     + generic black drop shadow. */
   color:#0A0908; /* dark mode (the base/default theme) -- black glyph on the pillar's own colour */
+  transition:box-shadow .2s ease;
 }
 :root[data-theme="light"] .pillar-app-icon{ color:#fff; } /* light mode -- white glyph instead */
 .pillar-app-icon::after{
-  content:'';position:absolute;inset:-2px;border-radius:16px;
+  content:'';position:absolute;inset:-3px;border-radius:21px;
   background:transparent;border:2px solid transparent;
   transition:border-color .2s;
 }
-.pillar-app-btn:active .pillar-app-icon::after{border-color:rgba(196,184,168,.3)}
+.pillar-app-btn:active .pillar-app-icon::after{border-color:rgba(255,255,255,.35)}
 .pillar-app-icon-name{font-size:9px;font-weight:700;color:#0A0908;letter-spacing:.1px}
 :root[data-theme="light"] .pillar-app-icon-name{ color:#fff; }
-.pillar-app-label{font-size:10px;color:var(--stone);font-weight:500;letter-spacing:.3px}
+.pillar-app-label{font-size:10px;color:var(--stone);font-weight:600;letter-spacing:.3px}
 .pillar-app-reason{font-size:9px;color:var(--muted);text-align:center;line-height:1.3;margin-top:1px}
 
 /* ══════════════════════════════════
@@ -404,6 +419,19 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
   width:40px;height:40px;border-radius:13px;
   display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;
 }
+/* Soft-gradient duotone icon container -- the answer to "I like a bit more colour, just
+   hate the shiny emoji feel": a real per-icon colour via a diagonal tint-to-full-colour
+   gradient fill + a soft coloured glow, with a plain white glyph on top (never a flat
+   single-alpha tile, never a glossy emoji). Populated via softIcon() in JS -- see there
+   for the reasoning and call sites (Shuffle Day FAB, Routines, Break Options, Fixed
+   Commitments, Profile metric cards, etc). Same 40x40/13px footprint as .glass-icon/
+   .sq-icon so it drops into any existing icon slot without a layout change. */
+.soft-icon{
+  width:40px;height:40px;border-radius:13px;
+  display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;
+  color:#fff;
+}
+.soft-icon svg{filter:drop-shadow(0 1px 1px rgba(0,0,0,.15))}
 /* Faint full-screen accent wash behind everything -- a single fixed element per screen,
    its background gradient set inline (per-pillar colour) by JS since #screen-pillar's
    Map/Quests/Roadmap/Trophies tabs are one shared template reused across all 6 pillars. */
@@ -449,18 +477,12 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
    .trophy-card{background) are edited directly to the glass recipe rather than adding a
    second conflicting rule here, since a same-specificity rule declared earlier in the
    cascade would otherwise lose to their original declaration later in the file. */
-/* Home's pillar-apps dock -- a frosted "shelf" the solid pillar-coloured app icons sit
-   on, instead of a plain transparent-to-bg fade. background-color (the glass tint) shows
-   through the top of the gradient image layer where it's transparent; the gradient's own
-   opaque var(--bg) still fully covers the bottom edge into the safe area, unchanged. */
-.pillar-apps{
-  background-color:rgba(255,255,255,.045);
-  background-image:linear-gradient(to top, var(--bg) 55%, transparent);
-  border-radius:22px 22px 0 0;
-  border-top:1px solid rgba(91,164,220,.16);
-  backdrop-filter:blur(18px) saturate(160%);
-  -webkit-backdrop-filter:blur(18px) saturate(160%);
-}
+/* Home's pillar-apps dock deliberately has NO glass-shelf override here (there used to be
+   one -- a frosted bar with a top divider line, which read as a "weird bar" rather than
+   premium). Reverted to the plain fade-to-bg background declared on .pillar-apps itself;
+   each app icon now carries its own colour-matched glow/gloss instead (see
+   renderPillarApps() in JS + the base .pillar-app-icon rule) -- individual elevated icons
+   doing the visual work, no containing surface. */
 
 /* Current task in pillar */
 .pillar-task-card{
@@ -1066,11 +1088,11 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
     <h3>Diet Quick Add</h3>
     <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:6px">
       <div class="sq-card" style="cursor:pointer" onclick="closeModal('modal-diet-quick-add');openMealLog('Snack')">
-        <div class="sq-icon" style="background:rgba(214,171,58,.15)">🍽️</div>
+        <div class="soft-icon" style="background:linear-gradient(155deg, #E1CF8E, #C9A832);box-shadow:0 4px 14px -4px rgba(201,168,50,.55), inset 0 1px 0 rgba(255,255,255,.22)"><svg width="1em" height="1em" viewBox="0 0 24 24" fill="none"><path d="M6 2v8m0 0v12M3 2v5a3 3 0 0 0 3 3 3 3 0 0 0 3-3V2M18 2c-2 0-3 2-3 5s1 4 3 4v11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
         <div class="sq-info"><div class="sq-name">Log a Meal</div><div class="sq-meta">Photo scan or manual entry</div></div>
       </div>
       <div class="sq-card" style="cursor:pointer" onclick="closeModal('modal-diet-quick-add');openWaterLog()">
-        <div class="sq-icon" style="background:rgba(91,164,220,.15)">💧</div>
+        <div class="soft-icon" style="background:linear-gradient(155deg, #AAD0ED, #5BA4DC);box-shadow:0 4px 14px -4px rgba(91,164,220,.55), inset 0 1px 0 rgba(255,255,255,.22)"><svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3c4 4.2 7 8 7 12a7 7 0 0 1-14 0c0-4 3-7.8 7-12z"/></svg></div>
         <div class="sq-info"><div class="sq-name">Log Water</div><div class="sq-meta">Quick-tap a serving size</div></div>
       </div>
     </div>
@@ -1488,7 +1510,7 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
   <div id="daily-pillar-filter" style="display:flex;gap:8px;padding:0 18px 10px;overflow-x:auto"></div>
   <div id="daily-stats-bar" style="display:flex;justify-content:space-around;padding:10px 18px;font-size:11px;color:var(--stone);border-bottom:1px solid rgba(196,184,168,.07)"></div>
   <div class="scroll-body" style="padding:0 18px" id="daily-body"></div>
-  <button class="shuffle-fab" onclick="openShuffleDay()" title="Shuffle Day">🔀</button>
+  <button class="shuffle-fab" onclick="openShuffleDay()" title="Shuffle Day"><svg width="1em" height="1em" viewBox="0 0 24 24" fill="none"><path d="M3 6h3.5c1.4 0 2.7.7 3.4 1.9L15 18a4 4 0 0 0 3.4 1.9H21M3 18h3.5c1.4 0 2.7-.7 3.4-1.9l.7-1.2M15.3 7.1c.7-1.2 2-1.9 3.4-1.9H21" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><polyline points="18,3.5 21,6 18,8.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><polyline points="18,15.5 21,18 18,20.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
 </div>
 
 <div class="modal-overlay" id="modal-reschedule" onclick="closeModal('modal-reschedule',event)">
@@ -2418,6 +2440,20 @@ const ICONS = {
   checkCircle: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" style="vertical-align:-0.15em"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><polyline points="8,12.5 11,15.5 16,9.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   warning: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" style="vertical-align:-0.15em"><path d="M12 3.5 21.5 20h-19z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><line x1="12" y1="9.5" x2="12" y2="14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="12" cy="17" r="1" fill="currentColor"/></svg>',
   briefcase: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" style="vertical-align:-0.15em"><rect x="2.5" y="7" width="19" height="13" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M8 7V5.5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2V7" stroke="currentColor" stroke-width="1.6"/><line x1="2.5" y1="12.5" x2="21.5" y2="12.5" stroke="currentColor" stroke-width="1.6"/></svg>',
+  // Added for the emoji-to-icon pass (functional icons only, e.g. Shuffle Day, Routines,
+  // Break Options, Fixed Commitments -- decorative/celebration emoji stay untouched).
+  shuffle: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" style="vertical-align:-0.15em"><path d="M3 6h3.5c1.4 0 2.7.7 3.4 1.9L15 18a4 4 0 0 0 3.4 1.9H21M3 18h3.5c1.4 0 2.7-.7 3.4-1.9l.7-1.2M15.3 7.1c.7-1.2 2-1.9 3.4-1.9H21" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><polyline points="18,3.5 21,6 18,8.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><polyline points="18,15.5 21,18 18,20.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  repeat: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" style="vertical-align:-0.15em"><path d="M4 12a8 8 0 0 1 8-8h6M4 12a8 8 0 0 0 8 8h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><polyline points="15,1.5 18,4 15,6.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><polyline points="15,17.5 18,20 15,22" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  pin: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-0.15em"><path fill-rule="evenodd" d="M12 2C7.6 2 4 5.6 4 10c0 5.6 8 12 8 12s8-6.4 8-12c0-4.4-3.6-8-8-8zm0 11a3 3 0 1 1 0-6 3 3 0 0 1 0 6z"/></svg>',
+  moon: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-0.15em"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></svg>',
+  scissors: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" style="vertical-align:-0.15em"><circle cx="6" cy="6" r="2.3" stroke="currentColor" stroke-width="1.6"/><circle cx="6" cy="18" r="2.3" stroke="currentColor" stroke-width="1.6"/><line x1="7.8" y1="7.6" x2="20" y2="18" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><line x1="7.8" y1="16.4" x2="20" y2="6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+  camera: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" style="vertical-align:-0.15em"><path d="M4 8h3l1.5-2.5h7L17 8h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="12" cy="14" r="3.5" stroke="currentColor" stroke-width="1.6"/></svg>',
+  trash: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" style="vertical-align:-0.15em"><path d="M4 7h16M9 7V4.5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1V7M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  link: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" style="vertical-align:-0.15em"><path d="M9.5 14.5l5-5M8 9.5l-2 2a3.5 3.5 0 0 0 5 5l2-2M16 14.5l2-2a3.5 3.5 0 0 0-5-5l-2 2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  bathroomDoor: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" style="vertical-align:-0.15em"><rect x="4" y="3" width="16" height="18" rx="1.5" stroke="currentColor" stroke-width="1.6"/><circle cx="15" cy="12" r="1.2" fill="currentColor"/></svg>',
+  cup: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" style="vertical-align:-0.15em"><path d="M5 3h11l-1 13a3 3 0 0 1-3 3H9a3 3 0 0 1-3-3z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M16 6h2a2.5 2.5 0 0 1 0 5h-1.5" stroke="currentColor" stroke-width="1.6"/></svg>',
+  leaf: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" style="vertical-align:-0.15em"><path d="M20 4C10 4 4 10 4 18c8 0 14-6 14-14z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M6 18C10 12 14 8 19 5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
+  coffee: '<svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" style="vertical-align:-0.15em"><path d="M4 8h13v6a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M17 9.5h1.5a2.5 2.5 0 0 1 0 5H17" stroke="currentColor" stroke-width="1.6"/><path d="M7 2.5c0 1-1 1-1 2s1 1 1 2M11 2.5c0 1-1 1-1 2s1 1 1 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
 };
 const PILLARS = {
   fitness:   {id:1, key:'fitness',   label:'Fitness',   color:'#E07840', icon:PILLAR_GLYPH.fitness, emoji:PILLAR_GLYPH.fitness},
@@ -3777,6 +3813,21 @@ async function loadHomeData() {
   applyCtaState();
 }
 
+// A task's real end-of-window: its own endTime if the schedule set one (Fixed Commitments,
+// already-completed tasks), otherwise start+duration -- the exact same fallback
+// updateCtaTimerRing() already uses to draw the countdown ring, kept here as a single
+// shared source of truth for "is this task's window actually open right now." Needed
+// because most generated tasks come back from /user-projects with endTime:null, which a
+// bare `!t.endTime` check would otherwise treat as a window that's open forever.
+function effectiveEndTimeStr(t) {
+  if(t.endTime) return t.endTime;
+  if(!t.startTime) return null;
+  const [sh,sm,ss]=t.startTime.split(':').map(Number);
+  const start=new Date(); start.setHours(sh,sm,ss||0,0);
+  const end=new Date(start.getTime()+(t.durationMinutes||20)*60000);
+  return String(end.getHours()).padStart(2,'0')+':'+String(end.getMinutes()).padStart(2,'0')+':'+String(end.getSeconds()).padStart(2,'0');
+}
+
 // Recomputes which task is "now" purely from the already-cached S.todaySchedule (no
 // network call) -- called on a timer so the ring behaves like a real-time scheduler that
 // advances on its own as the clock passes a task's end time, not just when the screen
@@ -3807,7 +3858,17 @@ function applyCtaState() {
     // DO have real start/end times and flow through normally) or by tapping into the
     // project directly from its card; the placeholder itself was never meant to occupy
     // the ring indefinitely.
-    current = pending.find(t=>t.taskType!=='ProjectTask' && (!t.startTime || (t.startTime<=nowStr && (!t.endTime || t.endTime>=nowStr))));
+    // Confirmed live against guest2's real schedule: generated tasks come back from
+    // /user-projects with endTime almost always null (only explicit Fixed Commitments and
+    // already-completed tasks ever carry a real one) -- `!t.endTime` treated that as an
+    // eternally-open window, so `.find()` over the ascending-sorted list just latched onto
+    // the EARLIEST still-Pending task of the whole day and never let go (loading the app at
+    // 11pm still showed a 7am task as "current"). effectiveEndTimeStr() below mirrors
+    // updateCtaTimerRing()'s own start+duration fallback so "current" actually means
+    // "happening right now," matching this function's original intent -- the sticky
+    // S.lockedTaskId behavior right above is untouched, so a task that DOES become current
+    // still rides out its own overtime exactly as before.
+    current = pending.find(t=>t.taskType!=='ProjectTask' && (!t.startTime || (t.startTime<=nowStr && nowStr<=effectiveEndTimeStr(t))));
     if(current) S.lockedTaskId=current.taskId;
   }
   const nextUp=pending.find(t=>t!==current && t.startTime && t.startTime>nowStr) || pending.find(t=>t!==current);
@@ -3897,8 +3958,12 @@ function renderPillarApps() {
     const btn=document.createElement('button');
     btn.className='pillar-app-btn';
     btn.style.animationDelay=(i*.08)+'s';
+    // A soft diagonal gloss (this pillar's own colour, lightened, down to the flat
+    // colour) plus a colour-matched glow shadow + inset top highlight -- replaces the
+    // old flat single-colour tile + generic black shadow, same "individually elevated
+    // icon" premium-dock treatment the app-drawer redesign is going for.
     btn.innerHTML=`
-      <div class="pillar-app-icon" style="background:${p.color}">
+      <div class="pillar-app-icon" style="background:linear-gradient(160deg, ${tintColor(p.color,.22)} 0%, ${p.color} 55%);box-shadow:0 10px 24px -8px ${hexToRgba(p.color,.5)}, inset 0 1px 0 rgba(255,255,255,.3)">
         <span style="filter:drop-shadow(0 1px 2px rgba(0,0,0,.3))">${p.emoji}</span>
         <span class="pillar-app-icon-name">${p.label}</span>
       </div>`;
@@ -4470,13 +4535,15 @@ async function addTimeToCurrentTask() {
 // TAKE A BREAK (4.14) — Mood check-in → curated Break Options → Active countdown → completion
 // ════════════════════════════════════════
 // Static, real (not AI-generated) curated break types — mirrors lib/breaks.js on the backend.
+// icon/color set once ICONS/PILLARS exist below in file load order -- fine since these
+// are only read at render time (openBreakOptions), not at this const's own eval time.
 const BREAK_TYPES = {
-  bathroom:     { label:'Bathroom',             icon:'🚻', durationMinutes:5,  xp:10, hint:'Quick refresh — splash some cold water on your face.' },
-  snack:        { label:'Snack / Hydration',    icon:'🥤', durationMinutes:10, xp:15, hint:'Pair this with your next glass of water for the day.' },
-  stretch:      { label:'Stretch / Breathwork', icon:'🧘', durationMinutes:10, xp:20, hint:'Try box breathing: 4 counts in, 4 hold, 4 out, 4 hold.' },
-  walk:         { label:'Walk / Movement',      icon:'🚶', durationMinutes:15, xp:25, hint:'A short walk resets focus better than more coffee.' },
-  mental_reset: { label:'Mental Reset',         icon:'🌿', durationMinutes:10, xp:20, hint:'Close your eyes and name 5 things you can hear.' },
-  free_time:    { label:'Free Time',            icon:'☕', durationMinutes:15, xp:0,  hint:'No agenda — this one is just for you.' },
+  bathroom:     { label:'Bathroom',             iconKey:'bathroomDoor', color:'#5BA4DC', durationMinutes:5,  xp:10, hint:'Quick refresh — splash some cold water on your face.' },
+  snack:        { label:'Snack / Hydration',    iconKey:'cup',          color:'#C9A832', durationMinutes:10, xp:15, hint:'Pair this with your next glass of water for the day.' },
+  stretch:      { label:'Stretch / Breathwork', iconKey:'lotus',        color:'#8A70C0', durationMinutes:10, xp:20, hint:'Try box breathing: 4 counts in, 4 hold, 4 out, 4 hold.' },
+  walk:         { label:'Walk / Movement',      iconKey:'footprint',    color:'#E07840', durationMinutes:15, xp:25, hint:'A short walk resets focus better than more coffee.' },
+  mental_reset: { label:'Mental Reset',         iconKey:'leaf',         color:'#5A9460', durationMinutes:10, xp:20, hint:'Close your eyes and name 5 things you can hear.' },
+  free_time:    { label:'Free Time',            iconKey:'coffee',       color:'#C46882', durationMinutes:15, xp:0,  hint:'No agenda — this one is just for you.' },
 };
 let breakInterval=null, breakSecondsLeft=0;
 
@@ -4500,7 +4567,7 @@ function openBreakOptions() {
   list.innerHTML=Object.keys(BREAK_TYPES).map(key=>{
     const t=BREAK_TYPES[key];
     return `<div class="sq-card" onclick="closeModal('modal-break-options');startBreak('${key}')">
-      <div class="sq-icon" style="background:var(--blue)22;color:var(--blue)">${t.icon}</div>
+      ${softIcon(ICONS[t.iconKey], t.color)}
       <div class="sq-info">
         <div class="sq-name">${t.label}</div>
         <div class="sq-meta">${t.durationMinutes} min${t.xp?' · +'+t.xp+' XP':' · No XP'}</div>
@@ -4513,7 +4580,7 @@ function startBreak(breakType) {
   const t=BREAK_TYPES[breakType];
   S.activeBreakType=breakType;
   breakSecondsLeft=t.durationMinutes*60;
-  document.getElementById('break-active-icon').textContent=t.icon;
+  document.getElementById('break-active-icon').innerHTML=softIcon(ICONS[t.iconKey], t.color, {size:88, fontSize:36});
   document.getElementById('break-active-title').textContent=t.label;
   document.getElementById('break-active-hint').textContent=t.hint;
   showScreen('break');
@@ -5766,7 +5833,7 @@ function dailyTaskCard(t) {
   // 'commitment-N' id isn't one), rendered so it still shows its real place in the day.
   if(t.taskType==='Commitment') {
     return `<div class="sq-card" style="opacity:.85;cursor:default">
-      <div class="sq-icon" style="background:${p.color}22;color:${p.color}">📌</div>
+      ${softIcon(ICONS.pin, p.color)}
       <div class="sq-info">
         <div class="sq-name">${t.startTime?formatTimeOfDay(t.startTime)+' — ':''}${t.name}</div>
         <div class="sq-meta">Fixed Commitment · ${t.durationMinutes||0} min</div>
@@ -5796,7 +5863,7 @@ function dailyTaskCard(t) {
   if(t.isAntiGoal && t.antiGoalType==='binary' && t.status!=='Completed') {
     return `<div class="sq-card" style="flex-direction:column;align-items:stretch">
       <div style="display:flex;align-items:center;gap:14px;margin-bottom:10px">
-        <div class="sq-icon" style="background:${p.color}22;color:${p.color}">🎯</div>
+        ${softIcon(ICONS.target, p.color)}
         <div class="sq-info"><div class="sq-name">${t.name}</div></div>
       </div>
       <div style="display:flex;gap:8px">
@@ -5832,7 +5899,7 @@ function dailyTaskCard(t) {
     isCompleted ? 'opacity:.55' : '',
   ].filter(Boolean).join(';');
   return `<div class="sq-card"${openCall?` onclick="${openCall}"`:''}${cardStyle?` style="${cardStyle}"`:''}>
-    <div class="sq-icon" style="background:${p.color}22;color:${p.color}">${t.routineId?(t.toolHint?p.icon:'🔁'):(t.isAntiGoal?'🎯':p.emoji)}</div>
+    ${softIcon(t.routineId?(t.toolHint?p.icon:ICONS.repeat):(t.isAntiGoal?ICONS.target:p.emoji), p.color)}
     <div class="sq-info">
       ${isFirstStepHighlight?`<div style="font-size:10px;color:${p.color};font-weight:700;letter-spacing:.4px;margin-bottom:2px">🎯 YOUR FIRST STEP</div>`:''}
       ${isDoingNow?`<div style="font-size:10px;color:${p.color};font-weight:700;letter-spacing:.4px;margin-bottom:2px">▶ DOING NOW</div>`:''}
@@ -5996,13 +6063,13 @@ function showShuffleProposal(result) {
 
   const deferredRows = deferred.map(t=>`
     <div class="sq-card">
-      <div class="sq-icon" style="background:rgba(196,184,168,.12)">💤</div>
+      ${softIcon(ICONS.moon, '#8A8578')}
       <div class="sq-info"><div class="sq-name">${t.name}</div><div class="sq-meta">Moved to your backlog</div></div>
     </div>`).join('');
 
   const shortenedRows = shortened.map(t=>`
     <div class="sq-card">
-      <div class="sq-icon" style="background:rgba(91,164,220,.15)">✂️</div>
+      ${softIcon(ICONS.scissors, '#5BA4DC')}
       <div class="sq-info"><div class="sq-name">${t.name}</div><div class="sq-meta">${t.originalMinutes} min → ${t.newMinutes} min</div></div>
     </div>`).join('');
 
@@ -6010,7 +6077,7 @@ function showShuffleProposal(result) {
     const p=Object.values(PILLARS).find(pl=>pl.id===t.pillarId);
     const wasShortened=shortenedById.has(t.taskId);
     return `<div class="sq-card">
-      <div class="sq-icon" style="background:${p?p.color+'1f':'rgba(196,184,168,.12)'}">${t.icon||p?.emoji||'•'}</div>
+      ${softIcon(t.icon||p?.emoji||ICONS.checkCircle, p?p.color:'#5BA4DC')}
       <div class="sq-info"><div class="sq-name">${t.name}</div><div class="sq-meta">${formatTimeOfDay(t.startTime)} – ${formatTimeOfDay(t.endTime)}${wasShortened?' · shortened':''}</div></div>
     </div>`;
   }).join('') : '<div class="empty-text" style="padding:0">Nothing to shuffle today.</div>';
@@ -6091,7 +6158,7 @@ async function loadShuffleSuggestions(context) {
     <div class="section-sub" style="margin-top:18px">${rule.title}</div>
     <div style="font-size:12px;color:var(--stone);margin-bottom:8px">${rule.blurb}</div>
     ${picks.map(t=>`<div class="sq-card" id="shuffle-sug-${t.id}">
-      <div class="sq-icon" style="background:rgba(196,184,168,.12)">${t.icon||'💡'}</div>
+      ${softIcon(t.icon||ICONS.bolt, '#8A70C0')}
       <div class="sq-info"><div class="sq-name">${t.name}</div><div class="sq-meta">${t.priority||'Low'} priority · saved to-do${t.estimated_duration_minutes?' · '+t.estimated_duration_minutes+' min':''}</div></div>
       <button class="btn-p filled" style="width:auto;padding:8px 14px;font-size:12px;background:var(--blue);border-color:var(--blue)" onclick="event.stopPropagation();addShuffleSuggestedTask(${t.id})">+ Add</button>
     </div>`).join('')}
@@ -6189,11 +6256,15 @@ const TOOL_HINT_LABEL = { workout:'Workout', meal:'Meal', session:'Session', tra
 function routineCard(r) {
   const pk = r.goalId ? getPillarKey(r.category) : null;
   const p = pk ? PILLARS[pk] : null;
-  const accentColor = p ? p.color : 'var(--blue)';
-  const icon = p && r.toolHint ? p.icon : (r.icon||'🔁');
+  const accentColor = p ? p.color : '#5BA4DC';
+  // '🔁' is the editor's own "nothing typed" default (see renderRoutineEditForm) rather
+  // than a real user choice, so it's treated the same as no icon here -- shown as our
+  // soft-gradient repeat glyph instead of a flat emoji. A genuinely custom emoji the user
+  // did type in still renders as-is (that's their content, not ours to replace).
+  const icon = p && r.toolHint ? p.icon : (r.icon && r.icon!=='🔁' ? r.icon : ICONS.repeat);
   const typeLabel = r.toolHint ? (TOOL_HINT_LABEL[r.toolHint]||'Routine') : null;
   return `<div class="sq-card" onclick="openRoutineFromLibrary(${r.routineId})">
-    <div class="sq-icon" style="background:${accentColor}22;color:${accentColor}">${icon}</div>
+    ${softIcon(icon, accentColor)}
     <div class="sq-info">
       <div class="sq-name">${r.name}${r.isActive?'':' (inactive)'}${typeLabel?` <span class="xp-tag" style="color:${accentColor};background:${accentColor}1f">${typeLabel}</span>`:''}</div>
       <div class="sq-meta">${r.totalDurationMinutes} min${r.schedule?.time?' · '+formatTimeOfDay(r.schedule.time):''}</div>
@@ -6793,11 +6864,11 @@ function openAvatarOptions() {
   const hasPhoto=!!S.userData?.profilePicUrl;
   document.getElementById('avatar-options-list').innerHTML = `
     <div class="sq-card" onclick="closeModal('modal-avatar-options');document.getElementById('avatar-file-input').click()">
-      <div class="sq-icon" style="background:var(--blue)22;color:var(--blue)">📷</div>
+      ${softIcon(ICONS.camera, '#5BA4DC')}
       <div class="sq-info"><div class="sq-name">${hasPhoto?'Choose New Photo':'Choose Photo'}</div></div>
     </div>
     ${hasPhoto?`<div class="sq-card" onclick="removeAvatarPhoto()">
-      <div class="sq-icon" style="background:#C4688222;color:#C46882">🗑</div>
+      ${softIcon(ICONS.trash, '#C46882')}
       <div class="sq-info"><div class="sq-name">Remove Photo</div></div>
     </div>`:''}`;
   document.getElementById('modal-avatar-options').classList.add('open');
@@ -6880,7 +6951,6 @@ async function loadProfileMetrics() {
     req('GET','/simple-tasks'),
   ]);
   const tasks = (key==='all' ? (allTasks||[]) : (allTasks||[]).filter(t=>getPillarKey(t.pillar)===key));
-  const sparkColor = (key!=='all' && PILLARS[key]) ? PILLARS[key].color : '#5BA4DC';
 
   const completedTasks = tasks.filter(t=>t.status==='Completed' && t.updated_at);
   const skippedTasks = tasks.filter(t=>t.status==='Skipped' && t.updated_at);
@@ -6921,28 +6991,33 @@ async function loadProfileMetrics() {
     return {logged_at:d.logged_at, value:streakRunning};
   });
 
-  const metricCard = (icon, val, label, daily, opts) => {
-    opts=opts||{};
+  // Each of the 6 metric types gets its own fixed accent (icon gradient + border +
+  // sparkline) instead of every card sharing one flat colour (either the pillar filter's
+  // colour, or a single default blue when unfiltered) -- real per-card variety, not tied
+  // to which pillar filter chip happens to be selected, since these 6 metric *types* stay
+  // the same regardless of filter. Borrowed straight from the pillar palette so it stays
+  // inside the app's existing colour language instead of inventing new brand colours.
+  const metricCard = (icon, val, label, daily, color) => {
     const vals=daily.map(x=>x.value);
-    return glassCard(sparkColor, `
+    return glassCard(color, `
       <div style="display:flex;align-items:center;gap:8px">
-        ${glassIcon(icon, sparkColor)}
+        ${softIcon(icon, color)}
         <div style="flex:1;min-width:0">
           <div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:var(--text)">${val}</div>
           <div style="font-size:10.5px;color:var(--muted);margin-top:1px">${label}</div>
         </div>
       </div>
-      <div style="margin-top:8px">${sparklineSvg(vals.slice(-14), sparkColor, {w:120,h:26})}</div>`,
+      <div style="margin-top:8px">${sparklineSvg(vals.slice(-14), color, {w:120,h:26})}</div>`,
       {style:'flex:1;min-width:0'});
   };
 
   const cards = [
-    metricCard(ICONS.badge, data?.total_tasks_completed??0, 'Tasks Completed', completedDaily),
-    metricCard(ICONS.stopwatch, (data?.avg_time_per_task_minutes??0)+'m', 'Avg. Time / Task', avgTimeDaily),
-    metricCard(ICONS.target, (data?.efficiency_percent??0)+'%', 'Efficiency', efficiencyDaily),
-    metricCard(ICONS.flame, data?.daily_streak??0, 'Daily Streak', streakDaily),
-    metricCard(ICONS.checkCircle, (data?.completion_rate_percent??0)+'%', 'Completion Rate', completionRateDaily),
-    metricCard(ICONS.warning, data?.skipped_tasks??0, 'Missed Tasks', skippedDaily),
+    metricCard(ICONS.badge, data?.total_tasks_completed??0, 'Tasks Completed', completedDaily, '#5BA4DC'),
+    metricCard(ICONS.stopwatch, (data?.avg_time_per_task_minutes??0)+'m', 'Avg. Time / Task', avgTimeDaily, '#8A70C0'),
+    metricCard(ICONS.target, (data?.efficiency_percent??0)+'%', 'Efficiency', efficiencyDaily, '#5A9460'),
+    metricCard(ICONS.flame, data?.daily_streak??0, 'Daily Streak', streakDaily, '#E07840'),
+    metricCard(ICONS.checkCircle, (data?.completion_rate_percent??0)+'%', 'Completion Rate', completionRateDaily, '#C9A832'),
+    metricCard(ICONS.warning, data?.skipped_tasks??0, 'Missed Tasks', skippedDaily, '#C46882'),
   ];
   grid.innerHTML = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">${cards.join('')}</div>`;
 }
@@ -7550,7 +7625,7 @@ function renderCustomEssentialApps() {
   if(!el) return;
   el.innerHTML = eaCustomApps.length ? eaCustomApps.map(a=>`
     <div class="sq-card" style="align-items:center">
-      <div class="sq-icon" style="background:var(--blue)22;color:var(--blue)">🔗</div>
+      ${softIcon(ICONS.link, '#5BA4DC')}
       <div class="sq-info" style="flex:1;min-width:0">
         <div class="sq-name">${a.appName}</div>
         <div class="sq-meta" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.urlScheme||a.webFallback||''}</div>
@@ -7864,6 +7939,22 @@ function glassCard(color, inner, opts) {
 }
 function glassIcon(svg, color) {
   return `<div class="glass-icon" style="background:${hexToRgba(color,.16)};color:${tintColor(color,.4)}">${svg}</div>`;
+}
+// Soft-gradient duotone icon container -- colourful (a real per-item accent colour) but
+// not flat (diagonal tint-to-full-colour gradient + a soft coloured glow) and not the
+// glossy/emoji feel of a raw emoji character sitting flush against a flat tinted tile.
+// White glyph/emoji on top reads clearly against the gradient at any lightness. Same
+// 40x40/13px footprint as .glass-icon/.sq-icon by default -- opts.size overrides for a
+// bigger container (e.g. a FAB) while keeping the same gradient+glow recipe.
+function softIcon(icon, color, opts) {
+  opts=opts||{};
+  const light=tintColor(color, opts.tint!=null?opts.tint:.45);
+  const dim=[
+    opts.size?`width:${opts.size}px`:'', opts.size?`height:${opts.size}px`:'',
+    opts.size?`border-radius:${opts.radius||Math.round(opts.size*.32)}px`:'',
+    opts.size?`font-size:${opts.fontSize||Math.round(opts.size*.42)}px`:'',
+  ].filter(Boolean).join(';');
+  return `<div class="soft-icon" style="background:linear-gradient(155deg, ${light}, ${color});box-shadow:0 4px 14px -4px ${hexToRgba(color,.55)}, inset 0 1px 0 rgba(255,255,255,.22);${dim}${dim?';':''}${opts.style||''}"${opts.attrs?' '+opts.attrs:''}>${icon}</div>`;
 }
 // The solid, filled-with-pillar-colour hero treatment for primary elements (the day's
 // main CTA card) -- the deliberate opposite of glassCard(), for hierarchy.
@@ -12763,7 +12854,7 @@ function sqCard(q,p,type) {
   if(type==='library') btn=`<button class="sq-act-btn" style="border-color:${p.color};color:${p.color}" onclick="event.stopPropagation();activateQuest(${q.id||0})">Start</button>`;
   if(type==='done') btn=`<button class="sq-act-btn" style="border-color:var(--finances);color:var(--finances);opacity:.6" disabled>✓ Done</button>`;
   return `<div class="sq-card" ${isComplex?`onclick="openSideQuestDetail(${q.id})" style="cursor:pointer"`:''}>
-    <div class="sq-icon" style="background:${p.color}22;color:${p.color}">${isAntiGoal?'🎯':p.emoji}</div>
+    ${softIcon(isAntiGoal?ICONS.target:p.emoji, p.color)}
     <div class="sq-info">
       <div class="sq-name">${name}</div>
       ${q.duration_category?`<div class="sq-meta">${q.duration_category}</div>`:''}
