@@ -3425,6 +3425,10 @@ const PILLAR_PREF_CONFIG = {
     {key:'preferredWorkoutDays', type:'multi', label:'Preferred Workout Days', options:['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']},
     {key:'preferredTimeOfDay', type:'single', label:'Preferred Time of Day', options:['Early Morning (6-9am)','Mid-Morning (9am-12pm)','Early Afternoon (12-3pm)','Late Afternoon (3-6pm)','Evening (6-9pm)','Flexible']},
     {key:'completionSound', type:'single', label:'Workout Completion Sound', options:['Gong','Bell','Chime','Digital Beep']},
+    // Spoken exercise/target callouts + light rest-timer countdown during an active
+    // strength session (see speakGuidance/renderActiveWorkout/renderRestTimer) -- default
+    // is unset/Off since not everyone wants their phone talking mid-set at the gym.
+    {key:'voiceGuidance', type:'single', label:'Voice Guidance During Workouts', options:['On','Off']},
   ],
   diet: [
     {key:'preferredMealStructure', type:'single', label:'Preferred Meal Structure', options:['3 Main Meals','5-6 Smaller Meals','Intermittent Fasting (16:8)']},
@@ -9808,10 +9812,10 @@ async function startWorkout(planId) {
   const type=planData.activityType||'strength';
   showScreen('workout-log');
   document.getElementById('workout-log-body').innerHTML='<div class="spinner"></div>';
-  // Voice Guidance preference (Fitness Preferences toggle, default off) -- fetched once
-  // per session via the cache above so this await only costs real latency on the very
-  // first workout started, not every one.
-  const voiceEnabled = !!(await getFitnessPrefs()).voiceGuidance;
+  // Voice Guidance preference (Fitness Preferences toggle, default Off/unset) -- fetched
+  // once per session via the cache above so this await only costs real latency on the
+  // very first workout started, not every one.
+  const voiceEnabled = (await getFitnessPrefs()).voiceGuidance === 'On';
 
   if(type==='cardio') {
     activeWorkout={ activityType:'cardio', planName:planData.name, targetDurationMin:planData.durationMin||20, targetDistance:planData.distance||0, intensity:planData.intensity||'Moderate', startTime:Date.now(), sessionNotes:'', voiceEnabled };
@@ -9952,6 +9956,22 @@ function playGongSound() {
   playCompletionSound((fitnessPrefsCache&&fitnessPrefsCache.completionSound)||DEFAULT_COMPLETION_SOUND);
 }
 
+// ── Voice Guidance (Part B) ── Plain browser Web Speech API (window.speechSynthesis),
+// no native wrapper or external TTS service needed -- works in a regular PWA tab. Gated
+// on activeWorkout.voiceEnabled (the Fitness Preferences toggle above, default Off,
+// resolved once in startWorkout() via the same fitnessPrefsCache/getFitnessPrefs used by
+// the completion sound) and on speechSynthesis actually existing -- some browsers/
+// embedded webviews don't have it, so this silently no-ops rather than throwing and
+// breaking the render that called it.
+function speakGuidance(text) {
+  if(!activeWorkout || !activeWorkout.voiceEnabled) return;
+  try {
+    if(!('speechSynthesis' in window) || typeof SpeechSynthesisUtterance==='undefined') return;
+    window.speechSynthesis.cancel(); // don't queue/stack utterances if sets are logged fast
+    window.speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+  } catch(e) { /* speech synthesis unsupported/blocked -- silently skip, not critical */ }
+}
+
 // ── Mobility session: active, not a static checklist -- a big countdown ring per pose
 // (readable mid-stretch, not a wall of small text to squint at), auto-advancing to the
 // next pose after a short breather so you never have to touch the phone mid-flow. Pause/
@@ -10073,6 +10093,17 @@ function renderActiveWorkout() {
   const w=activeWorkout;
   const ex=w.exercises[w.exerciseIdx];
   const set=ex.sets[w.setIdx];
+  // Announce only when a NEW exercise becomes current -- exerciseIdx advancing, or the
+  // name changing under the same idx via a swap -- not on every re-render (e.g. each set
+  // logged within the same exercise). _voiceKey persists on activeWorkout across renders
+  // so this stays a one-shot per exercise, not a repeat on every render call.
+  const voiceKey=w.exerciseIdx+'|'+ex.name;
+  if(w._voiceKey!==voiceKey) {
+    w._voiceKey=voiceKey;
+    speakGuidance(set.targetWeight>0
+      ? `${ex.name}. ${set.targetReps} reps at ${set.targetWeight} kilograms.`
+      : `${ex.name}. ${set.targetReps} reps.`);
+  }
   const elapsed=Math.floor((Date.now()-w.startTime)/60000);
   document.getElementById('workout-log-header').textContent=`${w.planName} | ${w.exerciseIdx+1} of ${w.exercises.length} | ${elapsed}m`;
   document.getElementById('workout-log-body').innerHTML=`
@@ -10184,7 +10215,8 @@ function renderRestTimer() {
   // editor) rather than the fixed global default, falling back to it for plans/rows
   // that never set one (AI-generated plans, older saved templates).
   const nextEx=w.exercises[w.exerciseIdx];
-  let remaining=(nextEx && nextEx.restSec) || REST_BETWEEN_SETS_SECONDS;
+  const totalRest=(nextEx && nextEx.restSec) || REST_BETWEEN_SETS_SECONDS;
+  let remaining=totalRest;
   document.getElementById('workout-log-body').innerHTML=`
     <div style="text-align:center;padding:50px 0">
       <div class="section-sub">REST</div>
@@ -10196,6 +10228,10 @@ function renderRestTimer() {
     remaining--;
     const el=document.getElementById('rest-countdown');
     if(!el) { clearInterval(w.restTimer); return; }
+    // Light-touch verbal countdown -- one callout at the 15s mark only (never a running
+    // tick every second, which would just be annoying), and only for rests long enough
+    // that a 15s warning is actually useful ahead of a short rest.
+    if(remaining===15 && totalRest>20) speakGuidance('15 seconds left');
     if(remaining<=0) { clearInterval(w.restTimer); renderActiveWorkout(); return; }
     el.textContent=remaining+'s';
   },1000);
@@ -10243,6 +10279,7 @@ function skipExercise() {
 
 async function finishWorkout() {
   const w=activeWorkout;
+  try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch(e) {}
   w.sessionNotes=document.getElementById('workout-session-notes')?.value||w.sessionNotes;
   const durationMin=Math.max(1,Math.round((Date.now()-w.startTime)/60000));
   const p=PILLARS.fitness;
