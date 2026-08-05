@@ -4389,6 +4389,11 @@ async function addTimeToCurrentTask() {
     return;
   }
   await req('POST','/tasks/add-time',{task_id:S.currentTask.taskId, minutes_to_add:10});
+  // A manually-started real task's ring countdown is driven by manualTaskOverride.durationMinutes,
+  // not by the schedule loadHomeData() below re-fetches -- applyCtaState() short-circuits straight
+  // back to renderManualTaskCta() whenever an override is active, so the backend's extended end_time
+  // would never reach the visible countdown without bumping this too.
+  if(S.manualTaskOverride?.taskId===S.currentTask.taskId) S.manualTaskOverride.durationMinutes += 10;
   toast('+10 minutes added ⏱');
   await loadHomeData();
 }
