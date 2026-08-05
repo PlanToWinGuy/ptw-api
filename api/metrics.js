@@ -60,14 +60,73 @@ async function scanMeal(req, res) {
   }
 }
 
+const USDA_SEARCH_URL = 'https://api.nal.usda.gov/fdc/v1/foods/search';
+// Standard USDA FDC nutrient IDs -- stable across every food in the database (raw,
+// Foundation, SR Legacy, Survey/FNDDS, and Branded), so this mapping never needs to change
+// per-food the way e.g. an index into foodNutrients would.
+const USDA_NUTRIENT_IDS = { calories: 1008, protein_g: 1003, carbs_g: 1005, fat_g: 1004 };
+
+// USDA FoodData Central food search, proxied server-side so USDA_FDC_API_KEY never ships
+// to the client (same reasoning as ANTHROPIC_API_KEY above). Falls back to USDA's public
+// DEMO_KEY (heavily rate-limited, fine for dev/testing) if the real key isn't set yet --
+// see .env.example. Register a free key at https://fdc.nal.usda.gov/api-key-signup.html
+// and set USDA_FDC_API_KEY in Vercel before this needs to hold real production traffic.
+//
+// Response is normalized to macros-per-100g (the one basis that's consistent across both
+// raw/Foundation foods and labeled Branded foods) so the client can scale live off
+// whatever quantity/unit the user picks -- see computeMealFoodPortion() in the frontend.
+async function foodSearch(req, res) {
+  const query = (req.query.query || '').toString().trim();
+  if (!query) return res.status(200).json({ foods: [] });
+
+  const key = process.env.USDA_FDC_API_KEY || 'DEMO_KEY';
+  const url = `${USDA_SEARCH_URL}?query=${encodeURIComponent(query)}&pageSize=25&dataType=${encodeURIComponent('Branded,Foundation,SR Legacy,Survey (FNDDS)')}&api_key=${encodeURIComponent(key)}`;
+
+  try {
+    const r = await fetch(url);
+    if (!r.ok) {
+      const body = await r.text().catch(() => '');
+      return res.status(r.status === 429 ? 429 : 502).json({
+        message: r.status === 429 ? 'Food database is rate-limited right now — try again shortly' : 'Food database lookup failed',
+        error: body.slice(0, 300),
+      });
+    }
+    const data = await r.json();
+    const foods = (data.foods || []).map(f => {
+      const per100g = {};
+      for (const [macro, nutrientId] of Object.entries(USDA_NUTRIENT_IDS)) {
+        const hit = (f.foodNutrients || []).find(n => n.nutrientId === nutrientId);
+        per100g[macro] = hit ? Math.round(hit.value * 10) / 10 : 0;
+      }
+      return {
+        fdcId: f.fdcId,
+        name: f.description,
+        brand: f.brandOwner || f.brandName || null,
+        dataType: f.dataType,
+        // servingSize/Unit is the label-declared serving for Branded foods (usually grams);
+        // absent for raw Foundation/SR Legacy foods, where per-100g is the only basis.
+        servingSize: f.servingSize || null,
+        servingSizeUnit: f.servingSizeUnit || null,
+        householdServing: f.householdServingFullText || null,
+        per100g,
+      };
+    });
+    res.status(200).json({ foods });
+  } catch (e) {
+    res.status(500).json({ message: 'Could not search foods — try again', error: String(e) });
+  }
+}
+
 // GET/POST /api/metrics handles logging + fetching; POST /api/metrics/scan-meal
-// (rewritten to ?action=scan-meal) handles the AI vision draft step.
+// (rewritten to ?action=scan-meal) handles the AI vision draft step; GET
+// ?action=food-search handles the manual-entry USDA food lookup.
 export default async function handler(req, res) {
   if (cors(req, res)) return;
   const user = await getUserFromRequest(req);
   if (!user) return res.status(401).json({ message: 'Unauthenticated' });
 
   if (req.method === 'POST' && req.query.action === 'scan-meal') return scanMeal(req, res);
+  if (req.method === 'GET' && req.query.action === 'food-search') return foodSearch(req, res);
 
   if (req.method === 'GET') {
     const pillar_id = req.query.pillar_id ? Number(req.query.pillar_id) : null;
