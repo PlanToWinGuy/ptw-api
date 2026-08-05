@@ -4117,7 +4117,7 @@ async function confirmTaskCompletion() {
   // resurrect the ring right back onto a task that was just marked done.
   if(isManual) S.manualTaskOverride=null;
   S.currentTask=null;
-  S.pendingCelebrationNav={returnTo:S.taskCompletionReturnTo, completedName, completedPillar};
+  S.pendingCelebrationNav={returnTo:S.taskCompletionReturnTo, completedName, completedPillar, xp};
   S.taskCompletionReturnTo=null;
   document.getElementById('tc-slider-view').style.display='none';
   document.getElementById('tc-celebration-view').style.display='';
@@ -4144,8 +4144,92 @@ function finishTaskCelebration() {
   (async ()=>{
     if(nav.returnTo==='todo-routines') { await switchTodoRoutinesTab('todo'); }
     else { await loadHomeData(); }
-    maybePromptExpenseLog(nav.completedName, nav.completedPillar);
+    // A real streak milestone (see checkStreakMilestone) is the bigger moment -- only
+    // fall through to the cross-pillar expense-log nudge when nothing milestone-worthy
+    // just happened, so the two celebratory prompts never stack on top of each other.
+    const milestoneShown = await checkStreakMilestone(getPillarKey(nav.completedPillar), nav.xp);
+    if(!milestoneShown) maybePromptExpenseLog(nav.completedName, nav.completedPillar);
   })();
+}
+
+// ════════════════════════════════════════
+// STREAK MILESTONE CELEBRATION (Part C) -- fires on a REAL streak milestone (7 or 30
+// consecutive days), reusing GET /streaks (lib/streaks.js's computeConsecutiveDayRuns,
+// the same source that drives the Trophies > Streaks tab and the Week Warrior/Iron Will
+// badge thresholds in lib/badges.js) rather than inventing a separate streak concept.
+// Deliberately bigger than the standard tc-celebration-view ("Nice work!") toast --
+// confetti + an animated number -- reserved for these two specific milestones so it
+// still reads as a genuine big moment instead of firing on every ordinary completion.
+// ════════════════════════════════════════
+const STREAK_MILESTONES=[7,30];
+const CELEBRATED_STREAKS_KEY='ptw_celebrated_streaks';
+
+// Persisted client-side (not server-tracked) -- deliberately exact-match on length so a
+// streak that's already past 7 doesn't refire every single day, but a streak that breaks
+// and later re-earns the same milestone honestly celebrates again.
+function alreadyCelebratedMilestone(name,length) {
+  const seen=JSON.parse(localStorage.getItem(CELEBRATED_STREAKS_KEY)||'[]');
+  return seen.includes(name+'|'+length);
+}
+function markMilestoneCelebrated(name,length) {
+  const seen=JSON.parse(localStorage.getItem(CELEBRATED_STREAKS_KEY)||'[]');
+  seen.push(name+'|'+length);
+  localStorage.setItem(CELEBRATED_STREAKS_KEY, JSON.stringify(seen.slice(-100)));
+}
+
+// Called after any real completion that could extend a streak (task completion, ad-hoc
+// meal log, water log) -- checks that pillar's active streaks (which include both the
+// pillar's primary activity streak AND every routine's own named streak, e.g. "Drink
+// Water" or "Log your breakfast", per api/streaks.js) for one that just landed exactly on
+// a milestone. Returns true if a celebration was shown, so callers can avoid stacking it
+// with a second prompt (see finishTaskCelebration).
+async function checkStreakMilestone(pillarKey, xpEarned) {
+  if(!pillarKey) return false;
+  const data=await req('GET','/streaks?pillar='+pillarKey);
+  const active=data?.active_streaks||[];
+  for(const s of active) {
+    const len=parseInt(s.current_length,10); // api/streaks.js formats this as "7 Days"
+    if(STREAK_MILESTONES.includes(len) && !alreadyCelebratedMilestone(s.name,len)) {
+      markMilestoneCelebrated(s.name,len);
+      showStreakMilestoneCelebration({name:s.name, length:len, xp:xpEarned||0, tokenCount:data?.streak_save_tokens?.count||0});
+      return true;
+    }
+  }
+  return false;
+}
+
+const CONFETTI_COLORS=['#FFD166','#5A9460','#5BA4DC','#C46882','#D6AB3A','#ffffff'];
+function spawnStreakConfetti(count) {
+  const layer=document.getElementById('streak-confetti-layer');
+  if(!layer) return;
+  layer.innerHTML='';
+  for(let i=0;i<count;i++) {
+    const el=document.createElement('div');
+    el.className='confetti-piece';
+    const left=Math.random()*100;
+    const delay=(Math.random()*0.6).toFixed(2);
+    const duration=(2.2+Math.random()*1.6).toFixed(2);
+    const color=CONFETTI_COLORS[i%CONFETTI_COLORS.length];
+    el.style.cssText=`left:${left}%;background:${color};animation-duration:${duration}s;animation-delay:${delay}s`;
+    layer.appendChild(el);
+  }
+}
+function closeStreakCelebration() {
+  document.getElementById('streak-celebration-overlay').classList.remove('open');
+}
+function showStreakMilestoneCelebration({name, length, xp, tokenCount}) {
+  document.getElementById('streak-cel-number').textContent=length;
+  document.getElementById('streak-cel-name').textContent=name;
+  document.getElementById('streak-cel-xp').textContent='+'+(xp||0)+' XP';
+  const tokenEl=document.getElementById('streak-cel-token');
+  // Streak Save tokens aren't earned AT a specific streak length (they're a separate
+  // weekly 90%+ completion check, see lib/streakTokens.js) -- framed honestly here as
+  // "banked" support for this streak rather than claiming one was just granted.
+  if(tokenCount>0) { tokenEl.style.display=''; tokenEl.textContent=`🛡️ ${tokenCount} Streak Save token${tokenCount===1?'':'s'} banked for this pillar`; }
+  else { tokenEl.style.display='none'; }
+  spawnStreakConfetti(46);
+  document.getElementById('streak-celebration-overlay').classList.add('open');
+  if(navigator.vibrate) navigator.vibrate([30,50,30,50,80]);
 }
 
 // A task like "Go grocery shopping" or "Buy a birthday gift" often costs money, but it
@@ -8579,6 +8663,7 @@ async function confirmLogMeal() {
   // when this meal came from a plan (readMealForm() alone can't carry ingredients).
   if(ingredients?.length) await removeIngredientsFromGroceryList(ingredients);
   showMealLoggedCelebration({...m, xp:result?.xp_gained||0});
+  checkStreakMilestone('diet', result?.xp_gained||0);
 }
 
 async function saveMealTemplate() {
@@ -12809,6 +12894,24 @@ async function renderBadgesTab(pillarKey) {
           <div style="font-size:11px;color:var(--text);margin-top:6px">${b.is_earned?b.name:'???'}</div>
         </div>`).join('')}
     </div>`;
+
+  // Gamification pass (Part C, 2nd improvement): badges are computed live/pull-only (no
+  // push notification anywhere today) -- a real badge could sit earned-but-unseen for
+  // days. Diffing this fetch's earned set against what's already been shown (tracked
+  // client-side, since badges have no server-side "seen" flag) surfaces genuinely NEW
+  // unlocks with the same celebratory animation language as the streak milestone above,
+  // instead of a badge just quietly appearing filled-in next time someone happens to
+  // check Trophies.
+  const earned=badges.filter(b=>b.is_earned);
+  const seenKey='ptw_seen_badges';
+  const seen=new Set(JSON.parse(localStorage.getItem(seenKey)||'[]'));
+  const newlyEarned=earned.filter(b=>!seen.has(b.badge_id));
+  earned.forEach(b=>seen.add(b.badge_id));
+  localStorage.setItem(seenKey, JSON.stringify([...seen]));
+  // First-ever load (nothing in localStorage yet) would otherwise "unlock" every already-
+  // earned badge at once -- only celebrate once a real baseline has been recorded.
+  if(newlyEarned.length && localStorage.getItem('ptw_seen_badges_baseline')) showBadgeUnlockCelebration(newlyEarned[0]);
+  localStorage.setItem('ptw_seen_badges_baseline','1');
 }
 
 function openBadgeDetail(badgeId) {
@@ -12823,6 +12926,22 @@ function openBadgeDetail(badgeId) {
       <div style="font-size:48px;margin-bottom:10px;${b.is_earned?'':'filter:grayscale(1);opacity:.4'}">${b.icon}</div>
       <div style="font-size:13px;color:var(--stone);margin-bottom:8px">${b.description}</div>
       ${b.is_earned ? `<div style="font-size:12px;color:var(--text);font-weight:600">Earned ${new Date(b.date_earned).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>` : `<div style="font-size:12px;color:var(--stone)">🔒 Not yet earned</div>`}
+    </div>`;
+}
+
+// New-badge-unlock celebration -- reuses the generic Confirm modal (same approach as
+// openBadgeDetail just above) so it needs zero new DOM/CSS, but styles it as a moment
+// via the same celebPop/celebFadeUp keyframes the task-completion celebration uses.
+function showBadgeUnlockCelebration(badge) {
+  openConfirm('New Badge Unlocked!', '', ()=>{});
+  const yesBtn=document.getElementById('confirm-yes-btn');
+  yesBtn.textContent='Nice!';
+  yesBtn.onclick=()=>closeModal('modal-confirm');
+  document.getElementById('confirm-body').innerHTML = `
+    <div style="text-align:center;padding:10px 0 14px">
+      <div style="font-size:56px;margin-bottom:10px;animation:celebPop .55s cubic-bezier(.34,1.56,.64,1)">${badge.icon}</div>
+      <div style="font-family:'Syne',sans-serif;font-size:17px;font-weight:800;color:var(--text);margin-bottom:6px;animation:celebFadeUp .4s ease .1s backwards">${badge.name}</div>
+      <div style="font-size:13px;color:var(--stone);animation:celebFadeUp .4s ease .18s backwards">${badge.description}</div>
     </div>`;
 }
 

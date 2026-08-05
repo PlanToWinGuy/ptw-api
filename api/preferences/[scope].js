@@ -2,6 +2,7 @@ import { del } from '@vercel/blob';
 import { sql } from '../../lib/db.js';
 import { cors } from '../../lib/cors.js';
 import { getUserFromRequest } from '../../lib/auth.js';
+import { syncWaterReminderRoutines } from '../../lib/routines.js';
 
 // Universal preference store (4.19.E-J + units/notifications) -- one table, {scope} is
 // either a pillar name lowercase ('fitness', 'diet', ...) or 'units' | 'notifications'.
@@ -45,6 +46,14 @@ export default async function handler(req, res) {
         await del(existing.blobPathname).catch(() => {});
       }
     }
+    // Diet's opt-in Water Reminders field drives real scheduled nudges, not just a saved
+    // preference value -- sync the underlying routines (see syncWaterReminderRoutines)
+    // every time this scope saves, using the user's real wake/wind-down times so reminders
+    // land inside their actual waking hours instead of a generic default window.
+    if (scope === 'diet' && Object.prototype.hasOwnProperty.call(data, 'waterReminders')) {
+      await syncWaterReminderRoutines(user.id, user.wake_time, user.wind_down_time, data.waterReminders);
+    }
+
     await sql`
       INSERT INTO preferences (user_id, scope, data, updated_at)
       VALUES (${user.id}, ${scope}, ${JSON.stringify(data)}::jsonb, now())
