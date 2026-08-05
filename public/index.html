@@ -444,22 +444,11 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
   backdrop-filter:blur(18px) saturate(160%);
   -webkit-backdrop-filter:blur(18px) saturate(160%);
 }
-/* Settings row + Notifications card are single-purpose classes (used nowhere else in the
-   app), so these restyle their base CSS directly rather than needing a screen-id scope. */
-.settings-row{
-  background:rgba(255,255,255,.045);
-  border:1px solid rgba(91,164,220,.22);
-  backdrop-filter:blur(18px) saturate(160%);
-  -webkit-backdrop-filter:blur(18px) saturate(160%);
-  box-shadow:0 8px 30px -14px rgba(0,0,0,.5);
-}
-.trophy-card{
-  background:rgba(255,255,255,.045);
-  border:1px solid rgba(91,164,220,.22);
-  backdrop-filter:blur(18px) saturate(160%);
-  -webkit-backdrop-filter:blur(18px) saturate(160%);
-  box-shadow:0 8px 30px -14px rgba(0,0,0,.5);
-}
+/* .settings-row and .trophy-card are single-purpose classes (used nowhere else in the
+   app) -- their base rules further down this stylesheet (search .settings-row{background,
+   .trophy-card{background) are edited directly to the glass recipe rather than adding a
+   second conflicting rule here, since a same-specificity rule declared earlier in the
+   cascade would otherwise lose to their original declaration later in the file. */
 /* Home's pillar-apps dock -- a frosted "shelf" the solid pillar-coloured app icons sit
    on, instead of a plain transparent-to-bg fade. background-color (the glass tint) shows
    through the top of the gradient image layer where it's transparent; the gradient's own
@@ -549,8 +538,10 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
 /* ── Trophies tab ── */
 .trophies-body{padding:0 18px}
 .trophy-card{
-  background:var(--bg3);border-radius:12px;padding:14px;
+  background:rgba(255,255,255,.045);border:1px solid rgba(91,164,220,.22);border-radius:12px;padding:14px;
   display:flex;align-items:center;gap:14px;margin-bottom:8px;
+  backdrop-filter:blur(18px) saturate(160%);-webkit-backdrop-filter:blur(18px) saturate(160%);
+  box-shadow:0 8px 30px -14px rgba(0,0,0,.5);
 }
 .trophy-icon{font-size:28px;flex-shrink:0}
 .trophy-info{flex:1}
@@ -621,7 +612,7 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
 .section-sub{font-size:12px;color:var(--stone);margin-bottom:12px}
 
 /* Settings (4.19) -- simple nav-style row: icon, label, chevron */
-.settings-row{background:var(--bg3);border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:12px;margin-bottom:8px;cursor:pointer}
+.settings-row{background:rgba(255,255,255,.045);border:1px solid rgba(91,164,220,.22);border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:12px;margin-bottom:8px;cursor:pointer;backdrop-filter:blur(18px) saturate(160%);-webkit-backdrop-filter:blur(18px) saturate(160%);box-shadow:0 8px 30px -14px rgba(0,0,0,.5)}
 .settings-row .sr-icon{font-size:17px;width:22px;text-align:center;flex-shrink:0}
 .settings-row .sr-label{flex:1;font-size:14px;font-weight:600;color:var(--text)}
 .settings-row .sr-chevron{color:var(--stone);font-size:16px}
