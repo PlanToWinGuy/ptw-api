@@ -6306,17 +6306,89 @@ function routineTimeGroup(r) {
   return 'Evening';
 }
 
+// A routine is a "single-action reminder" (materialized by Pass 3's isRecurringAction()
+// pipeline off an active goal plan, or a bare tool reminder like the default Drink Water
+// slots) rather than a real user-built routine when it has exactly one step AND carries a
+// toolHint or goalId -- the two signals that distinguish "auto-generated recurring action"
+// from "person actually built a multi-step Morning/Wind-Down routine in the editor". Live
+// guest2 data (2026-08): 18 total routines, only 2 (Morning Routine, Wind-Down Routine) are
+// real multi-step routines -- the other 16 are single-action reminders spread across 6
+// pillars (Diet alone had 9: 4 meal-log entries off a goal plan + 5 default water slots with
+// no goalId at all). Flattening all 18 into one equal-weight card list is exactly why the
+// list "seems so long" -- grouping the 16 reminders under 6 compact per-pillar rows instead
+// collapses that down to 2 real routine cards + 6 pillar summary rows by default.
+function isSingleActionRoutine(r) {
+  return (r.steps||[]).length<=1 && (r.toolHint || r.goalId);
+}
+
 function renderRoutinesList(routines) {
   const body=document.getElementById('todo-routines-body');
   if(!routines.length) { body.innerHTML=`<div class="empty"><div class="empty-icon">🔁</div><div class="empty-text">No routines yet — build one for your mornings or evenings.</div></div>`; return; }
-  const groups={Morning:[],Afternoon:[],Evening:[],Anytime:[]};
-  routines.forEach(r=>groups[routineTimeGroup(r)].push(r));
+
+  const realRoutines = routines.filter(r=>!isSingleActionRoutine(r));
+  const reminders = routines.filter(isSingleActionRoutine);
+
   let html='';
-  ['Morning','Afternoon','Evening','Anytime'].forEach(g=>{
-    if(!groups[g].length) return;
-    html+=`<div class="section-sub" style="margin-top:14px">${g.toUpperCase()} ROUTINES</div>`+groups[g].map(routineCard).join('');
-  });
+  if(realRoutines.length) {
+    const groups={Morning:[],Afternoon:[],Evening:[],Anytime:[]};
+    realRoutines.forEach(r=>groups[routineTimeGroup(r)].push(r));
+    ['Morning','Afternoon','Evening','Anytime'].forEach(g=>{
+      if(!groups[g].length) return;
+      html+=`<div class="section-sub" style="margin-top:14px">${g.toUpperCase()} ROUTINES</div>`+groups[g].map(routineCard).join('');
+    });
+  }
+
+  if(reminders.length) {
+    const byPillar={};
+    reminders.forEach(r=>{
+      const pk=getPillarKey(r.category);
+      (byPillar[pk]=byPillar[pk]||[]).push(r);
+    });
+    const order=['fitness','diet','finances','relations','personal','work'];
+    const pillarKeys=Object.keys(byPillar).sort((a,b)=>order.indexOf(a)-order.indexOf(b));
+    html+=`<div class="section-sub" style="margin-top:14px">DAILY REMINDERS</div>`;
+    html+=pillarKeys.map(pk=>pillarReminderGroup(pk, byPillar[pk].sort((a,b)=>(a.schedule?.time||'').localeCompare(b.schedule?.time||'')))).join('');
+  }
+
   body.innerHTML=html;
+}
+
+// Collapsed-by-default summary row for one pillar's worth of single-action reminders --
+// "Diet · 9 daily reminders" -- expands in place to the compact one-line rows below it.
+// Same click-to-expand/chevron-rotate convention as toggleVaultArticle() elsewhere in this
+// file, just scoped to routine reminders instead of vault articles.
+function pillarReminderGroup(pk, items) {
+  const p=PILLARS[pk]||PILLARS.personal;
+  return `<div class="sq-card" style="flex-direction:column;align-items:stretch;cursor:pointer;padding:12px 14px" onclick="togglePillarReminders(this)">
+    <div style="display:flex;align-items:center;gap:12px">
+      ${softIcon(p.icon, p.color, {size:36})}
+      <div class="sq-info">
+        <div class="sq-name">${p.label} <span style="color:var(--stone);font-weight:500">· ${items.length} daily reminder${items.length===1?'':'s'}</span></div>
+      </div>
+      <span class="vault-chevron" style="color:var(--muted);transition:transform .2s;flex-shrink:0">▾</span>
+    </div>
+    <div class="pillar-reminder-body" style="display:none;margin-top:10px">${items.map(r=>reminderRow(r,p)).join('')}</div>
+  </div>`;
+}
+function togglePillarReminders(card) {
+  const body=card.querySelector('.pillar-reminder-body');
+  const chevron=card.querySelector('.vault-chevron');
+  const open=body.style.display!=='none';
+  body.style.display = open ? 'none' : 'block';
+  chevron.style.transform = open ? '' : 'rotate(180deg)';
+}
+// One-line compact row for a single-action reminder -- no "Includes:" line (there's nothing
+// to list, it's one action) and a smaller icon than a real routine card, since these are
+// meant to read as lightweight compared to the multi-step cards above.
+function reminderRow(r, p) {
+  const typeLabel = r.toolHint ? (TOOL_HINT_LABEL[r.toolHint]||null) : null;
+  return `<div class="sq-card" style="padding:8px 10px;margin-bottom:6px" onclick="event.stopPropagation();openRoutineFromLibrary(${r.routineId})">
+    ${softIcon(r.icon && r.icon!=='🔁' ? r.icon : ICONS.repeat, p.color, {size:28})}
+    <div class="sq-info">
+      <div class="sq-name" style="font-size:13px">${r.name}${r.isActive?'':' (inactive)'}</div>
+      <div class="sq-meta">${r.schedule?.time?formatTimeOfDay(r.schedule.time):'Anytime'}${typeLabel?' · '+typeLabel:''}</div>
+    </div>
+  </div>`;
 }
 
 // A routine created from a goal plan (goalId/toolHint set -- see api/goals.js) is a
