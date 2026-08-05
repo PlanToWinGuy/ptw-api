@@ -6681,6 +6681,16 @@ setupSwipeNav('screen-todo-routines', {
     } else if(dy>0) {
       // Swipe down from any pillar screen -- same intuitive "go back home" gesture
       // already used everywhere else in the app (Profile, To-Do/Routines, Daily).
+      // Gated on the active tab's own scroller already being at the top -- same fix
+      // Daily Overview's up-swipe uses below (scroller-position-gated exit), applied
+      // here for the mirror-image gesture. The Map tab's Glass metric cards (sparklines,
+      // delta chips, real per-metric history) can make it tall enough to need scrolling
+      // for accounts with more logged history than a flat test account shows, and
+      // without this guard, scrolling back UP toward the top -- the exact same physical
+      // downward drag as this exit gesture -- would accidentally kick you out to Home
+      // mid-scroll instead of just scrolling.
+      const activeTab=[...el.querySelectorAll('.scroll-body')].find(t=>t.style.display!=='none');
+      if(activeTab && activeTab.scrollTop>4) return;
       showScreen('home');
     }
   });
