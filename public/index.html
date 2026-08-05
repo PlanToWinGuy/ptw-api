@@ -483,6 +483,28 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
   -webkit-backdrop-filter:blur(18px) saturate(160%);
   box-shadow:0 8px 30px -14px rgba(0,0,0,.5);
 }
+/* Daily Overview task cards -- another pass beyond the base glass treatment above (still
+   a .sq-card underneath, so it keeps the glass fill/blur), added on top: a left accent
+   bar in the task's own pillar colour (set inline as --dtc-accent by dailyTaskCard() in
+   JS) so the day's actual mix of pillars reads at a glance without opening each card, a
+   bigger icon slot, tighter/bolder name typography, and slightly more generous rounding
+   + padding than the plain compact list-row default other .sq-card lists (Side Quests,
+   Routines, etc) use. */
+.daily-task-card{
+  border-radius:16px;
+  padding:13px 14px 13px 18px;
+  gap:13px;
+  position:relative;
+  overflow:hidden;
+  transition:transform .12s ease;
+}
+.daily-task-card:active{transform:scale(.985)}
+.daily-task-card::before{
+  content:'';position:absolute;left:0;top:12px;bottom:12px;width:3px;border-radius:3px;
+  background:var(--dtc-accent, transparent);opacity:.9;
+}
+.daily-task-card .sq-name{font-size:14.5px;font-weight:650;line-height:1.35}
+.daily-task-card .sq-meta{font-size:11px;margin-top:3px;color:var(--stone)}
 /* Swipeable To-Do cards keep their own left accent-coloured border (set inline per task/
    pillar) -- glassing the fill without adding a competing full border around it. */
 #screen-todo-routines .todo-card-inner{
@@ -5834,8 +5856,8 @@ function renderDailyStats(tasks) {
 function movedAwayCard(m) {
   const pk=getPillarKey(m.pillar);
   const p=PILLARS[pk]||PILLARS.personal;
-  return `<div class="sq-card" style="opacity:.6;cursor:${m.toDate?'pointer':'default'}"${m.toDate?` onclick="jumpToDay('${m.toDate}')"`:''}>
-    <div class="sq-icon" style="background:${p.color}22;color:${p.color}">↻</div>
+  return `<div class="sq-card daily-task-card" style="opacity:.6;cursor:${m.toDate?'pointer':'default'};--dtc-accent:${p.color}"${m.toDate?` onclick="jumpToDay('${m.toDate}')"`:''}>
+    ${softIcon(ICONS.repeat, p.color)}
     <div class="sq-info">
       <div class="sq-name">${m.taskName}</div>
       <div class="sq-meta">${m.toDate?`Moved to ${formatShortDate(m.toDate)}`:'Moved to your backlog'}${m.reason?' · '+m.reason:''}</div>
@@ -5874,8 +5896,8 @@ function dailyTaskCard(t) {
   // (those call endpoints that only know about real `tasks` rows, and a synthetic
   // 'commitment-N' id isn't one), rendered so it still shows its real place in the day.
   if(t.taskType==='Commitment') {
-    return `<div class="sq-card" style="opacity:.85;cursor:default">
-      ${softIcon(ICONS.pin, p.color)}
+    return `<div class="sq-card daily-task-card" style="opacity:.85;cursor:default;--dtc-accent:${p.color}">
+      ${softIcon(ICONS.pin, p.color, {size:44})}
       <div class="sq-info">
         <div class="sq-name">${t.startTime?formatTimeOfDay(t.startTime)+' — ':''}${t.name}</div>
         <div class="sq-meta">Fixed Commitment · ${t.durationMinutes||0} min</div>
@@ -5903,9 +5925,9 @@ function dailyTaskCard(t) {
   // Binary Anti-Goal (4.15.A): two buttons instead of a checkbox -- "yes I did it" vs
   // "no I slipped up" both count as real logging, neither is punished as a miss.
   if(t.isAntiGoal && t.antiGoalType==='binary' && t.status!=='Completed') {
-    return `<div class="sq-card" style="flex-direction:column;align-items:stretch">
+    return `<div class="sq-card daily-task-card" style="flex-direction:column;align-items:stretch;--dtc-accent:${p.color}">
       <div style="display:flex;align-items:center;gap:14px;margin-bottom:10px">
-        ${softIcon(ICONS.target, p.color)}
+        ${softIcon(ICONS.target, p.color, {size:44})}
         <div class="sq-info"><div class="sq-name">${t.name}</div></div>
       </div>
       <div style="display:flex;gap:8px">
@@ -5935,13 +5957,18 @@ function dailyTaskCard(t) {
     : (t.isAntiGoal && t.antiGoalType==='progressive') ? `openLogAntiGoal(${t.taskId})`
     : (t.taskType==='Logging') ? `openDailyLoggingTask(${t.taskId})`
     : t.toolHint ? `openDailyLoggingTask(${t.taskId})` : '';
+  // Every card now carries its own task's pillar colour as a subtle border tint by
+  // default (previously every Daily Overview card shared the same flat brand-blue
+  // border regardless of pillar) -- the two highlighted states below still get a
+  // stronger, fully-opaque version of that same colour, they're not a separate colour.
   const cardStyle = [
-    isFirstStepHighlight ? `border:1.5px solid ${p.color}` : '',
-    isDoingNow ? `border:1.5px solid ${p.color};background:${p.color}0f` : '',
+    `border-color:${p.color}42`,
+    isFirstStepHighlight ? `border-width:1.5px;border-color:${p.color}` : '',
+    isDoingNow ? `border-width:1.5px;border-color:${p.color};background:${p.color}0f` : '',
     isCompleted ? 'opacity:.55' : '',
   ].filter(Boolean).join(';');
-  return `<div class="sq-card"${openCall?` onclick="${openCall}"`:''}${cardStyle?` style="${cardStyle}"`:''}>
-    ${softIcon(t.routineId?(t.toolHint?p.icon:ICONS.repeat):(t.isAntiGoal?ICONS.target:p.emoji), p.color)}
+  return `<div class="sq-card daily-task-card"${openCall?` onclick="${openCall}"`:''} style="--dtc-accent:${p.color};${cardStyle}">
+    ${softIcon(t.routineId?(t.toolHint?p.icon:ICONS.repeat):(t.isAntiGoal?ICONS.target:p.emoji), p.color, {size:44})}
     <div class="sq-info">
       ${isFirstStepHighlight?`<div style="font-size:10px;color:${p.color};font-weight:700;letter-spacing:.4px;margin-bottom:2px">🎯 YOUR FIRST STEP</div>`:''}
       ${isDoingNow?`<div style="font-size:10px;color:${p.color};font-weight:700;letter-spacing:.4px;margin-bottom:2px">▶ DOING NOW</div>`:''}
