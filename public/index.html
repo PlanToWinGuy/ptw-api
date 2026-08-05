@@ -6842,18 +6842,81 @@ async function loadProfileMetrics() {
   }
 
   grid.innerHTML='<div class="spinner"></div>';
-  const data=await req('GET','/profile/performance-metrics?pillar='+key);
-  const cards=[
-    {icon:'🏆',val:data?.total_tasks_completed??0,label:'Tasks Completed'},
-    {icon:'⏱️',val:(data?.avg_time_per_task_minutes??0)+'m',label:'Avg. Time / Task'},
-    {icon:'🎯',val:(data?.efficiency_percent??0)+'%',label:'Efficiency'},
-    {icon:'🔥',val:data?.daily_streak??0,label:'Daily Streak'},
-    {icon:'✅',val:(data?.completion_rate_percent??0)+'%',label:'Completion Rate'},
-    {icon:'⏭️',val:data?.skipped_tasks??0,label:'Missed Tasks'},
+  // /simple-tasks returns every real task row (status, updated_at, due_date, pillar,
+  // estimated_duration_minutes) -- the same raw source Work Hub's own completedDaily
+  // sparkline already builds from (see aggregateDaily(workTasks...) above). Reused here
+  // so these 6 cards get a genuine per-day trend instead of a bare aggregate number,
+  // with zero fabrication and zero new backend endpoint.
+  const [data, allTasks] = await Promise.all([
+    req('GET','/profile/performance-metrics?pillar='+key),
+    req('GET','/simple-tasks'),
+  ]);
+  const tasks = (key==='all' ? (allTasks||[]) : (allTasks||[]).filter(t=>getPillarKey(t.pillar)===key));
+  const sparkColor = (key!=='all' && PILLARS[key]) ? PILLARS[key].color : '#5BA4DC';
+
+  const completedTasks = tasks.filter(t=>t.status==='Completed' && t.updated_at);
+  const skippedTasks = tasks.filter(t=>t.status==='Skipped' && t.updated_at);
+  const completedDaily = aggregateDaily(completedTasks.map(t=>({logged_at:t.updated_at, value:1})));
+  const skippedDaily = aggregateDaily(skippedTasks.map(t=>({logged_at:t.updated_at, value:1})));
+
+  // Avg minutes/day (mean, not sum -- aggregateDaily() sums, so this is built by hand).
+  const durByDate={};
+  completedTasks.forEach(t=>{ const d=(t.updated_at||'').split('T')[0]; if(!d) return; (durByDate[d]=durByDate[d]||[]).push(Number(t.estimated_duration_minutes)||0); });
+  const avgTimeDaily = Object.keys(durByDate).sort().map(d=>({logged_at:d, value: durByDate[d].reduce((a,b)=>a+b,0)/durByDate[d].length}));
+
+  // On-time %/day (efficiency) -- same "on time" definition as the backend's own
+  // performance-metrics calc (due_date null, or completed on/before it).
+  const effByDate={};
+  completedTasks.forEach(t=>{
+    const d=(t.updated_at||'').split('T')[0]; if(!d) return;
+    const onTime = !t.due_date || d<=String(t.due_date).split('T')[0];
+    effByDate[d]=effByDate[d]||{on:0,total:0}; effByDate[d].total++; if(onTime) effByDate[d].on++;
+  });
+  const efficiencyDaily = Object.keys(effByDate).sort().map(d=>({logged_at:d, value: Math.round(effByDate[d].on/effByDate[d].total*100)}));
+
+  // Completion rate %/day -- completed vs. (completed + skipped) that same day.
+  const crByDate={};
+  completedTasks.forEach(t=>{ const d=(t.updated_at||'').split('T')[0]; if(!d) return; crByDate[d]=crByDate[d]||{c:0,s:0}; crByDate[d].c++; });
+  skippedTasks.forEach(t=>{ const d=(t.updated_at||'').split('T')[0]; if(!d) return; crByDate[d]=crByDate[d]||{c:0,s:0}; crByDate[d].s++; });
+  const completionRateDaily = Object.keys(crByDate).sort().map(d=>({logged_at:d, value: Math.round(crByDate[d].c/(crByDate[d].c+crByDate[d].s)*100)}));
+
+  // Streak length/day, reconstructed from real completed-task days -- consecutive
+  // calendar days with a completion increment the run, a gap resets it. A genuine
+  // derived trend (not the backend's exact streak algorithm, which also weighs Streak
+  // Save tokens) but built entirely from real activity, same spirit as every other
+  // sparkline here.
+  let streakRunning=0, streakPrevDate=null;
+  const streakDaily = completedDaily.map(d=>{
+    const dt=new Date(d.logged_at+'T00:00:00');
+    streakRunning = (streakPrevDate && (dt-streakPrevDate)===86400000) ? streakRunning+1 : 1;
+    streakPrevDate=dt;
+    return {logged_at:d.logged_at, value:streakRunning};
+  });
+
+  const metricCard = (icon, val, label, daily, opts) => {
+    opts=opts||{};
+    const vals=daily.map(x=>x.value);
+    return glassCard(sparkColor, `
+      <div style="display:flex;align-items:center;gap:8px">
+        ${glassIcon(icon, sparkColor)}
+        <div style="flex:1;min-width:0">
+          <div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:var(--text)">${val}</div>
+          <div style="font-size:10.5px;color:var(--muted);margin-top:1px">${label}</div>
+        </div>
+      </div>
+      <div style="margin-top:8px">${sparklineSvg(vals.slice(-14), sparkColor, {w:120,h:26})}</div>`,
+      {style:'flex:1;min-width:0'});
+  };
+
+  const cards = [
+    metricCard(ICONS.badge, data?.total_tasks_completed??0, 'Tasks Completed', completedDaily),
+    metricCard(ICONS.stopwatch, (data?.avg_time_per_task_minutes??0)+'m', 'Avg. Time / Task', avgTimeDaily),
+    metricCard(ICONS.target, (data?.efficiency_percent??0)+'%', 'Efficiency', efficiencyDaily),
+    metricCard(ICONS.flame, data?.daily_streak??0, 'Daily Streak', streakDaily),
+    metricCard(ICONS.checkCircle, (data?.completion_rate_percent??0)+'%', 'Completion Rate', completionRateDaily),
+    metricCard(ICONS.warning, data?.skipped_tasks??0, 'Missed Tasks', skippedDaily),
   ];
-  grid.innerHTML = `<div class="metric-row" style="grid-template-columns:1fr 1fr;gap:12px">${cards.map(c=>`
-    <div class="metric-card metric-card-lg"><div class="metric-icon">${c.icon}</div><div class="metric-val">${c.val}</div><div class="metric-label">${c.label}</div></div>
-  `).join('')}</div>`;
+  grid.innerHTML = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">${cards.join('')}</div>`;
 }
 
 // ─── THE VAULT (4.18.C) -- a real, curated resource library ───
