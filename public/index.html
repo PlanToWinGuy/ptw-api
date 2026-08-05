@@ -4344,6 +4344,10 @@ function cancelTaskCompletion() {
 // mis-wired shortcut into the Add Task modal.
 function openTaskActionsMenu() {
   if(!S.currentTask) { toast('No current task'); return; }
+  // A live workout session owns its own Stop/Finish controls on its dedicated screen --
+  // same redirect the ✓ button already takes above -- so the pencil shouldn't open a
+  // Skip/Add-time menu that has no real task row to act on here.
+  if(S.manualTaskOverride?.activeWorkoutSession) { showScreen('workout-log'); return; }
   document.getElementById('tam-task-name').textContent=S.currentTask.name;
   document.getElementById('modal-task-actions').classList.add('open');
 }
@@ -4351,6 +4355,29 @@ function openTaskActionsMenu() {
 async function skipCurrentTask() {
   if(!S.currentTask) return;
   closeModal('modal-task-actions');
+  // A project sub-task running in the Home ring's live timer (see startProjectSubtaskSession)
+  // is a real `tasks` row but isn't scheduled onto today's calendar -- routing it through
+  // the real /tasks/skip endpoint would incorrectly bank it into today's schedule. "Skip"
+  // here just means stop timing it and leave it Pending, same as declining to complete it
+  // from the ✓ slider (confirmTaskCompletion's projectSubtaskId branch).
+  if(S.manualTaskOverride?.projectSubtaskId) {
+    const projectId=S.manualTaskOverride.projectId;
+    clearManualTaskOverride();
+    toast('Sub-task skipped — still pending');
+    S.activeProjectId=projectId;
+    showScreen('project-detail');
+    await renderProjectDetail();
+    return;
+  }
+  // An ad-hoc Personal focus session (see startFocusSession) has no backing task row at
+  // all -- skipping it just abandons the session locally, nothing to tell the backend.
+  if(S.manualTaskOverride?.personalSessionFocusId) {
+    clearManualTaskOverride();
+    toast('Session skipped — not logged');
+    showScreen('personal-hub');
+    await switchPersonalHubTab('history');
+    return;
+  }
   const result=await req('POST','/tasks/skip',{task_id:S.currentTask.taskId});
   toast(result?.message||"Skipped — it'll come back around");
   if(S.manualTaskOverride?.taskId===S.currentTask.taskId) S.manualTaskOverride=null;
@@ -4361,6 +4388,15 @@ async function skipCurrentTask() {
 async function addTimeToCurrentTask() {
   if(!S.currentTask) return;
   closeModal('modal-task-actions');
+  // Project sub-task / Personal focus ad-hoc sessions (see skipCurrentTask above) have no
+  // real schedule slot for /tasks/add-time to extend -- add the 10 minutes straight to the
+  // local countdown that's actually driving the ring instead.
+  if(S.manualTaskOverride?.projectSubtaskId || S.manualTaskOverride?.personalSessionFocusId) {
+    S.manualTaskOverride.durationMinutes += 10;
+    updateCtaTimerRing();
+    toast('+10 minutes added ⏱');
+    return;
+  }
   await req('POST','/tasks/add-time',{task_id:S.currentTask.taskId, minutes_to_add:10});
   toast('+10 minutes added ⏱');
   await loadHomeData();
