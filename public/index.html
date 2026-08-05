@@ -3699,6 +3699,12 @@ async function enterApp() {
   loadHomeData();
   applyHomeBackground();
   initBatteryIndicator();
+  // Home screen widget bridge (native shell only, see the block near
+  // nativeWidgetBridge() below): push a fresh snapshot for both widgets, then check
+  // whether this launch was actually a tap on the Daily Overview widget, which should
+  // win over the default Home screen just shown above.
+  syncNativeWidgets(true);
+  checkNativeWidgetRoute();
   // First-run guided tour -- fires once after Home has painted its pillars/CTA (so the
   // spotlight has real elements to land on); no-ops on every later launch.
   setTimeout(maybeStartHomeTour, 800);
@@ -4195,6 +4201,27 @@ function openCurrentTask() {
   // mid-flight (a HIIT round, a yoga pose's countdown) is exactly where it was left,
   // having kept ticking the whole time it was off-screen.
   if(S.manualTaskOverride?.activeWorkoutSession) { showScreen('workout-log'); return; }
+  // A project sub-task session (see startProjectSubtaskSession) has no taskType/routineId
+  // of its own on S.currentTask (renderManualTaskCta only carries taskId/name/pillar), so
+  // without this explicit check it fell through to the generic showPillarScreen(pk) branch
+  // below -- landing on the plain Work pillar map instead of back on the specific active
+  // project, same project-detail screen skipCurrentTask/addTimeToCurrentTask already treat
+  // as this session's real home.
+  if(S.manualTaskOverride?.projectSubtaskId) {
+    S.activeProjectId=S.manualTaskOverride.projectId;
+    showScreen('project-detail');
+    renderProjectDetail();
+    return;
+  }
+  // An ad-hoc Personal focus session (see startFocusSession) has no backing task row and
+  // no detail screen of its own -- same fallthrough bug as the project sub-task case just
+  // above. Personal Hub is the closest real "home" for it (same screen skipCurrentTask
+  // routes to), history tab so the in-progress session's focus area is at least visible.
+  if(S.manualTaskOverride?.personalSessionFocusId) {
+    showScreen('personal-hub');
+    switchPersonalHubTab('history');
+    return;
+  }
   // A manually-started task (see startManualTask) should reopen its own Task Detail page,
   // not fall through to the generic pillar-map routing below -- that's the whole point of
   // tapping back into the ring while it's running.
@@ -5808,6 +5835,13 @@ async function loadDailyOverview() {
   S.dailyMovedAway=proj?.movedAway||[];
   renderDailyFilterChips();
   applyDailyFilter();
+  // Widget bridge (native shell only): whenever the real Daily Overview screen loads
+  // TODAY's data, push that exact list into the Daily Overview widget too, reusing it
+  // instead of a second fetch -- see syncDailyOverviewWidget() near nativeWidgetBridge().
+  if(S.dailyDate===new Date().toISOString().split('T')[0]) {
+    const bridge=nativeWidgetBridge();
+    if(bridge) syncDailyOverviewWidget(bridge, S.dailyAllTasks);
+  }
 }
 
 function renderDailyFilterChips() {
@@ -7799,6 +7833,7 @@ async function addCustomEssentialApp() {
   nameEl.value=''; urlEl.value='';
   renderCustomEssentialApps();
   essentialLibraryCache=null; essentialLibraryPromise=null; // force a refetch so it shows up in the drawer/search right away
+  refreshEssentialAppsWidgetSoon(); // native shell only -- new custom app shows up on the widget right away, not next app-open
   toast('Added ✓');
 }
 async function removeCustomEssentialApp(id) {
@@ -7806,6 +7841,7 @@ async function removeCustomEssentialApp(id) {
   await req('PUT','/preferences/custom_apps',{apps:eaCustomApps});
   renderCustomEssentialApps();
   essentialLibraryCache=null; essentialLibraryPromise=null;
+  refreshEssentialAppsWidgetSoon();
   toast('Removed');
 }
 
@@ -9487,6 +9523,124 @@ function startTodaysWorkout(planId) {
   S.pendingTaskId=null;
   startWorkout(planId);
 }
+
+// ─── HOME SCREEN WIDGET BRIDGE -- Essential Apps + Daily Overview widgets (ptw-native) ───
+// PtwWidgetBridgePlugin (android/app/src/main/java/app/plantowin/mobile/
+// PtwWidgetBridgePlugin.java) is a small hand-written Capacitor plugin, not an npm package
+// -- Capacitor has no built-in way to get JS state into a native Android home screen
+// widget. It writes whatever this pushes into SharedPreferences, which each widget's own
+// RemoteViewsService factory reads directly (no network access from a widget host, no
+// WebView, no auth token available to it). window.Capacitor only ever exists inside the
+// ptw-native shell (undefined in the plain web PWA), so every function here is a genuine
+// no-op there, same precedent as nativeHealthPlugin() above.
+//
+// Caching/refresh strategy (a widget can't reliably make its own network call on every
+// render): push a snapshot on app entry (enterApp) and on every foreground resume
+// (visibilitychange), throttled to at most once per 5 minutes, plus an immediate push
+// right after anything that visibly changes what a widget should show (Daily Overview
+// screen loading today's data, a custom app added/removed). This means widget content is
+// only ever as fresh as the last time the app itself was open -- genuinely real data, not
+// a live background stream, and that's an intentional, disclosed tradeoff: neither
+// widget's data changes fast enough to justify a background sync service, and it's the
+// same "update tick, not a live feed" model Android widgets already use natively.
+function nativeWidgetBridge() {
+  return (window.Capacitor?.isNativePlatform?.() && window.Capacitor.Plugins?.PtwWidgetBridge) || null;
+}
+
+let lastWidgetSyncAt=0;
+async function syncNativeWidgets(force) {
+  const bridge=nativeWidgetBridge();
+  if(!bridge || !S.token) return;
+  const now=Date.now();
+  if(!force && now-lastWidgetSyncAt<5*60*1000) return; // throttle: at most once/5min on resume
+  lastWidgetSyncAt=now;
+  await Promise.all([syncEssentialAppsWidget(bridge), syncDailyOverviewWidget(bridge)]);
+}
+
+// Reuses the exact GET /essential-apps call the in-app "quick tools" drawer makes when
+// opened from Home with no task/break context -- the AI-suggested-or-idle-default set,
+// already server-merged with this user's own custom apps (api/essential-apps.js appends
+// those to every response). 'Scan Food' is filtered out: it has no urlScheme/webFallback
+// (it opens PTW's own in-app camera->AI macro-estimate flow), which a native tile with no
+// WebView genuinely can't do -- an honest, disclosed gap, not a dead tile silently shown.
+async function syncEssentialAppsWidget(bridge) {
+  try {
+    const data=await req('GET','/essential-apps');
+    const apps=(data?.apps||[])
+      .filter(a=>a.action!=='scan_food' && (a.urlScheme||a.webFallback))
+      .slice(0,12)
+      .map(a=>({
+        appName: a.appName,
+        icon: ESSENTIAL_ICONS[a.iconName]||'🔗',
+        urlScheme: a.urlScheme||'',
+        webFallback: a.webFallback||'',
+      }));
+    await bridge.syncEssentialApps({apps});
+  } catch(e) { console.warn('essential apps widget sync failed', e); }
+}
+// Settings > Preferred Apps calls this right after adding/removing a custom app so the
+// widget picks it up immediately instead of waiting for the next 5-minute throttle window.
+function refreshEssentialAppsWidgetSoon() {
+  const bridge=nativeWidgetBridge();
+  if(bridge) syncEssentialAppsWidget(bridge);
+}
+
+// `tasks`, if provided, is a list already fetched by the caller (loadDailyOverview() passes
+// its own S.dailyAllTasks for today so this never double-fetches); otherwise this does its
+// own POST /user-projects for today, same call loadDailyOverview() makes, so the widget
+// stays fresh even on sessions where Daily Overview itself is never opened. Sorted the same
+// way renderDailyTaskList() groups the in-app screen (Morning/Afternoon/Evening/
+// Unscheduled, then by start time) and capped to 6 rows for a home-screen-sized widget.
+// Completed tasks are kept in their real chronological slot (struck through in the native
+// row, see DailyOverviewRemoteViewsFactory) rather than filtered out, so the widget reads
+// as "today so far," not just "what's left."
+async function syncDailyOverviewWidget(bridge, tasks) {
+  try {
+    let all=tasks;
+    if(!all) {
+      const dateStr=new Date().toISOString().split('T')[0];
+      const proj=await req('POST','/user-projects',{date:dateStr});
+      all=(proj?.data||[]).filter(t=>t.status!=='Skipped');
+    }
+    const order={Morning:0, Afternoon:1, Evening:2, Unscheduled:3};
+    const sorted=[...all].sort((a,b)=>{
+      const ao=order[a.time_block||'Unscheduled'], bo=order[b.time_block||'Unscheduled'];
+      if(ao!==bo) return ao-bo;
+      return (a.startTime||'').localeCompare(b.startTime||'');
+    });
+    const widgetTasks=sorted.slice(0,6).map(t=>{
+      const pk=getPillarKey(t.pillar);
+      const p=PILLARS[pk]||PILLARS.personal;
+      return {
+        name: t.name,
+        timeLabel: t.startTime ? formatTimeOfDay(t.startTime) : (t.time_block||''),
+        completed: t.status==='Completed',
+        pillarColor: p.color,
+      };
+    });
+    await bridge.syncDailyOverview({dateLabel:'Today', tasks:widgetTasks});
+  } catch(e) { console.warn('daily overview widget sync failed', e); }
+}
+
+// The other direction of the bridge: DailyOverviewWidgetProvider's PendingIntent launches
+// MainActivity with a native "ptw_route" Intent extra ("daily") instead of the app's
+// default Home screen. Checked once per cold start/relaunch, right after enterApp() would
+// otherwise have shown Home -- if a route is pending, it wins and routes straight there.
+async function checkNativeWidgetRoute() {
+  const bridge=nativeWidgetBridge();
+  if(!bridge) return;
+  try {
+    const res=await bridge.getPendingRoute();
+    if(res?.route==='daily') openDailyOverview();
+  } catch(e) {}
+}
+// Capacitor's WebView stays alive when the app is backgrounded on Android (it isn't
+// reloaded), so a fresh app-open alone wouldn't refresh a widget's data across a long
+// session -- this catches the "brought back to foreground" case too, throttled the same
+// as everything else above.
+document.addEventListener('visibilitychange', ()=>{
+  if(!document.hidden && S.token) syncNativeWidgets();
+});
 
 // A single number ("74 kg") doesn't say whether that's progress -- the trend (gain or
 // loss over the last 30 days of logs, GET /metrics's default window) is the part that
