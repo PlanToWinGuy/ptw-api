@@ -877,7 +877,15 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
     </div>
 
     <div class="home-center">
-      <div id="cta-ring" class="active" onclick="handleCtaClick()">
+      <!-- Soft glass backing behind the ring -- a blurred glass disc (same recipe as
+           every other glass surface in the app) plus a colour-matched ambient glow tied
+           to the ring's own current accent (see setCtaAccent()), the premium "ring sits
+           in its own soft light" treatment used by Apple Fitness rings / Material You
+           dynamic colour rather than a plain circle floating on bare background. Purely
+           decorative + pointer-events:none, so it never intercepts the ring's own taps. -->
+      <div class="cta-ring-wrap" id="cta-ring-wrap">
+        <div id="cta-ring-halo"></div>
+        <div id="cta-ring" class="active" onclick="handleCtaClick()">
         <!-- pointer-events:none is the fix here -- a position:absolute element always
              paints (and hit-tests) above the ring's static in-flow children regardless of
              DOM order, so this purely-decorative arc was silently swallowing every tap on
@@ -896,6 +904,7 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
           <button class="cta-micro" onclick="event.stopPropagation();openTaskCompletion()" title="Complete">✓</button>
           <button class="cta-micro" onclick="event.stopPropagation();openTaskActionsMenu()" title="Options">✏</button>
         </div>
+      </div>
       </div>
 
       <div class="cta-sub">
@@ -3828,6 +3837,20 @@ function effectiveEndTimeStr(t) {
   return String(end.getHours()).padStart(2,'0')+':'+String(end.getMinutes()).padStart(2,'0')+':'+String(end.getSeconds()).padStart(2,'0');
 }
 
+// Sets the CTA ring's accent colour AND the soft glass halo/glow that now sits behind it
+// (see #cta-ring-halo in the Home markup + its CSS) -- the two always need to move
+// together, hence one helper instead of every call site touching style.borderColor
+// directly like before. transparent/var(--blue) both resolve to the halo's own neutral
+// default glow rather than a literal transparent/CSS-var glow, which box-shadow can't
+// otherwise interpolate cleanly.
+function setCtaAccent(color) {
+  const ring=document.getElementById('cta-ring');
+  const halo=document.getElementById('cta-ring-halo');
+  ring.style.borderColor=color;
+  if(!halo) return;
+  const glowColor=(!color || color==='transparent' || color==='var(--blue)') ? '#5BA4DC' : color;
+  halo.style.boxShadow=`0 0 60px 8px ${hexToRgba(glowColor,.3)}`;
+}
 // Recomputes which task is "now" purely from the already-cached S.todaySchedule (no
 // network call) -- called on a timer so the ring behaves like a real-time scheduler that
 // advances on its own as the clock passes a task's end time, not just when the screen
@@ -3879,14 +3902,14 @@ function applyCtaState() {
     const p=PILLARS[pk]||PILLARS.personal;
     document.getElementById('cta-label').textContent=t.name||'Your Quest';
     document.getElementById('cta-glyph').innerHTML=p.icon;
-    document.getElementById('cta-ring').style.borderColor=p.color;
+    setCtaAccent(p.color);
     document.getElementById('cta-ring').classList.add('active');
     document.getElementById('next-txt').textContent=formatNextText(nextUp);
     S.currentTask=t;
   } else {
     S.lockedTaskId=null;
     S.currentTask=null;
-    document.getElementById('cta-ring').style.borderColor='var(--blue)';
+    setCtaAccent('var(--blue)');
     document.getElementById('cta-glyph').textContent='∞';
     if(nextUp) {
       // A genuine gap in the schedule right now, but something real is coming up today.
@@ -4943,8 +4966,9 @@ function exitFocusMode() {
     realRing.style.position=''; realRing.style.top=''; realRing.style.left='';
     realRing.style.margin=''; realRing.style.filter=''; realRing.style.pointerEvents='';
     delete realRing.dataset.focusMode;
-    const homeCenter=document.querySelector('.home-center');
-    homeCenter.insertBefore(realRing, homeCenter.firstChild); // its original position
+    // Its original position is inside #cta-ring-wrap (behind/alongside the halo), not
+    // .home-center directly -- .home-center's first child is the wrap itself now.
+    document.getElementById('cta-ring-wrap').insertBefore(realRing, document.getElementById('cta-ring-halo').nextSibling);
   }
   document.getElementById('focus-overlay').classList.remove('open');
 }
@@ -4996,7 +5020,7 @@ function updateCtaTimerRing() {
   // draw (below), the border is hidden instead so we never show two concentric rings --
   // the arc alone is the ring, matching the manually-started task's countdown ring.
   if(totalMs<=0) { svg.style.display='none'; label.style.display='block'; label.textContent=timeRangeText; if(miniTimer) miniTimer.textContent=timeRangeText;
-    const p0=PILLARS[getPillarKey(t.pillar)]||PILLARS.personal; document.getElementById('cta-ring').style.borderColor=p0.color; return; }
+    const p0=PILLARS[getPillarKey(t.pillar)]||PILLARS.personal; setCtaAccent(p0.color); return; }
 
   const arc=document.getElementById('cta-timer-arc');
   arc.style.opacity='1'; // a manual task's fade-out effect must not leak into the scheduled ring
@@ -5037,7 +5061,7 @@ function updateCtaTimerRing() {
   svg.style.display='block';
   // Arc is now the ring -- hide the solid pillar border so the two don't stack (the
   // "doubled ring" on a scheduled/routine current task).
-  document.getElementById('cta-ring').style.borderColor='transparent';
+  setCtaAccent('transparent');
   label.style.display='block';
   if(miniTimer) miniTimer.textContent=countdownText;
 }
@@ -5103,7 +5127,7 @@ function renderManualTaskCta() {
   const p=PILLARS[pk]||PILLARS.personal;
   document.getElementById('cta-label').textContent=m.name;
   document.getElementById('cta-glyph').innerHTML=p.icon;
-  document.getElementById('cta-ring').style.borderColor=p.color;
+  setCtaAccent(p.color);
   document.getElementById('cta-ring').classList.add('active');
   document.getElementById('next-txt').textContent='';
   S.currentTask={taskId:m.taskId, name:m.name, pillar:m.pillar};
@@ -5149,7 +5173,7 @@ function updateManualTaskCountdown(homeScreen, svg, label, miniTimer, timeRangeE
     // The ring div's own static border is hidden while this arc is drawn -- otherwise
     // there are visibly two concentric pillar-colored circles (one solid, one fading)
     // instead of a single ring that fades.
-    document.getElementById('cta-ring').style.borderColor='transparent';
+    setCtaAccent('transparent');
   }
   const absMs=Math.abs(remaining);
   const mm=Math.floor(absMs/60000), ss=Math.floor((absMs%60000)/1000);
@@ -6769,6 +6793,16 @@ setupSwipeNav('screen-todo-routines', {
 // target, so it stays on the lower-level detectSwipe primitive instead of setupSwipeNav.
 (function setupPillarSwipe(){
   const el=document.getElementById('screen-pillar');
+  // Tracks scroll position at the moment the gesture STARTS, not where it ends up --
+  // the previous gate checked scrollTop at touchend, but a drag that scrolls a
+  // partway-down page back toward the top routinely lands exactly on scrollTop 0 by
+  // the time the finger lifts even though the user never intended to exit, they were
+  // just scrolling. Only the start position tells you what they actually meant.
+  let scrollTopAtStart=0;
+  el.addEventListener('touchstart', e=>{
+    const activeTab=[...el.querySelectorAll('.scroll-body')].find(t=>t.style.display!=='none');
+    scrollTopAtStart = activeTab ? activeTab.scrollTop : 0;
+  }, {passive:true});
   detectSwipe(el, (dx, dy) => {
     if(Math.abs(dx)>Math.abs(dy)) {
       const list=S.unlocked;
@@ -6780,16 +6814,7 @@ setupSwipeNav('screen-todo-routines', {
     } else if(dy>0) {
       // Swipe down from any pillar screen -- same intuitive "go back home" gesture
       // already used everywhere else in the app (Profile, To-Do/Routines, Daily).
-      // Gated on the active tab's own scroller already being at the top -- same fix
-      // Daily Overview's up-swipe uses below (scroller-position-gated exit), applied
-      // here for the mirror-image gesture. The Map tab's Glass metric cards (sparklines,
-      // delta chips, real per-metric history) can make it tall enough to need scrolling
-      // for accounts with more logged history than a flat test account shows, and
-      // without this guard, scrolling back UP toward the top -- the exact same physical
-      // downward drag as this exit gesture -- would accidentally kick you out to Home
-      // mid-scroll instead of just scrolling.
-      const activeTab=[...el.querySelectorAll('.scroll-body')].find(t=>t.style.display!=='none');
-      if(activeTab && activeTab.scrollTop>4) return;
+      if(scrollTopAtStart>4) return;
       showScreen('home');
     }
   });
