@@ -490,7 +490,11 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
    bigger icon slot, tighter/bolder name typography, and slightly more generous rounding
    + padding than the plain compact list-row default other .sq-card lists (Side Quests,
    Routines, etc) use. */
-.daily-task-card{
+/* .sq-card.daily-task-card (both classes) rather than .daily-task-card alone -- the base
+   .sq-card{border-radius/padding/gap} rule declared later in this stylesheet (Side Quests
+   tab section) is equal specificity to a single-class selector, so a same-specificity
+   rule declared earlier in the cascade (this one) would otherwise silently lose to it. */
+.sq-card.daily-task-card{
   border-radius:16px;
   padding:13px 14px 13px 18px;
   gap:13px;
@@ -498,7 +502,7 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
   overflow:hidden;
   transition:transform .12s ease;
 }
-.daily-task-card:active{transform:scale(.985)}
+.sq-card.daily-task-card:active{transform:scale(.985)}
 .daily-task-card::before{
   content:'';position:absolute;left:0;top:12px;bottom:12px;width:3px;border-radius:3px;
   background:var(--dtc-accent, transparent);opacity:.9;
