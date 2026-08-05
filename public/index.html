@@ -574,6 +574,14 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
   transform:translateY(100%);transition:transform .3s ease;
 }
 .modal-overlay.open .modal{transform:translateY(0)}
+/* Top-anchored variant -- same overlay/modal/close/open() convention as every other
+   modal, just pinned to the top of the screen instead of sliding up from the bottom.
+   Used where a bottom sheet would sit below the fold on a long scrolled screen or get
+   contested by the on-screen keyboard (e.g. meal-photo Refine) -- anchoring top keeps
+   the field reliably above the keyboard without any extra JS. */
+.modal-overlay.modal-top{align-items:flex-start}
+.modal-overlay.modal-top .modal{border-radius:0 0 20px 20px;transform:translateY(-100%);padding-top:calc(24px + env(safe-area-inset-top,0px))}
+.modal-overlay.modal-top.open .modal{transform:translateY(0)}
 .modal h3{font-family:'Syne',sans-serif;font-size:18px;font-weight:700;color:var(--text);margin-bottom:20px}
 .modal-close{float:right;background:none;border:none;color:var(--stone);font-size:22px;cursor:pointer;margin-top:-6px}
 .pillar-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px}
@@ -2123,6 +2131,22 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
     <h3>Refine This Quest</h3>
     <div class="field"><textarea id="refine-prompt-input" rows="3" placeholder="e.g. Make it shorter and focus on bodyweight exercises" style="width:100%;padding:12px 14px;background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:10px;color:var(--text);font-size:14px;font-family:'Inter',sans-serif;outline:none;resize:none"></textarea></div>
     <button class="btn-p filled" style="background:var(--blue);border-color:var(--blue)" onclick="submitRefineQuest()">Refine Quest</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     MEAL PHOTO REFINE MODAL -- top-anchored (see .modal-top) so the correction field
+     never ends up below the fold on a long meal-review scroll and stays clear of the
+     on-screen keyboard. Re-sends the SAME photo already on mealLogDraft plus a typed
+     correction (openMealRefine()/submitMealRefine() in the JS below).
+══════════════════════════════════ -->
+<div class="modal-overlay modal-top" id="modal-meal-refine" onclick="closeModal('modal-meal-refine',event)">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-meal-refine')">×</button>
+    <h3>Refine This Meal</h3>
+    <div style="font-size:13px;color:var(--stone);margin:-10px 0 14px;line-height:1.5">Tell the AI what it got wrong — it'll re-read the same photo with your correction.</div>
+    <div class="field"><textarea id="meal-refine-text" rows="3" placeholder="e.g. it was roasted duck, not chicken" style="width:100%;padding:12px 14px;background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:10px;color:var(--text);font-size:15px;font-family:'Inter',sans-serif;outline:none;resize:none"></textarea></div>
+    <button class="btn-p filled" style="background:var(--diet);border-color:var(--diet);padding:17px;font-size:16px;font-weight:700" onclick="submitMealRefine()">↻ Re-analyze Photo</button>
   </div>
 </div>
 
@@ -8525,46 +8549,66 @@ function renderMealCapture() {
     <div style="text-align:center;padding:30px 0 10px">
       <div style="font-size:44px;margin-bottom:14px">📷</div>
       <div style="font-size:13px;color:var(--stone);margin-bottom:16px;line-height:1.5">Snap a photo and AI estimates the nutrition, or enter it yourself.</div>
-      <div class="field" style="text-align:left;margin-bottom:16px"><label>ADD CONTEXT (OPTIONAL)</label><textarea id="meal-photo-context" rows="2" placeholder="e.g. it's roasted duck, no sauce, ate half" style="width:100%;padding:12px;background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:10px;color:var(--text);font-size:13px;font-family:'Inter',sans-serif;outline:none;resize:none"></textarea></div>
       <input type="file" accept="image/*" capture="environment" id="meal-photo-input" style="display:none" onchange="handleMealPhoto(this)">
       <button class="btn-p filled" onclick="document.getElementById('meal-photo-input').click()">Take / Choose Photo</button>
       <button class="btn-p" style="margin-top:10px" onclick="renderMealManualEntry()">Enter Manually</button>
     </div>`;
 }
 
+// Photo is read into memory here but NOT sent for analysis yet -- handoff goes to
+// renderMealPreAnalyze() so the user sees the actual photo and gets one clear chance to
+// add context (e.g. "it's roasted duck, not chicken") BEFORE the AI's first read, instead
+// of correction only being possible afterward via Refine. Someone who doesn't need to
+// correct anything just taps Analyze with the field empty -- same number of taps as the
+// old auto-send flow required to review results, just with an explicit "go" moment.
+let mealPhotoPending=null;
 function handleMealPhoto(input) {
   const file=input.files[0];
   if(!file) return;
   const reader=new FileReader();
-  reader.onload=async()=>{
+  reader.onload=()=>{
     const base64=reader.result.split(',')[1];
     const mediaType=file.type||'image/jpeg';
-    const contextText=(document.getElementById('meal-photo-context')?.value||'').trim();
-    document.getElementById('meal-log-body').innerHTML=`<div style="padding:80px 0;text-align:center"><div class="spinner"></div><div style="font-size:13px;color:var(--stone);margin-top:12px">Reading your photo…</div></div>`;
-    const data=await req('POST','/metrics/scan-meal',{image_base64:base64, media_type:mediaType, context_text:contextText||undefined});
-    if(!data || data.message) { toast(data?.message||'Could not read that photo'); renderMealCapture(); return; }
-    // Keep the raw base64/media_type around (not just the display data URL) so a later
-    // Refine correction can resend the exact same photo without re-touching the file input.
-    mealLogDraft={...data.data, image:reader.result, imageBase64:base64, imageMediaType:mediaType};
-    renderMealReview();
+    mealPhotoPending={base64, mediaType, dataUrl:reader.result};
+    renderMealPreAnalyze();
   };
   reader.readAsDataURL(file);
+  input.value=''; // allow re-selecting the same file later (Retake) without a no-op change event
+}
+
+function renderMealPreAnalyze() {
+  if(!mealPhotoPending) { renderMealCapture(); return; }
+  document.getElementById('meal-log-body').innerHTML=`
+    <div style="text-align:center;margin:14px 0 4px"><img src="${mealPhotoPending.dataUrl}" style="width:160px;height:160px;object-fit:cover;border-radius:12px;border:1px solid rgba(196,184,168,.15)"></div>
+    <div style="text-align:center;margin-bottom:16px"><span style="font-size:12px;color:var(--blue);cursor:pointer;text-decoration:underline;text-underline-offset:2px" onclick="mealPhotoPending=null;renderMealCapture()">↺ Retake / choose a different photo</span></div>
+    <div class="field" style="text-align:left"><label>ADD CONTEXT FIRST? (OPTIONAL)</label><textarea id="meal-photo-context" rows="2" placeholder="e.g. it's roasted duck, not chicken, no sauce" style="width:100%;padding:12px;background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:10px;color:var(--text);font-size:14px;font-family:'Inter',sans-serif;outline:none;resize:none"></textarea></div>
+    <div style="font-size:11px;color:var(--stone);margin:-8px 0 16px;line-height:1.4">Tell it what's actually in the photo now, or just analyze -- you can still correct it after.</div>
+    <button class="btn-p filled" style="background:var(--diet);border-color:var(--diet);padding:17px;font-size:16px;font-weight:700" onclick="analyzeMealPhoto()">Analyze Photo →</button>`;
+}
+
+async function analyzeMealPhoto() {
+  if(!mealPhotoPending) { renderMealCapture(); return; }
+  const {base64, mediaType, dataUrl}=mealPhotoPending;
+  const contextText=(document.getElementById('meal-photo-context')?.value||'').trim();
+  document.getElementById('meal-log-body').innerHTML=`<div style="padding:80px 0;text-align:center"><div class="spinner"></div><div style="font-size:13px;color:var(--stone);margin-top:12px">Reading your photo…</div></div>`;
+  const data=await req('POST','/metrics/scan-meal',{image_base64:base64, media_type:mediaType, context_text:contextText||undefined});
+  if(!data || data.message) { toast(data?.message||'Could not read that photo'); renderMealPreAnalyze(); return; }
+  // Keep the raw base64/media_type around (not just the display data URL) so a later
+  // Refine correction can resend the exact same photo without re-touching the file input.
+  mealLogDraft={...data.data, image:dataUrl, imageBase64:base64, imageMediaType:mediaType};
+  mealPhotoPending=null;
+  renderMealReview();
 }
 
 // "Not quite right?" -- re-sends the SAME photo already on the draft plus a typed
 // correction, so a wrong AI guess (duck read as chicken) can be fixed by telling it what
 // it got wrong instead of the user having to manually retype every macro by hand.
+// Opens as a real top-anchored modal (#modal-meal-refine, see .modal-top CSS) rather than
+// a field appended at the bottom of the review scroll -- that inline version was easy to
+// miss and could end up hidden below the on-screen keyboard on a long review screen.
 function openMealRefine() {
-  const body=document.getElementById('meal-log-body');
-  if(document.getElementById('meal-refine-wrap')) return;
-  const wrap=document.createElement('div');
-  wrap.id='meal-refine-wrap';
-  wrap.style.cssText='margin-top:10px;padding:12px;background:var(--bg3);border-radius:10px';
-  wrap.innerHTML=`
-    <div style="font-size:12px;color:var(--stone);margin-bottom:8px">Tell AI what it got wrong — it'll re-read the same photo with your correction.</div>
-    <textarea id="meal-refine-text" rows="2" placeholder="e.g. it was roasted duck, not chicken" style="width:100%;padding:10px;background:var(--bg4);border:1px solid rgba(196,184,168,.1);border-radius:8px;color:var(--text);font-size:13px;font-family:'Inter',sans-serif;outline:none;resize:none"></textarea>
-    <button class="btn-p filled" style="margin-top:8px;padding:8px;font-size:13px" onclick="submitMealRefine()">Re-analyze</button>`;
-  body.appendChild(wrap);
+  document.getElementById('meal-refine-text').value='';
+  document.getElementById('modal-meal-refine').classList.add('open');
   document.getElementById('meal-refine-text').focus();
 }
 
@@ -8572,6 +8616,7 @@ async function submitMealRefine() {
   const correction=(document.getElementById('meal-refine-text')?.value||'').trim();
   if(!correction) { toast('Type what to correct first'); return; }
   if(!mealLogDraft?.imageBase64) { toast('No photo to refine'); return; }
+  closeModal('modal-meal-refine');
   document.getElementById('meal-log-body').innerHTML=`<div style="padding:80px 0;text-align:center"><div class="spinner"></div><div style="font-size:13px;color:var(--stone);margin-top:12px">Re-reading with your correction…</div></div>`;
   const data=await req('POST','/metrics/scan-meal',{image_base64:mealLogDraft.imageBase64, media_type:mealLogDraft.imageMediaType, context_text:correction});
   if(!data || data.message) { toast(data?.message||'Could not refine that'); renderMealReview(); return; }
@@ -8786,9 +8831,9 @@ function renderMealReview() {
   document.getElementById('meal-log-body').innerHTML=`
     ${d.image?`<div style="text-align:center;margin:14px 0"><img src="${d.image}" style="width:160px;height:160px;object-fit:cover;border-radius:12px;border:1px solid rgba(196,184,168,.15)"></div>`:''}
     <div class="field"><label>MEAL NAME</label><input type="text" id="ml-name" value="${d.name||''}" placeholder="e.g. Chicken & Rice Bowl"></div>
-    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:14px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:14px">
       <div class="section-sub" style="margin:0">${d.image?'NUTRITIONAL OVERVIEW (AI ESTIMATE)':d.ingredients?'FROM YOUR MEAL PLAN':'NUTRITIONAL OVERVIEW'}</div>
-      ${d.image&&mealLogDraft?.imageBase64?`<span style="font-size:11px;color:var(--blue);cursor:pointer;text-decoration:underline;text-underline-offset:2px" onclick="openMealRefine()">Not quite right? Refine ↻</span>`:''}
+      ${d.image&&mealLogDraft?.imageBase64?`<button type="button" onclick="openMealRefine()" style="display:flex;align-items:center;gap:5px;padding:8px 14px;border-radius:20px;border:1.5px solid var(--diet);background:rgba(201,168,50,.14);color:var(--diet);font-size:13px;font-weight:700;font-family:'Inter',sans-serif;cursor:pointer;white-space:nowrap;flex-shrink:0">✎ Refine</button>`:''}
     </div>
     <div class="metric-row">
       <div class="metric-card"><div class="metric-label">Calories</div><input type="number" id="ml-cal" value="${d.calories||0}" style="width:100%;background:transparent;border:none;color:var(--diet);font-family:'Syne',sans-serif;font-size:20px;font-weight:800;outline:none"></div>
