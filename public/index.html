@@ -2672,6 +2672,46 @@ function syncAppHeightToViewport() {
 if (window.visualViewport) window.visualViewport.addEventListener('resize', syncAppHeightToViewport);
 syncAppHeightToViewport();
 
+// Keyboard-covers-input fix (applies app-wide via event delegation -- every text
+// input/textarea/select on every logging/entry screen, current and future, without
+// needing scrollIntoView wired into each one individually). Two triggers, because
+// neither alone is reliable:
+//   1. `focusin` fires the instant a field is focused, often BEFORE the on-screen
+//      keyboard has actually animated in, so scrolling here alone can land the field
+//      correctly only for it to be re-covered a moment later once the keyboard finishes
+//      sliding up.
+//   2. visualViewport's `resize` fires when the keyboard has actually finished changing
+//      the visible area -- the one moment we know the real covered/visible geometry --
+//      so re-centering the currently-focused field there is what actually keeps it
+//      visible. It also naturally handles rotation and keyboard-dismiss (viewport grows
+//      back, nothing left focused, no-op).
+// Both just call the same recenter -- redundant on browsers where they'd agree, but each
+// covers a real gap the other browser/OS combo leaves open.
+function scrollFocusedInputIntoView() {
+  const el = document.activeElement;
+  if (!el) return;
+  const tag = el.tagName;
+  if (tag!=='INPUT' && tag!=='TEXTAREA' && tag!=='SELECT') return;
+  // Native pickers/toggles reposition themselves (or don't get covered by a text
+  // keyboard at all) -- scrolling under them just causes a jarring unwanted jump.
+  if (['range','checkbox','radio','file','date','time','color'].includes(el.type)) return;
+  el.scrollIntoView({block:'center', behavior:'smooth'});
+}
+document.addEventListener('focusin', (e)=>{
+  const tag=e.target?.tagName;
+  if (tag!=='INPUT' && tag!=='TEXTAREA' && tag!=='SELECT') return;
+  // Give the keyboard a moment to start animating in before the first attempt -- an
+  // immediate scrollIntoView on some browsers measures the pre-keyboard layout and
+  // undershoots.
+  setTimeout(scrollFocusedInputIntoView, 60);
+});
+if (window.visualViewport) window.visualViewport.addEventListener('resize', ()=>{
+  // Runs after syncAppHeightToViewport (registered above, same event) so #app's height
+  // has already been corrected to the new keyboard-aware viewport before this measures
+  // where the focused field now sits within it.
+  requestAnimationFrame(scrollFocusedInputIntoView);
+});
+
 // ════════════════════════════════════════
 // AUTH
 // ════════════════════════════════════════
