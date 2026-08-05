@@ -352,10 +352,15 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
 /* Pillar MAP page */
 .pillar-map-body{padding:0 18px 8px}
 
-/* LifeScore hero card */
+/* LifeScore hero card -- Profile's single most important element, stays solid-filled
+   (background:var(--blue) set inline where it's rendered) same as every pillar's Map
+   hero; radius/shadow brought in line with that same hero treatment (pillarMapHero /
+   heroCtaCard) so it doesn't look like an older, mismatched card next to the rest of the
+   now-glassed Profile screen. */
 .ls-card{
-  border-radius:16px;padding:18px 18px 14px;margin-bottom:14px;
+  border-radius:22px;padding:18px 18px 14px;margin-bottom:14px;
   position:relative;overflow:hidden;
+  box-shadow:0 12px 28px -12px rgba(0,0,0,.5);
 }
 .ls-card::before{content:'';position:absolute;top:-20px;right:-20px;width:100px;height:100px;border-radius:50%;opacity:.15;filter:blur(20px)}
 .ls-label{font-size:11px;letter-spacing:.5px;opacity:.8;margin-bottom:4px}
@@ -403,6 +408,70 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
    its background gradient set inline (per-pillar colour) by JS since #screen-pillar's
    Map/Quests/Roadmap/Trophies tabs are one shared template reused across all 6 pillars. */
 .accent-wash{position:absolute;inset:0;z-index:-1;pointer-events:none;opacity:.16}
+
+/* ══════════════════════════════════
+   GLASS REFRESH -- app-wide reskin, extending the pillar Map/Hub Glass system above to
+   the rest of the app (Home, Daily Overview, To-Do & Routines, Profile, Settings + its
+   sub-screens, Notifications, Trophies, shared modals). Same hierarchy rule as the pillar
+   rollout: the one hero/primary element per screen (CTA ring, a card with an explicit
+   inline background colour already set -- heroCtaCard(), the LifeScore card, a pillar-
+   coloured strategy card, etc.) stays solid; secondary elements -- list rows, stat cards,
+   settings rows -- get glass. These screens aren't pillar-specific, so brand blue
+   (--blue, #5BA4DC) stands in for the "pillar accent" the Map/Hub cards borrow from their
+   own colour. Scoped by screen id rather than a global class rename, so shared classes
+   used elsewhere in the app outside this pass (e.g. meal-log's editable .metric-card
+   inputs, workout completion's .metric-card summaries) are untouched, and JS lookups like
+   .closest('.rm-goal-card[data-date]') keep working unmodified.
+══════════════════════════════════ */
+#screen-daily .rm-goal-card, #screen-daily .sq-card,
+#screen-todo-routines .rm-goal-card, #screen-todo-routines .sq-card,
+#screen-profile .rm-goal-card,
+#screen-settings .rm-goal-card,
+#screen-membership .rm-goal-card,
+#screen-schedule-import .sq-card,
+#screen-pillar-priority .sq-card,
+.modal .sq-card, .modal .rm-goal-card{
+  background:rgba(255,255,255,.045);
+  border:1px solid rgba(91,164,220,.22);
+  backdrop-filter:blur(18px) saturate(160%);
+  -webkit-backdrop-filter:blur(18px) saturate(160%);
+  box-shadow:0 8px 30px -14px rgba(0,0,0,.5);
+}
+/* Swipeable To-Do cards keep their own left accent-coloured border (set inline per task/
+   pillar) -- glassing the fill without adding a competing full border around it. */
+#screen-todo-routines .todo-card-inner{
+  background:rgba(255,255,255,.045);
+  backdrop-filter:blur(18px) saturate(160%);
+  -webkit-backdrop-filter:blur(18px) saturate(160%);
+}
+/* Settings row + Notifications card are single-purpose classes (used nowhere else in the
+   app), so these restyle their base CSS directly rather than needing a screen-id scope. */
+.settings-row{
+  background:rgba(255,255,255,.045);
+  border:1px solid rgba(91,164,220,.22);
+  backdrop-filter:blur(18px) saturate(160%);
+  -webkit-backdrop-filter:blur(18px) saturate(160%);
+  box-shadow:0 8px 30px -14px rgba(0,0,0,.5);
+}
+.trophy-card{
+  background:rgba(255,255,255,.045);
+  border:1px solid rgba(91,164,220,.22);
+  backdrop-filter:blur(18px) saturate(160%);
+  -webkit-backdrop-filter:blur(18px) saturate(160%);
+  box-shadow:0 8px 30px -14px rgba(0,0,0,.5);
+}
+/* Home's pillar-apps dock -- a frosted "shelf" the solid pillar-coloured app icons sit
+   on, instead of a plain transparent-to-bg fade. background-color (the glass tint) shows
+   through the top of the gradient image layer where it's transparent; the gradient's own
+   opaque var(--bg) still fully covers the bottom edge into the safe area, unchanged. */
+.pillar-apps{
+  background-color:rgba(255,255,255,.045);
+  background-image:linear-gradient(to top, var(--bg) 55%, transparent);
+  border-radius:22px 22px 0 0;
+  border-top:1px solid rgba(91,164,220,.16);
+  backdrop-filter:blur(18px) saturate(160%);
+  -webkit-backdrop-filter:blur(18px) saturate(160%);
+}
 
 /* Current task in pillar */
 .pillar-task-card{
@@ -12874,6 +12943,7 @@ function switchTrophiesTab(pillarKey, tab) {
 
 async function renderBadgesTab(pillarKey) {
   const body=document.getElementById('trophies-tab-body');
+  const p=PILLARS[pillarKey];
   body.innerHTML='<div class="spinner"></div>';
   const data=await req('GET','/badges?pillar='+pillarKey);
   const qs=data?.quick_stats||{};
@@ -12882,14 +12952,14 @@ async function renderBadgesTab(pillarKey) {
   badges.forEach(b=>{ S.trophyBadges[b.badge_id]=b; });
 
   body.innerHTML = `
-    <div class="rm-goal-card" style="margin-bottom:14px">
+    <div class="glass-card" style="margin-bottom:14px;border:1px solid ${hexToRgba(p.color,.22)}">
       <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--stone);margin-bottom:6px"><span>Rarest Badge Earned</span><span style="color:var(--text);font-weight:600">${qs.rarest_badge_earned||'—'}</span></div>
       <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--stone);margin-bottom:6px"><span>Badges Collected</span><span style="color:var(--text);font-weight:600">${qs.badges_collected||0} / ${qs.total_badges_available||0}</span></div>
       <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--stone)"><span>Latest Badge</span><span style="color:var(--text);font-weight:600">${qs.latest_badge_earned||'—'}</span></div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding-bottom:20px">
       ${badges.map(b=>`
-        <div class="rm-goal-card" style="text-align:center;padding:16px 6px;cursor:pointer;${b.is_earned?'':'opacity:.4'}" onclick="openBadgeDetail('${b.badge_id}')">
+        <div class="glass-card" style="text-align:center;padding:16px 6px;cursor:pointer;border:1px solid ${hexToRgba(p.color,.22)};${b.is_earned?'':'opacity:.4'}" onclick="openBadgeDetail('${b.badge_id}')">
           <div style="font-size:30px;${b.is_earned?'':'filter:grayscale(1)'}">${b.icon}</div>
           <div style="font-size:11px;color:var(--text);margin-top:6px">${b.is_earned?b.name:'???'}</div>
         </div>`).join('')}
@@ -12947,6 +13017,8 @@ function showBadgeUnlockCelebration(badge) {
 
 async function renderStreaksTab(pillarKey) {
   const body=document.getElementById('trophies-tab-body');
+  const p=PILLARS[pillarKey];
+  const cardBorder=`border:1px solid ${hexToRgba(p.color,.22)}`;
   body.innerHTML='<div class="spinner"></div>';
   const data=await req('GET','/streaks?pillar='+pillarKey);
   const lc=data?.longest_current_streak, le=data?.longest_ever_streak;
@@ -12956,27 +13028,27 @@ async function renderStreaksTab(pillarKey) {
   const fmtDate=d=>new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
   const rangeHasSave=(startStr,endStr)=>{ for(const d of savedDates){ if(d>=startStr && d<=endStr) return true; } return false; };
   body.innerHTML = `
-    <div class="rm-goal-card" style="margin-bottom:14px;display:flex;align-items:center;justify-content:space-between">
+    <div class="glass-card" style="margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;${cardBorder}">
       <div>
         <div style="font-size:11px;color:var(--stone);letter-spacing:.3px">💾 STREAK SAVE TOKENS</div>
         <div style="font-size:11px;color:var(--stone);margin-top:2px">Earned weekly at 90%+ completion</div>
       </div>
       <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:20px;color:var(--text)">${tokens.count}<span style="color:var(--stone);font-size:13px;font-weight:600">/${tokens.max}</span></div>
     </div>
-    <div class="rm-goal-card" style="margin-bottom:14px">
+    <div class="glass-card" style="margin-bottom:14px;${cardBorder}">
       <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--stone);margin-bottom:6px"><span>Longest Current</span><span style="color:var(--text);font-weight:600">${lc?`${lc.name}: ${lc.length} 🔥`:'—'}</span></div>
       <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--stone)"><span>Longest Ever</span><span style="color:var(--text);font-weight:600">${le?`${le.name}: ${le.length}`:'—'}</span></div>
     </div>
     <div class="section-title">Active Streaks</div>
     ${active.length ? active.map(s=>`
-      <div class="rm-goal-card" style="margin-bottom:8px">
+      <div class="glass-card" style="margin-bottom:8px;${cardBorder}">
         <div style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text)">${s.name}</div>
         <div style="font-size:11px;color:var(--stone);margin:4px 0">Started: ${fmtDate(s.start_date)} — Ongoing</div>
         <div style="font-size:12px;color:var(--fitness)">Current Length: ${s.current_length}${rangeHasSave(s.start_date,new Date().toISOString().split('T')[0])?' &nbsp;<span style="color:var(--stone)">💾 Save Used</span>':''}</div>
       </div>`).join('') : `<div class="empty"><div class="empty-text">No active streaks right now.</div></div>`}
     <div class="section-title" style="margin-top:16px">Past Streaks</div>
     ${past.length ? past.map(s=>`
-      <div class="rm-goal-card" style="margin-bottom:8px">
+      <div class="glass-card" style="margin-bottom:8px;${cardBorder}">
         <div style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text)">${s.name}</div>
         <div style="font-size:11px;color:var(--stone);margin:4px 0">${fmtDate(s.start_date)} - ${fmtDate(s.end_date)}</div>
         <div style="font-size:12px;color:var(--stone)">Final Length: ${s.final_length}${rangeHasSave(s.start_date,s.end_date)?' &nbsp;💾 Save Used':''}</div>
@@ -12985,13 +13057,14 @@ async function renderStreaksTab(pillarKey) {
 
 async function renderAccomplishmentsTab(pillarKey) {
   const body=document.getElementById('trophies-tab-body');
+  const p=PILLARS[pillarKey];
   body.innerHTML='<div class="spinner"></div>';
   const data=await req('GET','/accomplishments?pillar='+pillarKey);
   const list=Array.isArray(data)?data:[];
   S.trophyAccomplishments={};
   list.forEach(a=>{ S.trophyAccomplishments[a.type+'_'+a.id]=a; });
   body.innerHTML = list.length ? list.map(a=>`
-    <div class="rm-goal-card" style="margin-bottom:10px;cursor:pointer" onclick="openAccomplishmentDetail('${a.type}',${a.id})">
+    <div class="glass-card" style="margin-bottom:10px;cursor:pointer;border:1px solid ${hexToRgba(p.color,.22)}" onclick="openAccomplishmentDetail('${a.type}',${a.id})">
       <div style="font-size:11px;color:var(--stone);letter-spacing:.4px">${a.type==='Main Goal'?'🎯 MAIN GOAL':'❓ SIDE QUEST'}</div>
       <div style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text);margin:4px 0">${a.name}</div>
       <div style="font-size:11px;color:var(--stone)">Completed: ${new Date(a.date_completed).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>
