@@ -112,6 +112,12 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
 @keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
 @keyframes celebPop{0%{transform:scale(.4);opacity:0}60%{transform:scale(1.15);opacity:1}100%{transform:scale(1)}}
 @keyframes celebFadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+/* ── Streak Milestone Celebration (Part C, gamification pass) ── */
+#streak-celebration-overlay{position:fixed;inset:0;z-index:400;background:radial-gradient(circle at 50% 28%,rgba(28,24,18,.98),rgba(8,7,6,.99));display:none;align-items:center;justify-content:center;overflow:hidden}
+#streak-celebration-overlay.open{display:flex}
+#streak-celebration-overlay .confetti-piece{position:absolute;top:-6vh;width:8px;height:14px;opacity:0;border-radius:2px;animation-name:confettiFall;animation-timing-function:linear;animation-fill-mode:forwards}
+@keyframes confettiFall{0%{transform:translateY(0) rotate(0deg);opacity:1}85%{opacity:1}100%{transform:translateY(120vh) rotate(540deg);opacity:0}}
+@keyframes streakNumberPop{0%{transform:scale(.3) rotate(-8deg);opacity:0}55%{transform:scale(1.2) rotate(4deg);opacity:1}80%{transform:scale(.94) rotate(-2deg)}100%{transform:scale(1) rotate(0deg)}}
 
 /* ══════════════════════════════════
    AUTH SCREENS
@@ -980,6 +986,79 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
     <button class="modal-close" onclick="closeModal('modal-workout-quick-add')">×</button>
     <h3>Log a Workout</h3>
     <div id="workout-quick-add-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:6px"></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     DIET QUICK-ADD: MULTI-OPTION MODAL
+══════════════════════════════════ -->
+<div class="modal-overlay" id="modal-diet-quick-add" onclick="closeModal('modal-diet-quick-add',event)">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-diet-quick-add')">×</button>
+    <h3>Diet Quick Add</h3>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:6px">
+      <div class="sq-card" style="cursor:pointer" onclick="closeModal('modal-diet-quick-add');openMealLog('Snack')">
+        <div class="sq-icon" style="background:rgba(214,171,58,.15)">🍽️</div>
+        <div class="sq-info"><div class="sq-name">Log a Meal</div><div class="sq-meta">Photo scan or manual entry</div></div>
+      </div>
+      <div class="sq-card" style="cursor:pointer" onclick="closeModal('modal-diet-quick-add');openWaterLog()">
+        <div class="sq-icon" style="background:rgba(91,164,220,.15)">💧</div>
+        <div class="sq-info"><div class="sq-name">Log Water</div><div class="sq-meta">Quick-tap a serving size</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     WATER LOG MODAL (Diet pillar quick-log --
+     one-tap common serving sizes + custom amount, see openWaterLog())
+══════════════════════════════════ -->
+<div class="modal-overlay" id="modal-water-log" onclick="closeModal('modal-water-log',event)">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-water-log')">×</button>
+    <h3>Log Water</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:16px">
+      <button type="button" class="q-opt" style="padding:14px 4px;text-align:center" onclick="logWaterAmount(0.237,'8oz Glass')">
+        <div style="font-size:20px">🥛</div><div style="margin-top:4px;font-size:11px">8oz Glass</div>
+      </button>
+      <button type="button" class="q-opt" style="padding:14px 4px;text-align:center" onclick="logWaterAmount(0.473,'16oz Bottle')">
+        <div style="font-size:20px">🍶</div><div style="margin-top:4px;font-size:11px">16oz Bottle</div>
+      </button>
+      <button type="button" class="q-opt" style="padding:14px 4px;text-align:center" onclick="logWaterAmount(1,'1L Bottle')">
+        <div style="font-size:20px">💧</div><div style="margin-top:4px;font-size:11px">1L Bottle</div>
+      </button>
+    </div>
+    <div class="section-sub" style="margin-bottom:8px">CUSTOM AMOUNT</div>
+    <div style="display:flex;gap:8px">
+      <input type="number" id="water-custom-amount" placeholder="Amount" min="0" step="0.1" style="flex:1;padding:11px 12px;background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:10px;color:var(--text);font-size:14px;font-family:'Inter',sans-serif;outline:none">
+      <select id="water-custom-unit" style="padding:11px 10px;background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:10px;color:var(--text);font-size:13px;font-family:'Inter',sans-serif;outline:none">
+        <option value="oz">fl oz</option>
+        <option value="ml">mL</option>
+        <option value="L">L</option>
+      </select>
+    </div>
+    <button class="btn-p filled" style="margin-top:12px" onclick="logWaterCustomAmount()">Log Amount</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     STREAK MILESTONE CELEBRATION (Part C) -- full-screen takeover, deliberately more
+     elaborate than the standard tc-celebration-view: confetti layer + a bigger animated
+     number, reserved for real streak milestones (see STREAK_MILESTONES/checkStreakMilestone)
+     rather than every ordinary completion.
+══════════════════════════════════ -->
+<div id="streak-celebration-overlay">
+  <div id="streak-confetti-layer" style="position:absolute;inset:0;pointer-events:none;overflow:hidden"></div>
+  <div style="position:relative;text-align:center;padding:30px 24px;max-width:340px">
+    <div style="font-size:13px;letter-spacing:2px;color:#FFD166;text-transform:uppercase;font-weight:800;margin-bottom:8px;animation:celebFadeUp .4s ease backwards">Streak Milestone</div>
+    <div style="font-size:56px;margin-bottom:2px;animation:celebPop .55s cubic-bezier(.34,1.56,.64,1) .1s backwards">🔥</div>
+    <div id="streak-cel-number" style="font-family:'Syne',sans-serif;font-size:64px;font-weight:800;color:#fff;line-height:1;animation:streakNumberPop .6s cubic-bezier(.34,1.56,.64,1) .2s backwards;text-shadow:0 0 24px rgba(255,209,102,.5)">7</div>
+    <div id="streak-cel-name" style="font-size:15px;color:rgba(255,255,255,.85);margin:8px 0 22px;font-weight:600;animation:celebFadeUp .4s ease .3s backwards">Day Streak</div>
+    <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,209,102,.3);border-radius:16px;padding:16px;margin-bottom:22px;animation:celebFadeUp .4s ease .4s backwards">
+      <div id="streak-cel-xp" style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:#FFD166">+0 XP</div>
+      <div id="streak-cel-token" style="font-size:12px;color:rgba(255,255,255,.7);margin-top:6px;display:none"></div>
+    </div>
+    <button class="btn-p filled" style="background:#FFD166;border-color:#FFD166;color:#0A0908" onclick="closeStreakCelebration()">Keep Going</button>
   </div>
 </div>
 
@@ -3245,10 +3324,21 @@ const PILLAR_PREF_CONFIG = {
   fitness: [
     {key:'preferredWorkoutDays', type:'multi', label:'Preferred Workout Days', options:['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']},
     {key:'preferredTimeOfDay', type:'single', label:'Preferred Time of Day', options:['Early Morning (6-9am)','Mid-Morning (9am-12pm)','Early Afternoon (12-3pm)','Late Afternoon (3-6pm)','Evening (6-9pm)','Flexible']},
+    {key:'completionSound', type:'single', label:'Workout Completion Sound', options:['Gong','Bell','Chime','Digital Beep']},
   ],
   diet: [
     {key:'preferredMealStructure', type:'single', label:'Preferred Meal Structure', options:['3 Main Meals','5-6 Smaller Meals','Intermittent Fasting (16:8)']},
     {key:'dietaryRestrictions', type:'multi', label:'Dietary Restrictions', options:['No Restrictions','Vegetarian','Vegan','Gluten-Free','Dairy-Free']},
+    // Editable daily water goal (Part A) -- read back via getDietWaterGoalLiters(), which
+    // parseFloat()s whichever option string was saved ("3.0L" -> 3.0), falling back to
+    // 3.0L wherever nothing's been saved yet (matches the old hardcoded default).
+    {key:'waterGoalLiters', type:'single', label:'Daily Water Goal', options:['2.0L','2.5L','3.0L','3.5L','4.0L']},
+    // Opt-in periodic "drink water" nudges (Part B) -- reuses the exact same routine/
+    // materialization mechanism as the real breakfast/lunch/dinner log reminders (see
+    // api/goals.js's MEAL_TIME_DEFAULTS routines and lib/routines.js's
+    // materializeRoutinesForDate), synced server-side in api/preferences/[scope].js
+    // whenever this saves (see syncWaterReminderRoutines in lib/routines.js).
+    {key:'waterReminders', type:'single', label:'Water Reminders', options:['Off','Every 2 hours','Every 3 hours','Every 4 hours']},
   ],
   finances: [
     {key:'primaryCurrency', type:'single', label:'Primary Currency', options:['USD ($)','EUR (€)','GBP (£)','CAD ($)','AUD ($)']},
@@ -3290,9 +3380,20 @@ async function openPillarPreferences(pillarKey) {
         return `<button type="button" class="q-opt${sel?' sel':''}" data-v="${opt}" onclick="toggleQuestOption(this,'${f.key}','${f.type}')">${opt}</button>`;
       }).join('')+`</div>`;
   });
+  if(pillarKey==='fitness') {
+    html+=`<button type="button" class="btn-p" style="margin-top:4px" onclick="previewFitnessCompletionSound()">🔊 Preview Sound</button>`;
+  }
   html+=`<div class="section-sub" style="margin-top:20px">ASSESSMENT</div>`
     + settingsRow('❓','Retake '+p.label+' Assessment', `refinePillarGoal('${pillarKey}')`, 'This will generate a new plan');
   body.innerHTML=html;
+}
+
+// Lets the user hear a preset before saving -- reads whatever's currently selected in
+// the (unsaved) button grid, same DOM query savePillarPreferences() itself uses, so
+// Preview always matches what Save would actually persist.
+function previewFitnessCompletionSound() {
+  const sel=document.querySelector('#pp-completionSound .q-opt.sel');
+  playCompletionSound(sel?sel.dataset.v:DEFAULT_COMPLETION_SOUND);
 }
 
 async function savePillarPreferences() {
@@ -3305,6 +3406,14 @@ async function savePillarPreferences() {
     else { const sel=document.querySelector('#pp-'+f.key+' .q-opt.sel'); data[f.key]=sel?sel.dataset.v:null; }
   });
   await req('PUT','/preferences/'+pillarKey,data);
+  // Cached water goal (see getDietWaterGoalLiters) may now be stale -- clear it so the
+  // next read picks up whatever was just saved instead of the old cached target.
+  if(pillarKey==='diet') S.dietWaterGoalLiters=null;
+  // Fitness's own preferences (Voice Guidance, workout completion sound, ...) are read
+  // through a session-lifetime cache (see getFitnessPrefs) so an active workout doesn't
+  // refetch on every render -- refreshing it here means a change here takes effect on
+  // the very next workout/pose instead of needing a full page reload.
+  if(pillarKey==='fitness') fitnessPrefsCache=data;
   toast('Preferences saved ✓');
   openSettingsHub();
 }
@@ -3757,6 +3866,10 @@ const TOOL_HINT_OPEN = {
   steps:        (t)=>openStepsLogger(t),
   transaction:  ()=>openLogTransaction('expense'),
   connection:   ()=>openConnectionLog(null),
+  // A materialized "Drink Water" reminder task (see syncWaterReminderRoutines) carries
+  // this hint directly, same as meal reminders carry 'meal' -- tapping it opens the real
+  // quick-log screen instead of a bare checkbox.
+  water:        ()=>openWaterLog(),
   // Same live-ring "Start Now" flow every other task type gets (see startManualTask) --
   // this used to open a static form asking you to type a duration guess and submit it
   // retroactively, with no actual timer running anywhere while you worked.
@@ -3801,7 +3914,7 @@ function openTaskByToolHint(t) {
 // the pillar's own most-specific logging flow instead of the generic Add Task modal.
 const PILLAR_QUICK_ADD = {
   fitness:   ()=>openWorkoutQuickAdd(),
-  diet:      ()=>openMealLog('snack'),
+  diet:      ()=>openDietQuickAdd(),
   finances:  ()=>openLogTransaction('expense'),
   relations: ()=>openConnectionLog(null),
   personal:  ()=>openLogSession(null),
@@ -3816,6 +3929,12 @@ function openPillarQuickAdd() {
 function openCurrentTask() {
   const t=S.currentTask;
   if(!t) { if(S.activePillar) showPillarScreen(S.activePillar); else if(S.unlocked[0]) showPillarScreen(S.unlocked[0]); return; }
+  // A live workout session (see startWorkoutManualOverride) reopens straight back into
+  // its own still-running screen instead of the generic pillar-map routing below --
+  // showScreen() never tears down #workout-log-body's DOM, so whatever phase/timer was
+  // mid-flight (a HIIT round, a yoga pose's countdown) is exactly where it was left,
+  // having kept ticking the whole time it was off-screen.
+  if(S.manualTaskOverride?.activeWorkoutSession) { showScreen('workout-log'); return; }
   // A manually-started task (see startManualTask) should reopen its own Task Detail page,
   // not fall through to the generic pillar-map routing below -- that's the whole point of
   // tapping back into the ring while it's running.
@@ -3890,6 +4009,10 @@ async function applySuccessImageBackground(pillarValue) {
 function openTaskCompletion(task, returnTo) {
   if(task) S.currentTask={taskId:task.id, name:task.name, pillar:task.pillar_name||task.pillar_id};
   if(!S.currentTask) { toast('No current task'); return; }
+  // A live workout session has its own rich completion flow (actual weights/distance/
+  // rounds, see finishWorkout) -- the ring's ✓ opens that real screen instead of the
+  // generic blind percentage slider below, which has no idea what was actually logged.
+  if(S.manualTaskOverride?.activeWorkoutSession) { showScreen('workout-log'); return; }
   // Projects don't complete via the slider -- only their sub-tasks do (4.13). The
   // Current Task button for a Project routes into its own detail page instead.
   if(S.currentTask.taskType==='ProjectTask') { openProjectDetail(S.currentTask.taskId, 'home'); return; }
@@ -7543,10 +7666,11 @@ function pillarMapHero(o) {
 async function loadDietMap() {
   const container=document.getElementById('pillar-tab-map');
   const p=PILLARS.diet;
-  const [data, plansData, targetsData]=await Promise.all([
+  const [data, plansData, targetsData, waterGoal]=await Promise.all([
     req('GET','/metrics?pillar_id='+p.id+'&days=30'),
     req('GET','/metrics?pillar_id='+p.id+'&log_type=meal_plan'),
     req('GET','/metrics?pillar_id='+p.id+'&log_type=diet_targets'),
+    getDietWaterGoalLiters(),
   ]);
   const logs=data?.logs||[];
   const today=new Date().toISOString().split('T')[0];
@@ -7599,7 +7723,7 @@ async function loadDietMap() {
   // unlike Fitness's full-bleed colour hero.
   const calPct = targets.calories ? calories/targets.calories : 0;
   const calRemaining = Math.max(0, Math.round(targets.calories - calories));
-  const waterPct=Math.min(100,Math.round(water/3.0*100));
+  const waterPct=Math.min(100,Math.round(water/waterGoal*100));
   // Same shared hero as every pillar (ring + headline + stat pills), themed diet-gold, so
   // this instantly reads as "the Map." The nutrition-specific detail (macro bars +
   // hydration) then lives in its own card directly below the hero.
@@ -7622,7 +7746,7 @@ async function loadDietMap() {
       <div style="margin-top:12px;display:flex;align-items:center;gap:10px;padding-top:12px;border-top:1px solid rgba(196,184,168,.1)">
         <span style="color:${p.color}">${ICONS.droplet}</span>
         <div style="flex:1"><div style="height:7px;background:var(--bg4);border-radius:4px;overflow:hidden"><div style="height:100%;width:${waterPct}%;background:var(--personal);border-radius:4px"></div></div></div>
-        <span style="font-size:11px;color:var(--stone);white-space:nowrap">${water.toFixed(1)} / 3.0 L</span>
+        <span style="font-size:11px;color:var(--stone);white-space:nowrap">${water.toFixed(1)} / ${waterGoal.toFixed(1)} L</span>
       </div>`,
       {style:'margin-bottom:14px'})}
     <div style="display:flex;gap:10px;margin-bottom:14px">
@@ -7748,7 +7872,7 @@ async function renderNutritionTab(view) {
     <button class="pg-btn" style="flex:1;font-size:11px;background:${view==='calories'?'var(--diet)':'var(--bg4)'}" onclick="renderNutritionTab('calories')">Calories</button>
     <button class="pg-btn" style="flex:1;font-size:11px;background:${view==='water'?'var(--diet)':'var(--bg4)'}" onclick="renderNutritionTab('water')">Water</button>
   </div>`;
-  body.innerHTML = toggle + (view==='water' ? renderWaterMetricDetail(waterDaily, p.color) : renderCaloriesMetricDetail(caloriesDaily, p.color));
+  body.innerHTML = toggle + (view==='water' ? renderWaterMetricDetail(waterDaily, p.color, await getDietWaterGoalLiters()) : renderCaloriesMetricDetail(caloriesDaily, p.color));
 }
 function renderCaloriesMetricDetail(chrono, color) {
   if(!chrono.length) return `<div class="empty"><div class="empty-icon">${ICONS.plate}</div><div class="empty-text">No meals logged yet.</div></div>`;
@@ -7779,9 +7903,10 @@ function renderCaloriesMetricDetail(chrono, color) {
     </div>`).join('')}`).join('');
   return hero+chips+history;
 }
-function renderWaterMetricDetail(chrono, color) {
-  if(!chrono.length) return `<div class="empty"><div class="empty-icon">${ICONS.droplet}</div><div class="empty-text">No water logged yet.</div></div>`;
-  const target=3.0; // matches the 3.0L daily goal shown on the Diet Map
+function renderWaterMetricDetail(chrono, color, target) {
+  target = target || 3.0; // caller (renderNutritionTab) passes the real saved goal; 3.0L default matches getDietWaterGoalLiters()
+  if(!chrono.length) return `<div class="empty"><div class="empty-icon">${ICONS.droplet}</div><div class="empty-text">No water logged yet.</div></div>
+    <button class="btn-p filled" style="margin-top:14px;background:var(--diet);border-color:var(--diet)" onclick="openWaterLog()">+ Log Water</button>`;
   const today=chrono[chrono.length-1];
   const todayWater=today?today.value:0;
   const pct=Math.min(1, todayWater/target);
@@ -7797,6 +7922,7 @@ function renderWaterMetricDetail(chrono, color) {
       </div>
     </div>
     <div style="margin-top:10px;font-size:12px;color:var(--stone)">${deltaChipHtml(delta,'L',true)}</div>
+    <button class="btn-p filled" style="margin-top:14px;background:${color};border-color:${color}" onclick="openWaterLog()">+ Log Water</button>
   </div>`;
   const chips=`<div style="display:flex;gap:8px;margin:12px 0">
     ${metricStatChip('Today', todayWater.toFixed(1)+'L', color)}
@@ -8015,6 +8141,70 @@ function openCreateMealPlan() {
     toast('Meal plan created ✓');
     switchMealHubTab('mealplans');
   };
+}
+
+// ── Diet pillar quick-add: choose Meal or Water (Part A) ──
+function openDietQuickAdd() { document.getElementById('modal-diet-quick-add').classList.add('open'); }
+
+// ── Water logging (Part A): one-tap common serving sizes + a custom amount, logged via
+// the same generic POST /metrics pattern as weight/steps/meal (log_type='water'). Value
+// is always stored in LITERS regardless of which unit was tapped/typed -- the Diet Map
+// hero, the Water metric card, and renderWaterMetricDetail all already assume
+// value===liters (see loadDietMap/renderNutritionTab), so this keeps every consumer in
+// sync without touching any of that existing display code.
+const WATER_UNIT_TO_LITERS = {oz:0.0295735, ml:0.001, L:1};
+
+function openWaterLog() {
+  const amt=document.getElementById('water-custom-amount');
+  if(amt) amt.value='';
+  document.getElementById('modal-water-log').classList.add('open');
+}
+
+// S.pendingTaskId is set generically by launchTaskDetailTool()/the Logging-task dispatch
+// path (see TOOL_HINT_OPEN.water) before this ever runs -- reading+clearing it here and
+// passing it as task_id mirrors confirmLogMeal() exactly, so tapping a materialized
+// "Drink Water" reminder task actually completes that task (real XP via completeTask)
+// instead of double-counting with the flat ad-hoc rate.
+async function logWaterAmount(liters, label) {
+  const taskId=S.pendingTaskId; S.pendingTaskId=null;
+  closeModal('modal-water-log');
+  const result=await req('POST','/metrics',{pillar_id:PILLARS.diet.id, log_type:'water', value:liters, unit:'L', task_id:taskId||undefined, data:{source:label}});
+  toast(`💧 ${label} logged — +${result?.xp_gained||0} XP`);
+  refreshActivePillarMapIfDiet();
+  checkStreakMilestone('diet', result?.xp_gained||0);
+}
+
+async function logWaterCustomAmount() {
+  const amt=Number(document.getElementById('water-custom-amount')?.value);
+  if(!amt || amt<=0) { toast('Enter an amount first'); return; }
+  const unit=document.getElementById('water-custom-unit')?.value||'oz';
+  const liters=amt*(WATER_UNIT_TO_LITERS[unit]||1);
+  const taskId=S.pendingTaskId; S.pendingTaskId=null;
+  closeModal('modal-water-log');
+  const result=await req('POST','/metrics',{pillar_id:PILLARS.diet.id, log_type:'water', value:liters, unit:'L', task_id:taskId||undefined, data:{source:'Custom'}});
+  toast(`💧 Water logged — +${result?.xp_gained||0} XP`);
+  refreshActivePillarMapIfDiet();
+  checkStreakMilestone('diet', result?.xp_gained||0);
+}
+
+// Diet's editable daily water goal (Part A pillar preference) -- cached on S so every
+// render of the Diet Map / Nutrition tab doesn't refetch preferences on its own; the
+// cache is cleared in savePillarPreferences() whenever diet prefs are actually saved.
+async function getDietWaterGoalLiters() {
+  if(S.dietWaterGoalLiters!=null) return S.dietWaterGoalLiters;
+  const prefs=await req('GET','/preferences/diet')||{};
+  const parsed=parseFloat(prefs.waterGoalLiters);
+  S.dietWaterGoalLiters = (parsed>0) ? parsed : 3.0;
+  return S.dietWaterGoalLiters;
+}
+
+// Water is often logged from the quick-add modal or a Nutrition-tab drill-down, not
+// necessarily from the Diet Map itself -- refresh whichever of those is actually the
+// currently visible screen so the ring/sparkline/history reflect the new log right away
+// instead of going stale until the next full navigation.
+function refreshActivePillarMapIfDiet() {
+  if(S.activePillar==='diet' && S.activePillarTab==='map') loadDietMap();
+  if(document.getElementById('screen-meal-hub')?.classList.contains('active') && S.mealHubTab==='nutrition') renderNutritionTab(S.nutritionMetricView||'water');
 }
 
 // ── Meal log flow: capture → AI scan → review → log ──
@@ -9289,6 +9479,29 @@ async function saveWorkoutLogCorrection(id) {
   viewWorkoutDetail(id);
 }
 
+// A live workout session (any activity type) takes over the Home ring's manual-task
+// slot exactly like startManualTask()/startFocusSession()/startProjectSubtaskSession()
+// do -- otherwise navigating Home mid-workout (or mid-yoga-pose) drops it off the ring
+// entirely, with no indication it's still running and no way back into it (confirmed
+// live: starting Mobility then hitting Home showed the ring reverting to the schedule,
+// and reopening the task called startWorkout() again, silently discarding progress).
+// Task-linked (S.pendingTaskId set, e.g. via Task Detail's Start button) keeps its real
+// task id so finishWorkout()'s /metrics call still marks that task complete; otherwise a
+// synthetic id, same ad-hoc pattern as startFocusSession's 'focus-...' ids.
+function startWorkoutManualOverride(name, durationMinutes) {
+  const now=new Date();
+  const startTime=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+  const endDate=new Date(now.getTime()+durationMinutes*60000);
+  const endTime=String(endDate.getHours()).padStart(2,'0')+':'+String(endDate.getMinutes()).padStart(2,'0');
+  S.manualTaskOverride = {
+    taskId: S.pendingTaskId || ('workout-'+Date.now()), name, pillar:'fitness',
+    durationMinutes, startTime, endTime,
+    elapsedMs: 0, running: true, lastResumeAt: Date.now(),
+    activeWorkoutSession: true,
+  };
+  applyCtaState();
+}
+
 // ── Active workout logging ──
 async function startWorkout(planId) {
   const planData=workoutPlansCache[planId];
@@ -9303,16 +9516,19 @@ async function startWorkout(planId) {
 
   if(type==='cardio') {
     activeWorkout={ activityType:'cardio', planName:planData.name, targetDurationMin:planData.durationMin||20, targetDistance:planData.distance||0, intensity:planData.intensity||'Moderate', startTime:Date.now(), sessionNotes:'', voiceEnabled };
+    startWorkoutManualOverride(planData.name||'Workout', planData.durationMin||20);
     renderCardioSession();
     return;
   }
   if(type==='hiit') {
     activeWorkout={ activityType:'hiit', planName:planData.name, rounds:planData.rounds||8, workSeconds:planData.workSeconds||30, restSeconds:planData.restSeconds||15, currentRound:1, phase:'work', startTime:Date.now(), sessionNotes:'', voiceEnabled };
+    startWorkoutManualOverride(planData.name||'Workout', Math.max(1, Math.round((planData.rounds||8)*((planData.workSeconds||30)+(planData.restSeconds||15))/60)));
     renderHiitSession();
     return;
   }
   if(type==='mobility') {
     activeWorkout={ activityType:'mobility', planName:planData.name, targetDurationMin:planData.durationMin||10, stretches:(planData.stretches||[]).map(s=>({name:s, done:false})), startTime:Date.now(), sessionNotes:'', voiceEnabled };
+    startWorkoutManualOverride(planData.name||'Workout', planData.durationMin || Math.max(1, Math.round((activeWorkout.stretches.length*MOBILITY_HOLD_SECONDS)/60)));
     renderMobilitySession();
     return;
   }
@@ -9327,6 +9543,7 @@ async function startWorkout(planId) {
     })),
     exerciseIdx:0, setIdx:0, startTime:Date.now(), sessionNotes:'', voiceEnabled,
   };
+  startWorkoutManualOverride(planData.name||'Workout', Math.max(15, activeWorkout.exercises.reduce((s,ex)=>s+ex.sets.length,0)*2));
   renderActiveWorkout();
 }
 
@@ -9361,6 +9578,7 @@ function renderHiitSession() {
       <div class="section-sub">${w.phase==='work'?'WORK':'REST'}</div>
       <div id="hiit-countdown" style="font-family:'Syne',sans-serif;font-size:48px;font-weight:800;color:${w.phase==='work'?'var(--fitness)':'var(--text)'};margin:14px 0">${seconds}s</div>
       <button class="btn-p filled" style="background:var(--fitness);border-color:var(--fitness)" onclick="skipHiitPhase()">Skip</button>
+      <button class="btn-p" style="margin-top:12px;display:block;margin:12px auto 0" onclick="finishWorkout()">Finish Early</button>
     </div>`;
   clearInterval(w.hiitTimer);
   let remaining=seconds;
@@ -9425,23 +9643,14 @@ function playCompletionSound(soundKey) {
     });
   } catch(e) { /* Web Audio unsupported/blocked -- silently skip, not critical */ }
 }
-// Cached after first load so every in-session gong/bell/chime doesn't refetch the
-// preference -- kept in sync immediately on save (see savePillarPreferences) rather
-// than going stale until next page load.
-let fitnessCompletionSoundCache=null;
-async function ensureFitnessCompletionSoundLoaded() {
-  if(fitnessCompletionSoundCache) return fitnessCompletionSoundCache;
-  const prefs=await req('GET','/preferences/fitness').catch(()=>null);
-  fitnessCompletionSoundCache=(prefs && COMPLETION_SOUNDS[prefs.completionSound]) ? prefs.completionSound : DEFAULT_COMPLETION_SOUND;
-  return fitnessCompletionSoundCache;
-}
 // The actual call site used wherever the completion chime plays (currently: a
-// mobility pose's hold timer hitting zero, see startMobilityCountdown) -- fetches the
-// user's chosen sound on first use (falling back to the Gong default while that's
-// still in flight) rather than making every call site await it.
+// mobility pose's hold timer hitting zero, see startMobilityCountdown). Reuses the
+// same session-lifetime Fitness Preferences cache as Voice Guidance (fitnessPrefsCache/
+// getFitnessPrefs, defined with the rest of the Fitness pillar below) instead of a
+// second fetch of the same /preferences/fitness scope -- by the time any gong can
+// actually fire, startWorkout() has already awaited that cache into existence.
 function playGongSound() {
-  playCompletionSound(fitnessCompletionSoundCache||DEFAULT_COMPLETION_SOUND);
-  if(!fitnessCompletionSoundCache) ensureFitnessCompletionSoundLoaded();
+  playCompletionSound((fitnessPrefsCache&&fitnessPrefsCache.completionSound)||DEFAULT_COMPLETION_SOUND);
 }
 
 // ── Mobility session: active, not a static checklist -- a big countdown ring per pose
@@ -9480,6 +9689,7 @@ function renderMobilitySession() {
         </svg>
         <div id="mobility-ring-number" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-size:56px;font-weight:800;color:var(--text)">${w.mobilityRemaining}</div>
       </div>
+      <button class="btn-p" style="margin-top:24px" onclick="finishWorkout()">Finish Early</button>
     </div>`;
   startMobilityCountdown();
 }
@@ -9532,6 +9742,7 @@ function renderMobilityTransition() {
       <div class="section-sub">NEXT UP</div>
       <div style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:var(--fitness);margin:14px 0;padding:0 12px">${next.name}</div>
       <div id="mobility-transition-count" style="font-size:14px;color:var(--stone)">Starting in ${remaining}...</div>
+      <button class="btn-p" style="margin-top:24px" onclick="finishWorkout()">Finish Early</button>
     </div>`;
   clearInterval(w.mobilityTimer);
   w.mobilityTimer=setInterval(()=>{
@@ -9739,6 +9950,10 @@ async function finishWorkout() {
   const taskId=S.pendingTaskId; S.pendingTaskId=null;
   const loggedAt=S.quickAddPastDate ? new Date(S.quickAddPastDate+'T12:00:00').toISOString() : undefined;
   S.quickAddPastDate=null;
+  // Releases the Home ring's live-timer slot this session was holding (see
+  // startWorkoutManualOverride) -- otherwise the ring would keep showing a workout that
+  // was just marked done as still "current."
+  if(S.manualTaskOverride?.activeWorkoutSession) clearManualTaskOverride();
 
   // PR detection (api/metrics.js) only ever fires for log_type='workout' rows carrying
   // data.exercises, so cardio/HIIT/mobility logs safely skip it without any extra guard.
