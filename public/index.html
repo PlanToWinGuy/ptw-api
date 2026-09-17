@@ -8523,6 +8523,7 @@ async function loadDietMap() {
         <div style="font-size:10px;color:var(--stone);margin-top:8px">Full nutrition history ›</div>`,
         {style:'flex:1', onclick:"showScreen('meal-hub');switchMealHubTab('nutrition','water')"})}
     </div>
+    <div id="health-metrics-diet"></div>
     ${heroCtaCard(p.color, todaysPlan ? `
         <div style="text-align:center">
         <div style="font-size:11px;color:${mutedText};letter-spacing:.5px">${nextMealType.toUpperCase()} PLAN</div>
@@ -8540,6 +8541,13 @@ async function loadDietMap() {
         </div></div>`)}
     ${hubButton('View Full Meal Hub', p.color, 'openMealHub()', PILLAR_GLYPH.diet)}`;
   container.innerHTML=html;
+  // Non-blocking -- see renderHealthMetricsInto()'s own comment for why this isn't in the
+  // Promise.all above (a health-permission prompt can be slow/wait on the user). Diet only
+  // shows what's actually relevant to nutrition tracking: active energy burned (calorie-
+  // balance context alongside the calories-consumed ring above) and device-recorded weight
+  // (e.g. from a smart scale synced to Health Connect/HealthKit) -- not steps/heart
+  // rate/sleep, which already live on the Fitness Map's own Health Metrics card.
+  renderHealthMetricsInto('health-metrics-diet', p.color, ['calories','weight']);
 }
 
 function openMealHub() { showScreen('meal-hub'); switchMealHubTab('history'); }
@@ -9533,8 +9541,12 @@ async function loadFitnessMap() {
         </div>`,
         {style:'flex:1', onclick:"showScreen('workout-hub');switchWorkoutHubTab('metrics','steps')"})}
     </div>
+    <div id="health-metrics-fitness"></div>
     ${hubButton('View Full Workout Hub', p.color, 'openWorkoutHub()', PILLAR_GLYPH.fitness)}`;
   container.innerHTML=html;
+  // Non-blocking -- see renderHealthMetricsInto()'s own comment for why this isn't in the
+  // Promise.all above (a health-permission prompt can be slow/wait on the user).
+  renderHealthMetricsInto('health-metrics-fitness', p.color, ['steps','heartRate','sleep','calories']);
 }
 
 // ── Steps logger -- a real fitness-tracking tool for step-based tasks/routines, not just
@@ -9542,7 +9554,7 @@ async function loadFitnessMap() {
 // target right in the text; this session's remaining count is that target minus whatever
 // has already been logged today, so multiple short walks across the day all count toward
 // the same daily goal instead of resetting each time. ──
-// ─── NATIVE HEALTH DATA (Part B) -- @capgo/capacitor-health, Android Health Connect /
+// ─── NATIVE HEALTH DATA -- @capgo/capacitor-health, Android Health Connect /
 // iOS HealthKit, wired into the ptw-native Capacitor shell. window.Capacitor only ever
 // exists inside that shell (undefined in the plain web PWA, so every function here is a
 // genuine no-op there -- manual entry below is unaffected). Falls back silently to manual
@@ -9553,29 +9565,183 @@ async function loadFitnessMap() {
 function nativeHealthPlugin() {
   return (window.Capacitor?.isNativePlatform?.() && window.Capacitor.Plugins?.Health) || null;
 }
-let nativeHealthReadAuthorized=null; // null = not asked this session yet
+// The fuller set of data types the Health Metrics section (below) can show -- requested
+// together in one permission sheet so the user isn't prompted separately as each card
+// loads. heartRate/sleep/calories/weight ride the exact same Health.readSamples /
+// requestAuthorization API steps already used, just a different dataType string -- same
+// plugin, no new native wiring needed (confirmed against the installed plugin's own
+// definitions.d.ts HealthDataType union, which also lists distance, workouts, blood
+// pressure, etc. -- not pulled in here since nothing in this app's UI needs them yet).
+const NATIVE_HEALTH_TYPES=['steps','heartRate','sleep','calories','weight'];
+let nativeHealthAuthStatus=null; // null = not asked this session yet; else the plugin's AuthorizationStatus (or a {readAuthorized:[]} stand-in when unavailable/denied)
 async function ensureNativeHealthAuthorized() {
   const Health=nativeHealthPlugin();
-  if(!Health) return false;
-  if(nativeHealthReadAuthorized!==null) return nativeHealthReadAuthorized;
+  if(!Health) return {readAuthorized:[]};
+  if(nativeHealthAuthStatus) return nativeHealthAuthStatus;
   try {
     const avail=await Health.isAvailable();
-    if(!avail?.available) { nativeHealthReadAuthorized=false; return false; }
-    const status=await Health.requestAuthorization({read:['steps']});
-    nativeHealthReadAuthorized = Array.isArray(status?.readAuthorized) && status.readAuthorized.includes('steps');
-  } catch(e) { console.warn('native health authorization failed', e); nativeHealthReadAuthorized=false; }
-  return nativeHealthReadAuthorized;
+    if(!avail?.available) { nativeHealthAuthStatus={readAuthorized:[]}; return nativeHealthAuthStatus; }
+    const status=await Health.requestAuthorization({read:NATIVE_HEALTH_TYPES});
+    nativeHealthAuthStatus = status && Array.isArray(status.readAuthorized) ? status : {readAuthorized:[]};
+  } catch(e) { console.warn('native health authorization failed', e); nativeHealthAuthStatus={readAuthorized:[]}; }
+  return nativeHealthAuthStatus;
+}
+function nativeHealthTypeAuthorized(status, type) {
+  return !!(status?.readAuthorized||[]).includes(type);
 }
 async function readNativeStepsToday() {
   const Health=nativeHealthPlugin();
   if(!Health) return null;
-  const ok=await ensureNativeHealthAuthorized();
-  if(!ok) return null;
+  const status=await ensureNativeHealthAuthorized();
+  if(!nativeHealthTypeAuthorized(status,'steps')) return null;
   try {
     const start=new Date(); start.setHours(0,0,0,0);
     const res=await Health.readSamples({dataType:'steps', startDate:start.toISOString(), endDate:new Date().toISOString(), limit:1000});
     return (res?.samples||[]).reduce((sum,x)=>sum+(Number(x.value)||0), 0);
   } catch(e) { console.warn('native health steps read failed', e); return null; }
+}
+// Generic "sum today's samples" reader -- used for calories (active energy) alongside steps.
+async function readNativeHealthSumToday(dataType) {
+  const Health=nativeHealthPlugin();
+  if(!Health) return null;
+  const status=await ensureNativeHealthAuthorized();
+  if(!nativeHealthTypeAuthorized(status,dataType)) return null;
+  try {
+    const start=new Date(); start.setHours(0,0,0,0);
+    const res=await Health.readSamples({dataType, startDate:start.toISOString(), endDate:new Date().toISOString(), limit:1000});
+    const samples=res?.samples||[];
+    if(!samples.length) return null;
+    return {value:samples.reduce((s,x)=>s+(Number(x.value)||0),0), unit:samples[0].unit};
+  } catch(e) { console.warn('native health read failed', dataType, e); return null; }
+}
+// Generic "most recent reading" reader -- used for heart rate and weight, where today's sum
+// would be meaningless (you want the latest bpm/kg, not a total). Looks back up to 14 days
+// so e.g. a weight logged via a smart scale a few days ago (not necessarily today) still
+// surfaces instead of showing a false "not available".
+async function readNativeHealthLatest(dataType) {
+  const Health=nativeHealthPlugin();
+  if(!Health) return null;
+  const status=await ensureNativeHealthAuthorized();
+  if(!nativeHealthTypeAuthorized(status,dataType)) return null;
+  try {
+    const start=new Date(); start.setDate(start.getDate()-14);
+    const res=await Health.readSamples({dataType, startDate:start.toISOString(), endDate:new Date().toISOString(), limit:200, ascending:false});
+    const samples=res?.samples||[];
+    if(!samples.length) return null;
+    const latest=samples.reduce((a,b)=> new Date(b.endDate||b.startDate) > new Date(a.endDate||a.startDate) ? b : a);
+    return {value:Number(latest.value), unit:latest.unit, at:latest.endDate||latest.startDate};
+  } catch(e) { console.warn('native health latest read failed', dataType, e); return null; }
+}
+// Sleep needs its own reader: a session can straddle midnight, and Health Connect/HealthKit
+// report per-stage segments (awake/rem/deep/light) as separate samples rather than one tidy
+// nightly total -- this sums everything except 'awake' segments over a 20h lookback (wide
+// enough to catch last night's session whenever today the screen happens to be opened).
+async function readNativeSleepLastNight() {
+  const Health=nativeHealthPlugin();
+  if(!Health) return null;
+  const status=await ensureNativeHealthAuthorized();
+  if(!nativeHealthTypeAuthorized(status,'sleep')) return null;
+  try {
+    const start=new Date(); start.setHours(start.getHours()-20);
+    const res=await Health.readSamples({dataType:'sleep', startDate:start.toISOString(), endDate:new Date().toISOString(), limit:200});
+    const samples=(res?.samples||[]).filter(s=>s.sleepState!=='awake');
+    if(!samples.length) return null;
+    const minutes=samples.reduce((sum,s)=>sum+Math.max(0,(new Date(s.endDate)-new Date(s.startDate))/60000),0);
+    return minutes/60; // hours
+  } catch(e) { console.warn('native health sleep read failed', e); return null; }
+}
+
+// ─── HEALTH METRICS SECTION (Fitness Map + Diet Map) -- a read-only "here's what your
+// phone actually recorded" panel, distinct from the app's own logged/tracked metrics
+// elsewhere on these screens (e.g. the Steps card below still logs to PTW's own history).
+// Fetched once per screen-open, not on every render, and cached briefly so opening both the
+// Fitness and Diet Map back to back doesn't re-trigger the permission/read round trip.
+let nativeHealthSnapshotCache=null, nativeHealthSnapshotAt=0;
+async function getNativeHealthSnapshot() {
+  if(!nativeHealthPlugin()) return null; // true no-op on web/non-native, same precedent as everywhere else in this section
+  const now=Date.now();
+  if(nativeHealthSnapshotCache && now-nativeHealthSnapshotAt<2*60*1000) return nativeHealthSnapshotCache;
+  const [steps, heartRate, sleepHours, calories, weight]=await Promise.all([
+    readNativeStepsToday(),
+    readNativeHealthLatest('heartRate'),
+    readNativeSleepLastNight(),
+    readNativeHealthSumToday('calories'),
+    readNativeHealthLatest('weight'),
+  ]);
+  nativeHealthSnapshotCache={steps, heartRate, sleepHours, calories, weight};
+  nativeHealthSnapshotAt=now;
+  return nativeHealthSnapshotCache;
+}
+// Opens the phone's own health app -- Health Connect on Android via the plugin's official
+// openHealthConnectSettings() (no scheme-guessing; this is the plugin's sanctioned API for
+// jumping to Health Connect, and it works even before any permission has been granted, e.g.
+// to let someone install Health Connect if it's missing). iOS/HealthKit has no equivalent
+// call in this plugin (openHealthConnectSettings() is a documented no-op there), and Apple
+// has never published an official public URL scheme for the Health app -- x-apple-health://
+// is a widely-used unofficial convention, but wiring it here would mean shipping unverified
+// behavior on a platform this project cannot build or test from this machine (no Mac
+// access, per ptw-native/README.md's standing iOS constraint) -- so iOS gets an honest
+// instruction instead of an untested deep link. See that README for the documented,
+// not-yet-built iOS equivalent.
+async function openNativeHealthApp() {
+  const Health=nativeHealthPlugin();
+  if(!Health) { toast("Open your phone's Health app directly"); return; }
+  const platform=window.Capacitor?.getPlatform?.();
+  if(platform==='android') {
+    try { await Health.openHealthConnectSettings(); }
+    catch(e) { console.warn('openHealthConnectSettings failed', e); toast('Could not open Health Connect'); }
+  } else {
+    toast('Open the Health app from your phone\'s home screen');
+  }
+}
+// `fields` picks which metrics a given card shows (Fitness wants the fuller set; Diet only
+// wants what's actually relevant to nutrition -- active energy for calorie-balance context,
+// and weight trend). `snap` is the object getNativeHealthSnapshot() resolves to, or null
+// before it resolves (renders as "—" placeholders, never a fabricated number).
+function healthMetricsCardHtml(color, snap, fields) {
+  const tiles=[];
+  if(fields.includes('steps')) tiles.push(metricStatChip('Steps', snap?.steps!=null?Math.round(snap.steps).toLocaleString():'—', color));
+  if(fields.includes('heartRate')) tiles.push(metricStatChip('Heart Rate', snap?.heartRate?.value!=null?Math.round(snap.heartRate.value)+' bpm':'—', color));
+  if(fields.includes('sleep')) tiles.push(metricStatChip('Sleep', snap?.sleepHours!=null?snap.sleepHours.toFixed(1)+'h':'—', color));
+  if(fields.includes('calories')) tiles.push(metricStatChip('Active Energy', snap?.calories?.value!=null?Math.round(snap.calories.value)+' kcal':'—', color));
+  if(fields.includes('weight')) tiles.push(metricStatChip('Weight', snap?.weight?.value!=null?(Math.round(snap.weight.value*10)/10)+' '+(snap.weight.unit==='kilogram'?'kg':(snap.weight.unit||'')):'—', color));
+  return glassCard(color, `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:8px">
+        <div style="display:flex;align-items:center;gap:8px;min-width:0">
+          ${glassIcon(ICONS.heartPulse, color)}
+          <div style="min-width:0">
+            <div class="section-sub" style="margin:0">HEALTH METRICS</div>
+            <div style="font-size:9.5px;color:var(--stone)">From your phone — not app-estimated</div>
+          </div>
+        </div>
+        <span onclick="event.stopPropagation();openNativeHealthApp()" style="font-size:10px;color:${color};font-weight:700;padding:3px 9px;border:1px solid ${hexToRgba(color,.4)};border-radius:20px;white-space:nowrap;flex-shrink:0">Open Health App</span>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">${tiles.map(t=>`<div style="flex:1;min-width:78px">${t}</div>`).join('')}</div>`,
+      {style:'margin-top:14px'});
+}
+// Non-native (plain web PWA) state -- an honest "not available here" card rather than
+// silently omitting the section, so the feature stays discoverable even when the app is
+// opened in a browser instead of the mobile shell.
+function healthMetricsUnavailableHtml(color) {
+  return glassCard(color, `
+      <div class="empty" style="padding:6px 0">
+        <div class="empty-icon">${ICONS.heartPulse}</div>
+        <div class="empty-text">Health Metrics syncs from your phone's health app (Health Connect on Android, Apple Health on iOS) — open Plan To Win in the mobile app to see steps, heart rate, sleep and more here.</div>
+      </div>`,
+      {style:'margin-top:14px'});
+}
+// Renders into a placeholder div after the async native read resolves -- kept out of the
+// main Promise.all in loadFitnessMap/loadDietMap since a health-permission prompt can be
+// slow (or wait on a user decision), and the rest of the Map shouldn't block on it.
+async function renderHealthMetricsInto(containerId, color, fields) {
+  const el=document.getElementById(containerId);
+  if(!el) return;
+  if(!nativeHealthPlugin()) { el.innerHTML=healthMetricsUnavailableHtml(color); return; }
+  el.innerHTML=healthMetricsCardHtml(color, null, fields); // "—" placeholders while the read is in flight
+  const snap=await getNativeHealthSnapshot();
+  const el2=document.getElementById(containerId); // screen may have navigated away while awaiting
+  if(!el2) return;
+  el2.innerHTML=healthMetricsCardHtml(color, snap, fields);
 }
 
 let stepsLoggerState=null;
