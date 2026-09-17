@@ -8996,9 +8996,16 @@ function setMealHistoryFilter(f) { S.mealHistoryFilter=f; switchMealHubTab('hist
 function mealHistoryCard(m) {
   const d=m.data||{};
   const date=m.logged_at ? new Date(m.logged_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '';
+  // Shows the actual stored photo (see confirmLogMeal()'s upload-meal-photo call) as a
+  // thumbnail when this meal was logged from a photo scan, in place of the generic
+  // utensils glyph -- falls back to the glyph for meals logged without a photo (manual
+  // entry, from a saved plan, etc).
+  const thumb = d.image_url
+    ? `<img src="${d.image_url}" style="width:44px;height:44px;flex-shrink:0;object-fit:cover;border-radius:10px">`
+    : glassIcon(ICONS.utensils, PILLARS.diet.color);
   return glassCard(PILLARS.diet.color, `
     <div style="display:flex;align-items:flex-start;gap:12px">
-      ${glassIcon(ICONS.utensils, PILLARS.diet.color)}
+      ${thumb}
       <div style="flex:1;min-width:0">
         <div class="sq-name">${d.name||'Meal'}</div>
         <div class="sq-meta">${date}${d.meal_type?' · '+d.meal_type:''}</div>
@@ -9016,6 +9023,7 @@ async function viewMealDetail(id) {
   showScreen('meal-log');
   document.getElementById('meal-log-title').textContent=d.name||'Meal';
   document.getElementById('meal-log-body').innerHTML=`
+    ${d.image_url?`<div style="text-align:center;margin:14px 0"><img src="${d.image_url}" style="width:160px;height:160px;object-fit:cover;border-radius:12px;border:1px solid rgba(196,184,168,.15)"></div>`:''}
     <div style="font-size:12px;color:var(--stone);text-align:center;margin:10px 0">Logged: ${m.logged_at?new Date(m.logged_at).toLocaleDateString():''}</div>
     <div class="section-sub" style="text-align:center">NUTRITIONAL OVERVIEW</div>
     <div style="text-align:center;font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:var(--diet);margin:6px 0">${m.value||0} kcal</div>
@@ -9647,7 +9655,17 @@ async function confirmLogMeal() {
   const taskId=S.pendingTaskId; S.pendingTaskId=null;
   const ingredients=mealLogDraft?.ingredients||null;
   const scannedIngredients=mealLogDraft?.scanned_ingredients||null;
-  const result=await req('POST','/metrics',{pillar_id:p.id, log_type:'meal', value:m.calories, unit:'kcal', task_id:taskId||undefined, data:{name:m.name, protein_g:m.protein_g, carbs_g:m.carbs_g, fat_g:m.fat_g, meal_type:mealLogMealType, description:m.description||'', ...(scannedIngredients?.length?{scanned_ingredients:scannedIngredients}:{})}});
+  // Persist the photo (if this meal came from the photo-capture flow) so it's visible
+  // later in Diet history, not just during the capture/review flow -- see
+  // uploadMealPhoto() in api/metrics.js. Uploads the same base64 already sitting in
+  // memory for the AI scan; best-effort (a failed upload still lets the meal log itself
+  // through, just without a photo attached).
+  let imageUrl=null;
+  if(mealLogDraft?.imageBase64) {
+    const up=await req('POST','/metrics?action=upload-meal-photo',{image_base64:mealLogDraft.imageBase64, media_type:mealLogDraft.imageMediaType});
+    imageUrl=up?.data?.url||null;
+  }
+  const result=await req('POST','/metrics',{pillar_id:p.id, log_type:'meal', value:m.calories, unit:'kcal', task_id:taskId||undefined, data:{name:m.name, protein_g:m.protein_g, carbs_g:m.carbs_g, fat_g:m.fat_g, meal_type:mealLogMealType, description:m.description||'', ...(scannedIngredients?.length?{scanned_ingredients:scannedIngredients}:{}), ...(imageUrl?{image_url:imageUrl}:{})}});
   // The "logging it clears what you used" half of the plan <-> grocery sync -- only fires
   // when this meal came from a plan (readMealForm() alone can't carry ingredients).
   if(ingredients?.length) await removeIngredientsFromGroceryList(ingredients);
