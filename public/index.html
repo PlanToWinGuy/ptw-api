@@ -2064,6 +2064,21 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
   <div class="scroll-body" style="padding:0 18px" id="lifescore-detail-body"></div>
 </div>
 
+<!-- Profile metric detail popup (4.20) -- Samsung-Health-style drill-down for each of the
+     6 Profile metric cards: info blurb, a bigger hero chart, then a written stats
+     breakdown + real per-day history below. One shared screen, repainted per metric by
+     openProfileMetricDetail() -- same "one screen, dynamic body" shape as phase-detail/
+     lifescore-detail above, just keyed off PROFILE_METRIC_DETAILS instead of being
+     one-off. -->
+<div id="screen-profile-metric-detail" class="screen">
+  <div class="pillar-top-bar">
+    <button class="icon-btn ghost" onclick="showScreen('profile')">×</button>
+    <h2 style="font-size:15px" id="pmd-title">Metric</h2>
+    <span style="width:36px"></span>
+  </div>
+  <div class="scroll-body" style="padding:0 18px" id="pmd-body"></div>
+</div>
+
 <!-- ══════════════════════════════════
      VISION BOARD (4.3.5)
 ══════════════════════════════════ -->
@@ -7139,10 +7154,23 @@ async function loadProfileMetrics() {
   const completedDaily = aggregateDaily(completedTasks.map(t=>({logged_at:t.updated_at, value:1})));
   const skippedDaily = aggregateDaily(skippedTasks.map(t=>({logged_at:t.updated_at, value:1})));
 
-  // Avg minutes/day (mean, not sum -- aggregateDaily() sums, so this is built by hand).
-  const durByDate={};
-  completedTasks.forEach(t=>{ const d=(t.updated_at||'').split('T')[0]; if(!d) return; (durByDate[d]=durByDate[d]||[]).push(Number(t.estimated_duration_minutes)||0); });
-  const avgTimeDaily = Object.keys(durByDate).sort().map(d=>({logged_at:d, value: durByDate[d].reduce((a,b)=>a+b,0)/durByDate[d].length}));
+  // Total Task Time/day -- real elapsed time, not the old Avg Time/Task estimate. Uses
+  // actual_minutes_spent (the Home ring's manual timer, captured at completion -- see
+  // confirmTaskCompletion() and lib/tasks.js's completeTask()) when it exists, falling
+  // back to estimated_duration_minutes only for tasks completed before that field was
+  // ever recorded (or completed without running the timer) so older history isn't just
+  // dropped. This replaces Avg Time/Task below: that card was already built from
+  // estimated_duration_minutes (an estimate, never what actually happened) and duplicated
+  // this same per-task time data -- Total Task Time is the real version of the same idea,
+  // matching the product ask ("total amount of the day you are intentional and showing up
+  // for yourself").
+  const timeByDate={};
+  completedTasks.forEach(t=>{
+    const d=(t.updated_at||'').split('T')[0]; if(!d) return;
+    const mins = Number(t.actual_minutes_spent) > 0 ? Number(t.actual_minutes_spent) : (Number(t.estimated_duration_minutes)||0);
+    timeByDate[d]=(timeByDate[d]||0)+mins;
+  });
+  const totalTaskTimeDaily = Object.keys(timeByDate).sort().map(d=>({logged_at:d, value: timeByDate[d]}));
 
   // On-time %/day (efficiency) -- same "on time" definition as the backend's own
   // performance-metrics calc (due_date null, or completed on/before it).
@@ -7179,7 +7207,11 @@ async function loadProfileMetrics() {
   // to which pillar filter chip happens to be selected, since these 6 metric *types* stay
   // the same regardless of filter. Borrowed straight from the pillar palette so it stays
   // inside the app's existing colour language instead of inventing new brand colours.
-  const metricCard = (icon, val, label, daily, color) => {
+  // key -- identifies which entry in PROFILE_METRIC_DETAILS this card opens (Part B's
+  // Samsung-Health-style detail popup); tapping any card drills into a bigger version of
+  // this exact sparkline plus a written stats breakdown, reusing the same glass card as
+  // the tap target so there's no separate hitbox/affordance to build.
+  const metricCard = (icon, val, label, daily, color, key) => {
     const vals=daily.map(x=>x.value);
     return glassCard(color, `
       <div style="display:flex;align-items:center;gap:8px">
@@ -7188,20 +7220,131 @@ async function loadProfileMetrics() {
           <div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:var(--text)">${val}</div>
           <div style="font-size:10.5px;color:var(--muted);margin-top:1px">${label}</div>
         </div>
+        <span style="color:${color};opacity:.55;font-size:15px;line-height:1">›</span>
       </div>
       <div style="margin-top:8px">${sparklineSvg(vals.slice(-14), color, {w:120,h:26})}</div>`,
-      {style:'flex:1;min-width:0'});
+      {style:'flex:1;min-width:0', onclick:`openProfileMetricDetail('${key}')`});
   };
 
+  const formatDuration = m => { m=Math.round(m||0); const h=Math.floor(m/60), r=m%60; return h ? `${h}h ${r}m` : `${r}m`; };
+  const totalTaskTimeMinutes = totalTaskTimeDaily.reduce((s,d)=>s+d.value,0);
+
   const cards = [
-    metricCard(ICONS.badge, data?.total_tasks_completed??0, 'Tasks Completed', completedDaily, '#5BA4DC'),
-    metricCard(ICONS.stopwatch, (data?.avg_time_per_task_minutes??0)+'m', 'Avg. Time / Task', avgTimeDaily, '#8A70C0'),
-    metricCard(ICONS.target, (data?.efficiency_percent??0)+'%', 'Efficiency', efficiencyDaily, '#5A9460'),
-    metricCard(ICONS.flame, data?.daily_streak??0, 'Daily Streak', streakDaily, '#E07840'),
-    metricCard(ICONS.checkCircle, (data?.completion_rate_percent??0)+'%', 'Completion Rate', completionRateDaily, '#C9A832'),
-    metricCard(ICONS.warning, data?.skipped_tasks??0, 'Missed Tasks', skippedDaily, '#C46882'),
+    metricCard(ICONS.badge, data?.total_tasks_completed??0, 'Tasks Completed', completedDaily, '#5BA4DC', 'tasksCompleted'),
+    metricCard(ICONS.stopwatch, formatDuration(totalTaskTimeMinutes), 'Total Task Time', totalTaskTimeDaily, '#8A70C0', 'totalTaskTime'),
+    metricCard(ICONS.target, (data?.efficiency_percent??0)+'%', 'Efficiency', efficiencyDaily, '#5A9460', 'efficiency'),
+    metricCard(ICONS.flame, data?.daily_streak??0, 'Daily Streak', streakDaily, '#E07840', 'streak'),
+    metricCard(ICONS.checkCircle, (data?.completion_rate_percent??0)+'%', 'Completion Rate', completionRateDaily, '#C9A832', 'completionRate'),
+    metricCard(ICONS.warning, data?.skipped_tasks??0, 'Missed Tasks', skippedDaily, '#C46882', 'missedTasks'),
   ];
   grid.innerHTML = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">${cards.join('')}</div>`;
+
+  // Stashed for openProfileMetricDetail() (Part B) -- the detail popup reuses this exact
+  // per-day series (already pillar-filtered per S.profilePillarFilter) instead of
+  // re-fetching, so the drill-down always matches what was on screen when it was tapped.
+  S.profileMetricSeries = {
+    tasksCompleted: completedDaily, totalTaskTime: totalTaskTimeDaily, efficiency: efficiencyDaily,
+    streak: streakDaily, completionRate: completionRateDaily, missedTasks: skippedDaily,
+  };
+}
+
+// ── Profile metric detail popup (4.20) -- Samsung Health-style drill-down ──
+// Product ask: "a pop up details page for the metrics cards which have like an info
+// section and then a metrics visual displayed then below the written metrics list...
+// just like how Samsung Health does it." Reuses the exact hero-chart + stat-chips +
+// week-grouped-history shape already built for the pillar Hub drill-downs (see e.g.
+// renderCaloriesMetricDetail() above) rather than inventing a new layout -- info blurb up
+// top is the one genuinely new piece, since Home/Hub metrics are mostly self-explanatory
+// but "Efficiency" vs "Completion Rate" vs "Total Task Time" are easy to mix up.
+const PROFILE_METRIC_DETAILS = {
+  tasksCompleted: {
+    label:'Tasks Completed', icon:ICONS.badge, color:'#5BA4DC', unit:'', agg:'sum', higherIsBetter:true,
+    blurb:"Every task you mark complete adds to this count — a running tally of real follow-through, not just what got scheduled.",
+    format:v=>Math.round(v).toLocaleString(),
+  },
+  totalTaskTime: {
+    label:'Total Task Time', icon:ICONS.stopwatch, color:'#8A70C0', unit:'m', agg:'sum', higherIsBetter:true,
+    blurb:"The real time you spent doing the work — pulled from the timer when you ran one, or the task's planned length when you didn't. This is your intentional time: the total time you actually showed up for yourself, not just a box you checked.",
+    format:v=>{ const m=Math.round(v||0), h=Math.floor(m/60), r=m%60; return h ? `${h}h ${r}m` : `${r}m`; },
+  },
+  efficiency: {
+    label:'Efficiency', icon:ICONS.target, color:'#5A9460', unit:'%', agg:'avg', higherIsBetter:true,
+    blurb:"The share of completed tasks you finished on or before their due date. A high Tasks Completed count with low Efficiency usually means things are getting done — just later than planned.",
+    format:v=>Math.round(v)+'%',
+  },
+  streak: {
+    label:'Daily Streak', icon:ICONS.flame, color:'#E07840', unit:'', agg:'avg', higherIsBetter:true, bestLabel:'Longest Streak',
+    blurb:"Consecutive days with at least one completed task. Unlike the other metrics here, missing a single day resets this one to zero — it rewards showing up every day, not doing more on any one day.",
+    format:v=>Math.round(v)+' days',
+  },
+  completionRate: {
+    label:'Completion Rate', icon:ICONS.checkCircle, color:'#C9A832', unit:'%', agg:'avg', higherIsBetter:true,
+    blurb:"Of everything that came due, the percent you actually completed instead of skipped. This is a ratio, not a raw count, so it won't quietly get worse just because you're doing more overall.",
+    format:v=>Math.round(v)+'%',
+  },
+  missedTasks: {
+    label:'Missed Tasks', icon:ICONS.warning, color:'#C46882', unit:'', agg:'sum', higherIsBetter:false, bestLabel:'Quietest Day',
+    blurb:"Tasks you explicitly skipped rather than completed. The occasional miss is normal — a rising trend here is usually the earliest sign a pillar needs a lighter, more realistic schedule.",
+    format:v=>Math.round(v).toLocaleString(),
+  },
+};
+
+function openProfileMetricDetail(key) {
+  const cfg=PROFILE_METRIC_DETAILS[key];
+  const chrono=(S.profileMetricSeries||{})[key];
+  if(!cfg || !chrono) { toast('No data for this metric yet'); return; }
+  document.getElementById('pmd-title').textContent=cfg.label;
+  showScreen('profile-metric-detail');
+  renderProfileMetricDetail(key, cfg, chrono);
+}
+
+function renderProfileMetricDetail(key, cfg, chrono) {
+  const body=document.getElementById('pmd-body');
+  const color=cfg.color;
+  const info=`<div style="font-size:13px;color:var(--text);line-height:1.6;margin:14px 0 16px">${cfg.blurb}</div>`;
+
+  if(!chrono.length) {
+    body.innerHTML = info + `<div class="empty"><div class="empty-icon">${cfg.icon}</div><div class="empty-text">Not enough history yet — this fills in as you complete real tasks.</div></div>`;
+    return;
+  }
+
+  const vals=chrono.map(d=>d.value);
+  const current=vals[vals.length-1];
+  const delta=computeWeekDelta(chrono);
+  const weekCutoff=Date.now()-7*86400000;
+  const weekVals=chrono.filter(d=>new Date(d.logged_at).getTime()>weekCutoff).map(d=>d.value);
+  const sum=arr=>arr.reduce((a,b)=>a+b,0);
+  const avg=arr=>arr.length?sum(arr)/arr.length:0;
+  const weekStat = cfg.agg==='sum' ? sum(weekVals) : avg(weekVals);
+  const allAvg = avg(vals);
+  const best = cfg.higherIsBetter ? Math.max(...vals) : Math.min(...vals);
+
+  // Hero: same "big current number + delta chip + 30-day sparkline" shape as every other
+  // Hub metric detail (renderCaloriesMetricDetail, renderNetWorthMetricDetail, etc.) --
+  // a ring hero was deliberately skipped here since these 6 don't have a fixed target the
+  // way Water (of 3L) or a workout goal does, so "today vs. a target" framing doesn't fit;
+  // "the trend over time" framing (what a sparkline shows) does.
+  const hero=`<div class="glass-card" style="border:1px solid ${hexToRgba(color,.22)};text-align:center;padding:20px 16px">
+    <div class="section-sub" style="margin:0 0 4px">MOST RECENT DAY</div>
+    <div style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:var(--text)">${cfg.format(current)} ${deltaChipHtml(delta,cfg.unit,cfg.higherIsBetter)}</div>
+    <div style="margin-top:14px">${sparklineSvg(vals.slice(-30), color, {w:300,h:70})}</div>
+  </div>`;
+
+  const chips=`<div style="display:flex;gap:8px;margin:12px 0">
+    ${metricStatChip('This Week', cfg.format(weekStat), color)}
+    ${metricStatChip('Average', cfg.format(allAvg), color)}
+    ${metricStatChip(cfg.bestLabel||'Best Day', cfg.format(best), color)}
+  </div>`;
+
+  const weeks=groupLogsByWeek([...chrono].reverse());
+  const history=weeks.map(w=>`
+    <div class="section-sub" style="margin:16px 0 8px">${weekLabel(w.weekStart)}</div>
+    ${w.logs.map(l=>`<div class="glass-card" style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;margin-bottom:8px;border:1px solid ${hexToRgba(color,.14)}">
+      <span style="font-size:12px;color:var(--stone)">${new Date(l.logged_at+'T00:00:00').toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'})}</span>
+      <span style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text)">${cfg.format(l.value)}</span>
+    </div>`).join('')}`).join('');
+
+  body.innerHTML = info + hero + chips + history;
 }
 
 // ─── THE VAULT (4.18.C) -- a real, curated resource library ───

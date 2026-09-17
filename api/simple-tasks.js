@@ -22,6 +22,7 @@ export function serializeTask(t) {
     recurrence: t.recurrence,
     phase_label: t.phase_label,
     estimated_duration_minutes: t.estimated_duration_minutes,
+    actual_minutes_spent: t.actual_minutes_spent ?? null,
     priority: t.priority,
     status: t.status,
     due_date: t.due_date,
