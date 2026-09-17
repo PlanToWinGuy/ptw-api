@@ -7154,23 +7154,27 @@ async function loadProfileMetrics() {
   const completedDaily = aggregateDaily(completedTasks.map(t=>({logged_at:t.updated_at, value:1})));
   const skippedDaily = aggregateDaily(skippedTasks.map(t=>({logged_at:t.updated_at, value:1})));
 
-  // Total Task Time/day -- real elapsed time, not the old Avg Time/Task estimate. Uses
-  // actual_minutes_spent (the Home ring's manual timer, captured at completion -- see
-  // confirmTaskCompletion() and lib/tasks.js's completeTask()) when it exists, falling
-  // back to estimated_duration_minutes only for tasks completed before that field was
-  // ever recorded (or completed without running the timer) so older history isn't just
-  // dropped. This replaces Avg Time/Task below: that card was already built from
-  // estimated_duration_minutes (an estimate, never what actually happened) and duplicated
-  // this same per-task time data -- Total Task Time is the real version of the same idea,
-  // matching the product ask ("total amount of the day you are intentional and showing up
-  // for yourself").
+  // Avg minutes/day (mean, not sum -- aggregateDaily() sums, so this is built by hand).
+  const durByDate={};
+  completedTasks.forEach(t=>{ const d=(t.updated_at||'').split('T')[0]; if(!d) return; (durByDate[d]=durByDate[d]||[]).push(Number(t.estimated_duration_minutes)||0); });
+  const avgTimeDaily = Object.keys(durByDate).sort().map(d=>({logged_at:d, value: durByDate[d].reduce((a,b)=>a+b,0)/durByDate[d].length}));
+
+  // Daily Intention Time/day -- real elapsed time, replacing the old Missed Tasks card
+  // (product owner flagged that one as negatively framed and didn't want it front and
+  // center on Profile). Uses actual_minutes_spent (the Home ring's manual timer, captured
+  // at completion -- see confirmTaskCompletion() and lib/tasks.js's completeTask()) when
+  // it exists, falling back to estimated_duration_minutes only for tasks completed before
+  // that field was ever recorded (or completed without running the timer) so older history
+  // isn't just dropped. This is the real, per-day version of "the total amount of the day
+  // you are intentional and showing up for yourself" -- distinct from Avg Time/Task above,
+  // which is a mean estimate per task, not real elapsed time.
   const timeByDate={};
   completedTasks.forEach(t=>{
     const d=(t.updated_at||'').split('T')[0]; if(!d) return;
     const mins = Number(t.actual_minutes_spent) > 0 ? Number(t.actual_minutes_spent) : (Number(t.estimated_duration_minutes)||0);
     timeByDate[d]=(timeByDate[d]||0)+mins;
   });
-  const totalTaskTimeDaily = Object.keys(timeByDate).sort().map(d=>({logged_at:d, value: timeByDate[d]}));
+  const intentionTimeDaily = Object.keys(timeByDate).sort().map(d=>({logged_at:d, value: timeByDate[d]}));
 
   // On-time %/day (efficiency) -- same "on time" definition as the backend's own
   // performance-metrics calc (due_date null, or completed on/before it).
@@ -7227,15 +7231,15 @@ async function loadProfileMetrics() {
   };
 
   const formatDuration = m => { m=Math.round(m||0); const h=Math.floor(m/60), r=m%60; return h ? `${h}h ${r}m` : `${r}m`; };
-  const totalTaskTimeMinutes = totalTaskTimeDaily.reduce((s,d)=>s+d.value,0);
+  const intentionTimeMinutes = intentionTimeDaily.reduce((s,d)=>s+d.value,0);
 
   const cards = [
     metricCard(ICONS.badge, data?.total_tasks_completed??0, 'Tasks Completed', completedDaily, '#5BA4DC', 'tasksCompleted'),
-    metricCard(ICONS.stopwatch, formatDuration(totalTaskTimeMinutes), 'Total Task Time', totalTaskTimeDaily, '#8A70C0', 'totalTaskTime'),
+    metricCard(ICONS.stopwatch, (data?.avg_time_per_task_minutes??0)+'m', 'Avg. Time / Task', avgTimeDaily, '#8A70C0', 'avgTime'),
     metricCard(ICONS.target, (data?.efficiency_percent??0)+'%', 'Efficiency', efficiencyDaily, '#5A9460', 'efficiency'),
     metricCard(ICONS.flame, data?.daily_streak??0, 'Daily Streak', streakDaily, '#E07840', 'streak'),
     metricCard(ICONS.checkCircle, (data?.completion_rate_percent??0)+'%', 'Completion Rate', completionRateDaily, '#C9A832', 'completionRate'),
-    metricCard(ICONS.warning, data?.skipped_tasks??0, 'Missed Tasks', skippedDaily, '#C46882', 'missedTasks'),
+    metricCard(ICONS.clock, formatDuration(intentionTimeMinutes), 'Daily Intention Time', intentionTimeDaily, '#C46882', 'intentionTime'),
   ];
   grid.innerHTML = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">${cards.join('')}</div>`;
 
@@ -7243,8 +7247,8 @@ async function loadProfileMetrics() {
   // per-day series (already pillar-filtered per S.profilePillarFilter) instead of
   // re-fetching, so the drill-down always matches what was on screen when it was tapped.
   S.profileMetricSeries = {
-    tasksCompleted: completedDaily, totalTaskTime: totalTaskTimeDaily, efficiency: efficiencyDaily,
-    streak: streakDaily, completionRate: completionRateDaily, missedTasks: skippedDaily,
+    tasksCompleted: completedDaily, avgTime: avgTimeDaily, efficiency: efficiencyDaily,
+    streak: streakDaily, completionRate: completionRateDaily, intentionTime: intentionTimeDaily,
   };
 }
 
@@ -7255,17 +7259,18 @@ async function loadProfileMetrics() {
 // week-grouped-history shape already built for the pillar Hub drill-downs (see e.g.
 // renderCaloriesMetricDetail() above) rather than inventing a new layout -- info blurb up
 // top is the one genuinely new piece, since Home/Hub metrics are mostly self-explanatory
-// but "Efficiency" vs "Completion Rate" vs "Total Task Time" are easy to mix up.
+// but "Efficiency" vs "Completion Rate" vs "Avg. Time / Task" vs "Daily Intention Time"
+// are easy to mix up.
 const PROFILE_METRIC_DETAILS = {
   tasksCompleted: {
     label:'Tasks Completed', icon:ICONS.badge, color:'#5BA4DC', unit:'', agg:'sum', higherIsBetter:true,
     blurb:"Every task you mark complete adds to this count — a running tally of real follow-through, not just what got scheduled.",
     format:v=>Math.round(v).toLocaleString(),
   },
-  totalTaskTime: {
-    label:'Total Task Time', icon:ICONS.stopwatch, color:'#8A70C0', unit:'m', agg:'sum', higherIsBetter:true,
-    blurb:"The real time you spent doing the work — pulled from the timer when you ran one, or the task's planned length when you didn't. This is your intentional time: the total time you actually showed up for yourself, not just a box you checked.",
-    format:v=>{ const m=Math.round(v||0), h=Math.floor(m/60), r=m%60; return h ? `${h}h ${r}m` : `${r}m`; },
+  avgTime: {
+    label:'Avg. Time / Task', icon:ICONS.stopwatch, color:'#8A70C0', unit:'m', agg:'avg', higherIsBetter:true,
+    blurb:"The mean planned length of the tasks you complete each day, from each task's own estimate. It moves with what kind of tasks you're doing, not with how much time you actually spent -- see Daily Intention Time for the real elapsed version.",
+    format:v=>Math.round(v)+'m',
   },
   efficiency: {
     label:'Efficiency', icon:ICONS.target, color:'#5A9460', unit:'%', agg:'avg', higherIsBetter:true,
@@ -7282,10 +7287,10 @@ const PROFILE_METRIC_DETAILS = {
     blurb:"Of everything that came due, the percent you actually completed instead of skipped. This is a ratio, not a raw count, so it won't quietly get worse just because you're doing more overall.",
     format:v=>Math.round(v)+'%',
   },
-  missedTasks: {
-    label:'Missed Tasks', icon:ICONS.warning, color:'#C46882', unit:'', agg:'sum', higherIsBetter:false, bestLabel:'Quietest Day',
-    blurb:"Tasks you explicitly skipped rather than completed. The occasional miss is normal — a rising trend here is usually the earliest sign a pillar needs a lighter, more realistic schedule.",
-    format:v=>Math.round(v).toLocaleString(),
+  intentionTime: {
+    label:'Daily Intention Time', icon:ICONS.clock, color:'#C46882', unit:'m', agg:'sum', higherIsBetter:true,
+    blurb:"The real time you spent doing the work — pulled from the timer when you ran one, or the task's planned length when you didn't. This is your intentional time: the total time you actually showed up for yourself, not just a box you checked.",
+    format:v=>{ const m=Math.round(v||0), h=Math.floor(m/60), r=m%60; return h ? `${h}h ${r}m` : `${r}m`; },
   },
 };
 
