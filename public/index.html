@@ -2670,7 +2670,14 @@ async function req(method, path, body) {
   // takes longer than a normal API call -- side-quests/custom + refine were left off this
   // list when their own max_tokens got raised for a truncation fix, so a real (slower but
   // successful) generation now silently aborted client-side at 12s with no visible error.
-  const timeout = path.includes('/goals') || path.includes('/metrics') || path.includes('/ai/chat') || path.includes('/side-quests') || path.includes('/essential-apps') || path.includes('/fitness') ? 45000 : 12000;
+  // refine-chat specifically gets more room than the rest of /goals: a Diet turn's tool
+  // call now also has to reproduce the full mealPlans array every message (see
+  // api/goals/refine-chat.js's buildRefineTool/REFINE_DIET_ADDENDUM), which is genuinely
+  // slower to generate than the rest of this app's AI calls -- matches that endpoint's own
+  // maxDuration:60 in vercel.json (kept just above it so a real slow-but-successful call
+  // gets its actual response instead of the client giving up first).
+  const timeout = path.includes('/refine-chat') ? 62000
+    : (path.includes('/goals') || path.includes('/metrics') || path.includes('/ai/chat') || path.includes('/side-quests') || path.includes('/essential-apps') || path.includes('/fitness')) ? 45000 : 12000;
   try {
     const r = await fetch(API + path, {method, headers:h, body:body?JSON.stringify(body):undefined, signal:AbortSignal.timeout(timeout)});
     if (r.status===401) { doLogout(); return null; }

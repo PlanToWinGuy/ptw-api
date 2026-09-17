@@ -142,12 +142,18 @@ async function chatTurn(req, res, user) {
   const messages = [...history, { role: 'user', content: message }];
 
   try {
+    // Diet's tool call now also has to reproduce a full mealPlans array (name/macros/
+    // ingredients/instructions per meal, same granularity as DIET_ADDENDUM) every turn --
+    // 4000 was already the generic plan's ceiling before that; matches goals.js's own
+    // maxTokens bump for the exact same reason (a truncated mid-JSON tool call silently
+    // falls back to the current unchanged plan below instead of applying the real edit).
+    const maxTokens = pillarKey === 'diet' ? 6500 : 4000;
     const r = await fetch(ANTHROPIC_URL, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 4000,
+        max_tokens: maxTokens,
         temperature: 0.4,
         system,
         tools: [buildRefineTool(pillarKey)],
