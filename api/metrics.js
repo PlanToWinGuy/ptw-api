@@ -1,3 +1,5 @@
+import crypto from 'crypto';
+import { put } from '@vercel/blob';
 import { sql } from '../lib/db.js';
 import { cors } from '../lib/cors.js';
 import { getUserFromRequest } from '../lib/auth.js';
@@ -117,9 +119,30 @@ async function foodSearch(req, res) {
   }
 }
 
+// Persists a meal photo to Vercel Blob storage (same put()-based pattern as
+// avatar/upload.js and vision-board/upload.js) so it survives past the transient
+// scan-meal draft -- confirmLogMeal() calls this right before creating the metric_logs
+// row and stores the returned URL in data.image_url, instead of stuffing the raw base64
+// (already in memory client-side for the AI scan) directly into the JSONB column, which
+// would bloat every future logs query for a photo-heavy Diet history.
+async function uploadMealPhoto(req, res, user) {
+  const { image_base64, media_type } = req.body || {};
+  if (!image_base64) return res.status(422).json({ message: 'image_base64 is required' });
+  try {
+    const buffer = Buffer.from(image_base64, 'base64');
+    const ext = (media_type || 'image/jpeg').split('/').pop().split('+')[0] || 'jpg';
+    const pathname = `meal-photos/${user.id}/${crypto.randomUUID()}.${ext}`;
+    const blob = await put(pathname, buffer, { access: 'public', contentType: media_type || 'image/jpeg' });
+    res.status(201).json({ data: { url: blob.url, pathname: blob.pathname } });
+  } catch (e) {
+    res.status(500).json({ message: 'Could not save that photo — try again', error: String(e) });
+  }
+}
+
 // GET/POST /api/metrics handles logging + fetching; POST /api/metrics/scan-meal
 // (rewritten to ?action=scan-meal) handles the AI vision draft step; GET
-// ?action=food-search handles the manual-entry USDA food lookup.
+// ?action=food-search handles the manual-entry USDA food lookup; POST
+// ?action=upload-meal-photo persists a meal photo (see uploadMealPhoto above).
 export default async function handler(req, res) {
   if (cors(req, res)) return;
   const user = await getUserFromRequest(req);
@@ -127,6 +150,7 @@ export default async function handler(req, res) {
 
   if (req.method === 'POST' && req.query.action === 'scan-meal') return scanMeal(req, res);
   if (req.method === 'GET' && req.query.action === 'food-search') return foodSearch(req, res);
+  if (req.method === 'POST' && req.query.action === 'upload-meal-photo') return uploadMealPhoto(req, res, user);
 
   if (req.method === 'GET') {
     const pillar_id = req.query.pillar_id ? Number(req.query.pillar_id) : null;
