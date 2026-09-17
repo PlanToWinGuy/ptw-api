@@ -14319,6 +14319,10 @@ async function loadPillarRoadmap(pillarKey) {
 // Synergy opens Pillar Select only when the complementary pillar isn't active yet.
 function onStrategyCardTap(type, pillarKey, pillarActive) {
   if(type==='workouts') { pillarKey==='fitness' ? openWorkoutHub() : switchPillarTab('map'); }
+  // Same structural pattern as the 'workouts' card above -- jumps straight to the Meal
+  // Hub's Meal Plans tab (mh-tab-mealplans, see switchMealHubTab()) instead of leaving
+  // "Your Meal Plan" as a dead tap target the way it was before.
+  else if(type==='meals') { pillarKey==='diet' ? (showScreen('meal-hub'), switchMealHubTab('mealplans')) : switchPillarTab('map'); }
   else if(type==='habits') { toast('This habit lives in your Routines Library -- open it there to change its time or pause it.'); openTodoRoutines(); }
   else if(type==='synergy') { if(!pillarActive) openPillarSelect(); }
 }
