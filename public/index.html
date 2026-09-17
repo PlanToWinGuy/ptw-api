@@ -659,6 +659,14 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
 .q-opt.sel{border-color:var(--blue);background:rgba(91,164,220,.12);color:var(--text)}
 .chat-quick-btn{padding:11px 14px;border-radius:12px;border:1.5px solid rgba(91,164,220,.35);background:rgba(91,164,220,.1);color:var(--blue);font-size:13px;font-weight:600;cursor:pointer;text-align:left;font-family:'Inter',sans-serif}
 .chat-quick-btn:active{background:rgba(91,164,220,.2)}
+/* "Thinking" typing indicator -- shown the moment a refine-chat message is sent, until
+   the real reply + plan update arrive (see sendRefineChatMessage()). Matches the assistant
+   bubble's own background so it reads as "a reply is being written", not a separate widget. */
+.chat-typing-bubble{display:inline-flex;align-items:center;gap:4px;padding:12px 16px;border-radius:14px;background:var(--bg3)}
+.chat-typing-dot{width:7px;height:7px;border-radius:50%;background:var(--stone);opacity:.5;animation:chatTypingBounce 1.2s infinite ease-in-out}
+.chat-typing-dot:nth-child(2){animation-delay:.15s}
+.chat-typing-dot:nth-child(3){animation-delay:.3s}
+@keyframes chatTypingBounce{0%,60%,100%{transform:translateY(0);opacity:.5}30%{transform:translateY(-5px);opacity:1}}
 .pillar-select-card{background:var(--bg3);border:1.5px solid rgba(196,184,168,.12);border-radius:14px;padding:14px;text-align:left;cursor:pointer;transition:border-color .15s}
 .pillar-select-icon{font-size:26px;text-align:center;margin-bottom:8px}
 .pillar-select-label-box{border:1.5px solid rgba(196,184,168,.15);border-radius:10px;padding:8px 6px;text-align:center;margin-bottom:8px;transition:border-color .15s}
@@ -5022,6 +5030,23 @@ function renderBlueprintPlanHtml(plan, pillarKey) {
       ${(ph.actions||[]).map(a=>`<div style="font-size:13px;color:var(--text);padding:6px 0;border-top:1px solid rgba(196,184,168,.07)">• ${a}${isRecurringActionText(a)?' <span style="color:'+p.color+';font-size:11px">🔁 Every day</span>':''}</div>`).join('')}
     </div>`;
   });
+  // Diet only: the real starter meal plans this plan actually produces (from
+  // api/goals.js's DIET_ADDENDUM, or whatever the refine-chat conversation most recently
+  // changed them to -- see api/goals/refine-chat.js's REFINE_DIET_ADDENDUM/
+  // applyDietMealPlans()). Read-only summary here (this may be an unapproved chat draft,
+  // not yet what's persisted in the Meal Hub) plus a real link into the Meal Hub's own
+  // Meal Plans tab, which has the actual log-a-meal/view-detail interactions built already.
+  if(pillarKey==='diet' && Array.isArray(plan.mealPlans) && plan.mealPlans.length) {
+    html += `<div class="section-title">Meal Plans</div>`;
+    html += plan.mealPlans.map(mp=>`<div class="rm-goal-card" style="margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <span style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text)">${mp.name||'Meal'}</span>
+        <span style="font-size:11px;color:var(--stone)">${mp.calories||0} kcal</span>
+      </div>
+      <div style="font-size:12px;color:var(--stone)">${mp.mealType||'Meal'} · P:${mp.protein_g||0} C:${mp.carbs_g||0} F:${mp.fat_g||0} · ${(mp.ingredients||[]).length} ingredient${(mp.ingredients||[]).length===1?'':'s'}</div>
+    </div>`).join('');
+    html += `<button class="btn-p" style="margin:4px 0 14px;border-color:${p.color}66;color:${p.color}" onclick="showScreen('meal-hub');switchMealHubTab('mealplans')">🍽️ View in Meal Hub</button>`;
+  }
   if((plan.milestones||[]).length) {
     html += `<div class="section-title">Roadmap</div><div class="timeline">`;
     plan.milestones.forEach((m,i)=>{
@@ -5083,7 +5108,7 @@ function openRefineChatFromBlueprint() {
 // goal row or touches is_active/unlocked-pillar state the way a retake/supersede
 // (generateGoal()'s own cleanup step) does, and Completed tasks are never touched either
 // way. So the exact same finalize call is correct for both entry points.
-function openRefineChatFromRoadmap(pillarKey) {
+async function openRefineChatFromRoadmap(pillarKey) {
   const g = S.roadmapActiveGoal;
   if(!g?.id) { toast('Nothing to refine yet'); return; }
   const p = PILLARS[pillarKey];
@@ -5093,6 +5118,26 @@ function openRefineChatFromRoadmap(pillarKey) {
     phases: g.phases||[], dailyAnchor: g.dailyAnchor, milestones: g.milestones||[],
     alts: g.alts||[], tips: g.tips||[], timelineType: g.timelineType, endDate: g.endDate,
   };
+  // Diet: seed the plan's mealPlans/dailyTargets with what's actually stored right now
+  // (an already-active goal's plan object here has no such fields otherwise) so 1) Plan
+  // Preview has something real to show before the first chat turn, and 2) the AI sees the
+  // real current meal plans as context and is required to return their full state every
+  // turn (see api/goals/refine-chat.js's buildRefineTool) -- without this, a preference
+  // raised in chat would have nothing to actually edit. Only AI-generated plans (not ones
+  // manually created in the Meal Hub) are ever managed through this refine flow.
+  if(pillarKey==='diet') {
+    const [plansData, targetsData] = await Promise.all([
+      req('GET','/metrics?pillar_id='+PILLARS.diet.id+'&log_type=meal_plan'),
+      req('GET','/metrics?pillar_id='+PILLARS.diet.id+'&log_type=diet_targets'),
+    ]);
+    const aiPlans=(plansData?.logs||[]).filter(l=>l.data?.source!=='manual');
+    S.refineChatPlan.mealPlans = aiPlans.map(l=>({
+      name: l.data?.name||'', mealType: l.data?.mealType||'', calories: (l.data?.calories ?? Number(l.value)) || 0,
+      protein_g: l.data?.protein_g||0, carbs_g: l.data?.carbs_g||0, fat_g: l.data?.fat_g||0,
+      ingredients: l.data?.ingredients||[], instructions: l.data?.instructions||'',
+    }));
+    if(targetsData?.logs?.[0]?.data) S.refineChatPlan.dailyTargets = targetsData.logs[0].data;
+  }
   S.refineChatMessages = [{role:'assistant', text:`Let's refine your active ${p.label} plan. Tell me what you'd like to change, or ask me why I set something up a certain way.`}];
   S.refineChatHistory = [];
   S.refineChatReturnTo = 'roadmap';
@@ -5123,22 +5168,31 @@ function renderRefineChatMessages() {
       <div style="max-width:78%;padding:10px 14px;border-radius:14px;background:${isUser?'var(--blue)':'var(--bg3)'};color:${isUser?'#fff':'var(--text)'};font-size:14px;line-height:1.4">${m.text}</div>
     </div>`;
   }).join('');
-  const showQuickReplies=S.refineChatMessages.length<=1;
+  // "Thinking" indicator -- a refine-chat turn is a forced-tool-call generation, not a
+  // fast lookup, so this fills the real wait between send and the reply/plan update
+  // arriving (see sendRefineChatMessage()) instead of the chat looking frozen/unresponsive.
+  const typingBubble=S.refineChatTyping?`<div style="display:flex;justify-content:flex-start;margin:8px 0">
+    <div class="chat-typing-bubble"><span class="chat-typing-dot"></span><span class="chat-typing-dot"></span><span class="chat-typing-dot"></span></div>
+  </div>`:'';
+  const showQuickReplies=S.refineChatMessages.length<=1 && !S.refineChatTyping;
   const quickReplies=showQuickReplies?`<div style="display:flex;flex-direction:column;gap:8px;margin-top:20px">
     ${REFINE_CHAT_QUICK_PROMPTS.map(t=>`<button type="button" class="chat-quick-btn" onclick="sendRefineChatMessage('${t.replace(/'/g,"\\'")}')">${t}</button>`).join('')}
   </div>`:'';
-  el.innerHTML=bubbles+quickReplies;
+  el.innerHTML=bubbles+typingBubble+quickReplies;
   el.scrollTop=el.scrollHeight;
 }
 
 async function sendRefineChatMessage(prefilled) {
+  if(S.refineChatTyping) return; // already waiting on a reply -- ignore a double-send
   const input=document.getElementById('refine-chat-input');
   const text=(prefilled!==undefined?prefilled:input.value).trim();
   if(!text) return;
   S.refineChatMessages.push({role:'user', text});
   if(input) input.value='';
+  S.refineChatTyping=true;
   renderRefineChatMessages();
   const data=await req('POST','/goals/refine-chat',{goal_id:S.refineChatPlan.id, message:text, conversation_history:S.refineChatHistory, current_plan:S.refineChatPlan});
+  S.refineChatTyping=false;
   if(!data || data.errors) { S.refineChatMessages.push({role:'assistant', text:"Sorry, I couldn't process that — try again."}); renderRefineChatMessages(); return; }
   S.refineChatHistory.push({role:'user', content:text});
   S.refineChatHistory.push({role:'assistant', content:data.reply});

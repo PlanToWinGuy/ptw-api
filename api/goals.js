@@ -559,53 +559,11 @@ async function generateGoal(req, res, user) {
     }
   }
 
-  // Diet gets real meal plan templates stored as metric_logs (same pattern as Fitness's
-  // workoutPlans), and their ingredients merge straight into the Grocery List -- "planning
-  // a meal stocks your list; logging it later clears what you actually used" (the removal
-  // half happens client-side in confirmLogMeal() when a meal is logged against a plan).
-  if (pillar_name.toLowerCase() === 'diet' && Array.isArray(plan.mealPlans)) {
-    const allIngredients = [];
-    for (const mp of plan.mealPlans) {
-      await sql`
-        INSERT INTO metric_logs (user_id, pillar_id, log_type, value, unit, data)
-        VALUES (${user.id}, ${pillar_id}, 'meal_plan', ${mp.calories || null}, 'kcal',
-                ${JSON.stringify({ name: mp.name, mealType: mp.mealType || null, calories: Number(mp.calories) || 0, protein_g: mp.protein_g || 0, carbs_g: mp.carbs_g || 0, fat_g: mp.fat_g || 0, ingredients: mp.ingredients || [], instructions: mp.instructions || '', source: 'goal' })}::jsonb)
-      `;
-      (mp.ingredients || []).forEach(ing => { if (ing?.name) allIngredients.push(ing); });
-    }
-    if (allIngredients.length) await mergeIntoGroceryList(sql, user.id, pillar_id, allIngredients);
-
-    // Real breakfast/lunch/dinner log reminders on the actual daily schedule -- the meal
-    // plans themselves only ever lived in the Meal Hub's "My Plans" tab and the Grocery
-    // List; nothing ever told the day "here's when to log breakfast/lunch/dinner," so
-    // Daily Overview never looked like an actual eating schedule despite the plan
-    // covering all three meals. One routine per distinct meal type the plan actually
-    // covers (not a fixed three -- a 2-meals-a-day plan only gets 2 reminders).
-    const MEAL_TIME_DEFAULTS = { breakfast: '07:30', lunch: '12:30', dinner: '18:30', snack: '15:00' };
-    const distinctMealTypes = [...new Set(plan.mealPlans.map(mp => String(mp.mealType || '').toLowerCase()).filter(mt => MEAL_TIME_DEFAULTS[mt]))];
-    for (const mealType of distinctMealTypes) {
-      const routineName = `Log your ${mealType}`;
-      await sql`
-        INSERT INTO routines (user_id, goal_id, name, category, is_active, schedule_days, schedule_time, steps, tool_hint, end_date)
-        VALUES (${user.id}, ${goal_id}, ${routineName}, ${pillar_name}, true, ${[]}, ${MEAL_TIME_DEFAULTS[mealType]}::time,
-                ${JSON.stringify([{ name: routineName, durationMinutes: 5 }])}::jsonb, 'meal', NULL)
-      `;
-    }
-
-    // Real daily calorie/macro targets (estimated TDEE + goal-direction adjustment, see
-    // DIET_ADDENDUM) replace the frontend's old hardcoded 2300kcal placeholder -- a single
-    // row, same "one flexible row per user" pattern as the Grocery List, upserted so
-    // retaking the assessment updates the target instead of leaving a stale one behind.
-    if (plan.dailyTargets && Number(plan.dailyTargets.calories) > 0) {
-      const targetsData = { calories: Number(plan.dailyTargets.calories) || 0, protein_g: Number(plan.dailyTargets.protein_g) || 0, carbs_g: Number(plan.dailyTargets.carbs_g) || 0, fat_g: Number(plan.dailyTargets.fat_g) || 0 };
-      const existingTargets = await sql`SELECT id FROM metric_logs WHERE user_id = ${user.id} AND log_type = 'diet_targets' LIMIT 1`;
-      if (existingTargets.length) {
-        await sql`UPDATE metric_logs SET data = ${JSON.stringify(targetsData)}::jsonb, value = ${targetsData.calories} WHERE id = ${existingTargets[0].id}`;
-      } else {
-        await sql`INSERT INTO metric_logs (user_id, pillar_id, log_type, value, unit, data) VALUES (${user.id}, ${pillar_id}, 'diet_targets', ${targetsData.calories}, 'kcal', ${JSON.stringify(targetsData)}::jsonb)`;
-      }
-    }
-  }
+  // Diet gets real meal plan templates + daily targets + meal-log reminder routines --
+  // see applyDietMealPlans() below (shared with api/goals/refine-chat.js's finalizePlan
+  // so a chat-refined preference, e.g. "no fish", actually regenerates these real records
+  // instead of leaving stale ones behind).
+  await applyDietMealPlans(user, goal_id, pillar_id, pillar_name, plan);
 
   // Finances gets a real starter budget (see FINANCE_ADDENDUM) auto-applied instead of the
   // Budgets tab starting at a blank hardcoded $2500 the user has to fill in themselves --
@@ -673,6 +631,65 @@ async function mergeIntoGroceryList(sql, userId, pillarId, ingredients) {
     await sql`UPDATE metric_logs SET data = ${JSON.stringify({ items })}::jsonb WHERE id = ${existing.id}`;
   } else {
     await sql`INSERT INTO metric_logs (user_id, pillar_id, log_type, data) VALUES (${userId}, ${pillarId}, 'grocery_list', ${JSON.stringify({ items })}::jsonb)`;
+  }
+}
+
+// Diet's real meal plan templates + daily calorie/macro targets + meal-log reminder
+// routines -- extracted out of generateGoal() so api/goals/refine-chat.js's finalizePlan
+// can call the exact same logic. This is the fix for chat-refinement preferences (e.g.
+// "no fish") never reaching the actual stored meal plans: previously ONLY generateGoal()
+// (fresh generation / retake) ever wrote meal_plan metric_logs rows -- a chat-refined
+// plan's finalize step resynced routines/tasks via applyPlanToTasksAndRoutines but never
+// touched meal_plan records at all, so old (possibly restriction-violating) AI-generated
+// meal plans just sat there untouched regardless of what the conversation changed.
+// Old AI-sourced plans (data.source='goal') are cleared first so a regenerated set truly
+// REPLACES the stale one instead of stacking duplicates on every retake/refinement --
+// manually-created plans (data.source='manual', from the Meal Hub's own "Create Meal
+// Plan") are never touched by this delete.
+export async function applyDietMealPlans(user, goal_id, pillar_id, pillar_name, plan) {
+  if ((pillar_name || '').toLowerCase() !== 'diet' || !Array.isArray(plan.mealPlans) || !plan.mealPlans.length) return;
+
+  await sql`DELETE FROM metric_logs WHERE user_id = ${user.id} AND pillar_id = ${pillar_id} AND log_type = 'meal_plan' AND data->>'source' = 'goal'`;
+
+  const allIngredients = [];
+  for (const mp of plan.mealPlans) {
+    await sql`
+      INSERT INTO metric_logs (user_id, pillar_id, log_type, value, unit, data)
+      VALUES (${user.id}, ${pillar_id}, 'meal_plan', ${mp.calories || null}, 'kcal',
+              ${JSON.stringify({ name: mp.name, mealType: mp.mealType || null, calories: Number(mp.calories) || 0, protein_g: mp.protein_g || 0, carbs_g: mp.carbs_g || 0, fat_g: mp.fat_g || 0, ingredients: mp.ingredients || [], instructions: mp.instructions || '', source: 'goal' })}::jsonb)
+    `;
+    (mp.ingredients || []).forEach(ing => { if (ing?.name) allIngredients.push(ing); });
+  }
+  if (allIngredients.length) await mergeIntoGroceryList(sql, user.id, pillar_id, allIngredients);
+
+  // Real breakfast/lunch/dinner log reminders on the actual daily schedule -- one routine
+  // per distinct meal type the plan actually covers (not a fixed three -- a 2-meals-a-day
+  // plan only gets 2 reminders). finalizePlan() already deactivates this goal's old
+  // routines (including any previous "Log your X" ones) before calling here, so this only
+  // ever adds fresh active ones for whatever meal types survived the refinement.
+  const MEAL_TIME_DEFAULTS = { breakfast: '07:30', lunch: '12:30', dinner: '18:30', snack: '15:00' };
+  const distinctMealTypes = [...new Set(plan.mealPlans.map(mp => String(mp.mealType || '').toLowerCase()).filter(mt => MEAL_TIME_DEFAULTS[mt]))];
+  for (const mealType of distinctMealTypes) {
+    const routineName = `Log your ${mealType}`;
+    await sql`
+      INSERT INTO routines (user_id, goal_id, name, category, is_active, schedule_days, schedule_time, steps, tool_hint, end_date)
+      VALUES (${user.id}, ${goal_id}, ${routineName}, ${pillar_name}, true, ${[]}, ${MEAL_TIME_DEFAULTS[mealType]}::time,
+              ${JSON.stringify([{ name: routineName, durationMinutes: 5 }])}::jsonb, 'meal', NULL)
+    `;
+  }
+
+  // Real daily calorie/macro targets (estimated TDEE + goal-direction adjustment, see
+  // DIET_ADDENDUM) -- a single row, same "one flexible row per user" pattern as the
+  // Grocery List, upserted so a retake/refinement updates the target instead of leaving a
+  // stale one behind.
+  if (plan.dailyTargets && Number(plan.dailyTargets.calories) > 0) {
+    const targetsData = { calories: Number(plan.dailyTargets.calories) || 0, protein_g: Number(plan.dailyTargets.protein_g) || 0, carbs_g: Number(plan.dailyTargets.carbs_g) || 0, fat_g: Number(plan.dailyTargets.fat_g) || 0 };
+    const existingTargets = await sql`SELECT id FROM metric_logs WHERE user_id = ${user.id} AND log_type = 'diet_targets' LIMIT 1`;
+    if (existingTargets.length) {
+      await sql`UPDATE metric_logs SET data = ${JSON.stringify(targetsData)}::jsonb, value = ${targetsData.calories} WHERE id = ${existingTargets[0].id}`;
+    } else {
+      await sql`INSERT INTO metric_logs (user_id, pillar_id, log_type, value, unit, data) VALUES (${user.id}, ${pillar_id}, 'diet_targets', ${targetsData.calories}, 'kcal', ${JSON.stringify(targetsData)}::jsonb)`;
+    }
   }
 }
 

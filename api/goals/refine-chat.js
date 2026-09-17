@@ -2,7 +2,7 @@ import { sql, PILLARS } from '../../lib/db.js';
 import { cors } from '../../lib/cors.js';
 import { getUserFromRequest } from '../../lib/auth.js';
 import { addDays, parseTimelineDays } from '../../lib/scheduling.js';
-import { SYSTEM, PILLAR_PRINCIPLES, moveTipPhrasedActionsToTips, valueprintContext, profileContext, applyPlanToTasksAndRoutines } from '../goals.js';
+import { SYSTEM, PILLAR_PRINCIPLES, DIET_ADDENDUM, moveTipPhrasedActionsToTips, valueprintContext, profileContext, applyPlanToTasksAndRoutines, applyDietMealPlans } from '../goals.js';
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 
@@ -20,45 +20,84 @@ Stay grounded in the same plan-structuring rules above (timeline logic, the acti
 If their message is a question or comment that doesn't actually require a plan change (e.g. "why mornings?"), set planChanged to false and return the plan completely unchanged -- never invent a change just to have something to show.
 If they ask for something outside what a goal plan controls (e.g. medical/legal/financial advice beyond this app's own guidance), answer briefly and honestly in "reply" but leave the plan unchanged.`;
 
-const REFINE_TOOL = {
-  name: 'update_refined_plan',
-  description: "Reply to the user's refinement message and return the plan's full current state (changed by this turn, or copied through unchanged).",
-  input_schema: {
-    type: 'object',
-    properties: {
-      reply: { type: 'string', description: 'Conversational, second-person reply, 1-4 sentences: explain what you changed and why, answer their question, or ask a clarifying question.' },
-      planChanged: { type: 'boolean', description: 'true only if "plan" differs from what was given to you this turn.' },
-      plan: {
+// Diet plans carry real starter meal plans + daily targets as first-class parts of the
+// plan (see DIET_ADDENDUM), not just phases/tips -- without this, a preference raised in
+// chat (e.g. "no fish") only ever changed the conversational reply and generic plan text,
+// never the actual meal plan records the Meal Hub/grocery list/logging all read from,
+// since those never round-tripped through the refine tool call at all. This is the fix:
+// mealPlans/dailyTargets are now real fields of the tool's "plan" object (see
+// buildRefineTool below) whenever this is a Diet goal, so an AI-issued swap here flows
+// straight into finalizePlan()'s applyDietMealPlans() call, exactly like a fresh generation.
+const REFINE_DIET_ADDENDUM = `This plan also has real starter meal plans ("mealPlans") and daily calorie/macro targets ("dailyTargets") as full first-class parts of the plan, exactly like phases/tips -- always return their complete current state in your tool call (copied through unchanged unless this turn concerns them), formatted per your original generation instructions:
+${DIET_ADDENDUM}
+Critical: if they mention any dietary restriction, allergy, dislike, or ingredient to avoid (e.g. "no fish", "I'm allergic to peanuts", "cutting dairy"), don't just acknowledge it in "reply" -- actually rewrite every affected entry in "mealPlans" (swap the whole meal for a different one if removing the ingredient would break the recipe, not just delete an ingredient line) so no restricted/disliked item remains anywhere in the plan. This is a real correctness requirement, not a suggestion -- a plan that still lists a restricted ingredient after they raised it is wrong.`;
+
+const REFINE_TOOL_PLAN_BASE = {
+  type: 'object',
+  properties: {
+    title: { type: 'string' },
+    timeline: { type: 'string' },
+    why: { type: 'string' },
+    phases: {
+      type: 'array',
+      items: {
         type: 'object',
         properties: {
-          title: { type: 'string' },
-          timeline: { type: 'string' },
-          why: { type: 'string' },
-          phases: {
-            type: 'array',
-            items: {
-              type: 'object',
-              properties: {
-                label: { type: 'string' }, duration: { type: 'string' }, focus: { type: 'string' },
-                actions: { type: 'array', items: { type: 'string' } },
-              },
-              required: ['label', 'actions'],
-            },
-          },
-          dailyAnchor: { type: 'string' },
-          milestones: {
-            type: 'array',
-            items: { type: 'object', properties: { label: { type: 'string' }, marker: { type: 'string' } }, required: ['label', 'marker'] },
-          },
-          alts: { type: 'array', items: { type: 'string' } },
-          tips: { type: 'array', items: { type: 'string' } },
+          label: { type: 'string' }, duration: { type: 'string' }, focus: { type: 'string' },
+          actions: { type: 'array', items: { type: 'string' } },
         },
-        required: ['title', 'timeline', 'why', 'phases', 'dailyAnchor', 'milestones', 'alts', 'tips'],
+        required: ['label', 'actions'],
       },
     },
-    required: ['reply', 'planChanged', 'plan'],
+    dailyAnchor: { type: 'string' },
+    milestones: {
+      type: 'array',
+      items: { type: 'object', properties: { label: { type: 'string' }, marker: { type: 'string' } }, required: ['label', 'marker'] },
+    },
+    alts: { type: 'array', items: { type: 'string' } },
+    tips: { type: 'array', items: { type: 'string' } },
   },
+  required: ['title', 'timeline', 'why', 'phases', 'dailyAnchor', 'milestones', 'alts', 'tips'],
 };
+
+// Diet's mealPlans/dailyTargets are only added to the tool schema (and required) for
+// Diet goals -- other pillars' plan shape is unchanged.
+function buildRefineTool(pillarKey) {
+  const planSchema = { ...REFINE_TOOL_PLAN_BASE, properties: { ...REFINE_TOOL_PLAN_BASE.properties }, required: [...REFINE_TOOL_PLAN_BASE.required] };
+  if (pillarKey === 'diet') {
+    planSchema.properties.dailyTargets = {
+      type: 'object',
+      properties: { calories: { type: 'number' }, protein_g: { type: 'number' }, carbs_g: { type: 'number' }, fat_g: { type: 'number' } },
+    };
+    planSchema.properties.mealPlans = {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          name: { type: 'string' }, mealType: { type: 'string' }, calories: { type: 'number' },
+          protein_g: { type: 'number' }, carbs_g: { type: 'number' }, fat_g: { type: 'number' },
+          ingredients: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, qty: { type: 'string' } }, required: ['name'] } },
+          instructions: { type: 'string' },
+        },
+        required: ['name', 'mealType', 'ingredients'],
+      },
+    };
+    planSchema.required = [...planSchema.required, 'mealPlans'];
+  }
+  return {
+    name: 'update_refined_plan',
+    description: "Reply to the user's refinement message and return the plan's full current state (changed by this turn, or copied through unchanged).",
+    input_schema: {
+      type: 'object',
+      properties: {
+        reply: { type: 'string', description: 'Conversational, second-person reply, 1-4 sentences: explain what you changed and why, answer their question, or ask a clarifying question.' },
+        planChanged: { type: 'boolean', description: 'true only if "plan" differs from what was given to you this turn.' },
+        plan: planSchema,
+      },
+      required: ['reply', 'planChanged', 'plan'],
+    },
+  };
+}
 
 async function loadQuestionnaireAnswers(userId, pillarId) {
   const rows = await sql`SELECT answers FROM pillar_answers WHERE user_id = ${userId} AND pillar_id = ${pillarId} ORDER BY created_at DESC LIMIT 1`;
@@ -91,6 +130,7 @@ async function chatTurn(req, res, user) {
     SYSTEM,
     PILLAR_PRINCIPLES[pillarKey],
     REFINE_MODE_ADDENDUM,
+    pillarKey === 'diet' ? REFINE_DIET_ADDENDUM : null,
     `Pillar: ${pillar_name}`,
     profileContext(user),
     questionnaire_answers ? `Activation questionnaire answers: ${JSON.stringify(questionnaire_answers)}` : null,
@@ -110,7 +150,7 @@ async function chatTurn(req, res, user) {
         max_tokens: 4000,
         temperature: 0.4,
         system,
-        tools: [REFINE_TOOL],
+        tools: [buildRefineTool(pillarKey)],
         tool_choice: { type: 'tool', name: 'update_refined_plan' },
         messages,
       }),
@@ -179,6 +219,14 @@ async function finalizePlan(req, res, user) {
   `;
 
   const firstStep = await applyPlanToTasksAndRoutines(user, goal_id, goal.pillar_id, pillar_name, goal.type, cleaned, questionnaire_answers);
+
+  // Diet: regenerate the real meal plan records (metric_logs) + daily targets + meal-log
+  // routines from whatever mealPlans/dailyTargets the conversation landed on -- see
+  // applyDietMealPlans()'s own comment for why this call is the actual fix for a chat-raised
+  // preference (e.g. "no fish") previously never reaching real meal plan data. No-op for
+  // any goal whose finalized plan has no mealPlans array (non-Diet pillars, or a Diet plan
+  // predating this feature that the conversation never touched).
+  await applyDietMealPlans(user, goal_id, goal.pillar_id, pillar_name, cleaned);
 
   res.status(200).json({
     data: { id: goal_id, pillar: pillar_name, type: goal.type, timelineType: goal.timeline_type, endDate: end_date, firstStep, ...cleaned },
