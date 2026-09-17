@@ -14237,13 +14237,14 @@ async function loadPillarRoadmap(pillarKey) {
   if(g.dailyAnchor) html += `<div class="rm-strategy" style="background:${p.color};opacity:.85">Daily anchor: ${g.dailyAnchor} <span style="opacity:.8">· 🔁 Every day</span></div>`;
 
   html += `<div style="display:flex;gap:8px;margin-top:12px">
-      <button class="view-log-btn" style="flex:1" onclick="openRefineGoalPatch(${g.id},'${pillarKey}')">✎ Refine This Goal</button>
+      <button class="view-log-btn" style="flex:1;border-color:rgba(91,164,220,.4);color:var(--blue)" onclick="openRefineChatFromRoadmap('${pillarKey}')">💬 Refine with AI</button>
       <button class="view-log-btn" style="flex:1" onclick="refinePillarGoal('${pillarKey}')">+ Start a New Goal</button>
     </div>
-    <!-- Same real back-and-forth chat refinement as Review Blueprint's "Refine with AI"
-         (see openRefineChatFromRoadmap()) -- for an ALREADY-ACTIVE goal, seeded with its
-         real current plan instead of a fresh draft. -->
-    <button class="view-log-btn" style="width:100%;margin-top:8px;border-color:rgba(91,164,220,.4);color:var(--blue)" onclick="openRefineChatFromRoadmap('${pillarKey}')">💬 Refine with AI</button>
+    <!-- openRefineGoalPatch()/refine-patch.js (the old single-shot "type one request,
+         submit, no back-and-forth" path) is superseded by the chat-based refinement above
+         -- same underlying purpose, strictly less capable, kept the two side by side only
+         made it confusing which to use. Left the function + backend endpoint in place
+         (harmless, unreferenced) rather than a wider removal pass. -->
     <!-- Sometimes the real class/work/practice schedule only turns up after the plan's
          already been generated -- this doesn't need to live behind Settings only. -->
     <button class="view-log-btn" style="width:100%;margin-top:8px" onclick="openScheduleImport('${pillarKey}')">📄 Upload Your Schedule (PDF/Word)</button>
