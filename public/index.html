@@ -9825,26 +9825,55 @@ async function getNativeHealthSnapshot() {
   nativeHealthSnapshotAt=now;
   return nativeHealthSnapshotCache;
 }
+// Best-effort iOS device detection -- Capacitor reports it directly once a native iOS build
+// exists, but this PWA also runs today in plain mobile Safari on a real iPhone (well before
+// any native build ships), where x-apple-health:// already works from a webpage given a user
+// gesture -- so this also covers that no-Capacitor case via user agent.
+function isIOSPlatform() {
+  const capPlatform=window.Capacitor?.getPlatform?.();
+  if(capPlatform) return capPlatform==='ios';
+  return /iPhone|iPad|iPod/.test(navigator.userAgent||'');
+}
+// Best-effort "Open Apple Health" -- x-apple-health:// is a widely-used but UNOFFICIAL,
+// undocumented URL scheme (Apple has never published a public scheme for its own Health
+// app), so this is a pure launch attempt, never a verified integration, and PTW reads
+// nothing back from it (architecturally impossible on iOS regardless -- see the Part B
+// research on DeviceActivityReport's sandboxing). Reuses the exact attempt-then-blur-detect
+// pattern already proven in this codebase for iOS-only url schemes (see launchEssentialApp()
+// above): if the OS doesn't recognize the scheme, setting window.location.href to it is a
+// silent no-op in both a WKWebView and plain mobile Safari -- no crash, no navigation, no
+// visible error -- which is exactly the fallback behavior launchEssentialApp() already
+// depends on for this same class of interaction. What's still genuinely unverified (no Mac
+// access, per ptw-native/README.md's standing constraint): whether x-apple-health://
+// specifically is still registered by the real Health app on a current device/Simulator --
+// if it isn't (or Apple changes it), this degrades to the same silent no-op/toast below,
+// never a dead screen.
+async function openAppleHealth() {
+  let handled=false;
+  const onBlur=()=>{ handled=true; window.removeEventListener('blur', onBlur); };
+  window.addEventListener('blur', onBlur);
+  window.location.href='x-apple-health://';
+  setTimeout(()=>{
+    window.removeEventListener('blur', onBlur);
+    if(!handled) toast("Open the Health app from your iPhone's home screen");
+  }, 1200);
+}
 // Opens the phone's own health app -- Health Connect on Android via the plugin's official
 // openHealthConnectSettings() (no scheme-guessing; this is the plugin's sanctioned API for
 // jumping to Health Connect, and it works even before any permission has been granted, e.g.
 // to let someone install Health Connect if it's missing). iOS/HealthKit has no equivalent
-// call in this plugin (openHealthConnectSettings() is a documented no-op there), and Apple
-// has never published an official public URL scheme for the Health app -- x-apple-health://
-// is a widely-used unofficial convention, but wiring it here would mean shipping unverified
-// behavior on a platform this project cannot build or test from this machine (no Mac
-// access, per ptw-native/README.md's standing iOS constraint) -- so iOS gets an honest
-// instruction instead of an untested deep link. See that README for the documented,
-// not-yet-built iOS equivalent.
+// call in this plugin (openHealthConnectSettings() is a documented no-op there), so iOS
+// routes through openAppleHealth() above instead.
 async function openNativeHealthApp() {
   const Health=nativeHealthPlugin();
-  if(!Health) { toast("Open your phone's Health app directly"); return; }
   const platform=window.Capacitor?.getPlatform?.();
-  if(platform==='android') {
+  if(Health && platform==='android') {
     try { await Health.openHealthConnectSettings(); }
     catch(e) { console.warn('openHealthConnectSettings failed', e); toast('Could not open Health Connect'); }
+  } else if(isIOSPlatform()) {
+    openAppleHealth();
   } else {
-    toast('Open the Health app from your phone\'s home screen');
+    toast("Open your phone's Health app directly");
   }
 }
 // `fields` picks which metrics a given card shows (Fitness wants the fuller set; Diet only
@@ -9872,16 +9901,117 @@ function healthMetricsCardHtml(color, snap, fields) {
       <div style="display:flex;gap:8px;flex-wrap:wrap">${tiles.map(t=>`<div style="flex:1;min-width:78px">${t}</div>`).join('')}</div>`,
       {style:'margin-top:14px'});
 }
-// Non-native (plain web PWA) state -- an honest "not available here" card rather than
-// silently omitting the section, so the feature stays discoverable even when the app is
-// opened in a browser instead of the mobile shell.
-function healthMetricsUnavailableHtml(color) {
+// Non-native (plain web PWA, or iOS before its native build exists/ships the plugin) state
+// -- an honest "not available here" card rather than silently omitting the section, so the
+// feature stays discoverable even when the app is opened in a browser instead of the mobile
+// shell. Two real actions instead of a dead end: on iOS specifically, a best-effort "Open
+// Apple Health" launch (see openAppleHealth() above); on any platform, a manual-entry
+// fallback (see openManualHealthEntry() below) that writes through the exact same
+// POST /metrics path the native readers use/would use, so it's real, queryable history, not
+// a disconnected parallel data path.
+const MANUAL_HEALTH_TYPES=['steps','weight','sleep','heartRate']; // active energy excluded -- not something most people can eyeball-copy the way a step count/weight/sleep total/resting HR reading is, and 'calories' as a log_type would collide with Diet's existing meal-calorie tracking
+const healthMetricsFieldsByContainer={};
+function healthMetricsUnavailableHtml(color, containerId, fields) {
+  healthMetricsFieldsByContainer[containerId]=fields;
+  const ios=isIOSPlatform();
   return glassCard(color, `
       <div class="empty" style="padding:6px 0">
         <div class="empty-icon">${ICONS.heartPulse}</div>
-        <div class="empty-text">Health Metrics syncs from your phone's health app (Health Connect on Android, Apple Health on iOS) — open Plan To Win in the mobile app to see steps, heart rate, sleep and more here.</div>
+        <div class="empty-text">Health Metrics syncs from your phone's health app (Health Connect on Android, Apple Health on iOS) — open Plan To Win in the mobile app to see steps, heart rate, sleep and more here automatically.</div>
+      </div>
+      <div id="${containerId}-manual"></div>
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+        ${ios?`<span onclick="event.stopPropagation();openAppleHealth()" style="flex:1;min-width:130px;text-align:center;font-size:11px;color:${color};font-weight:700;padding:8px 10px;border:1px solid ${hexToRgba(color,.4)};border-radius:20px">Open Apple Health</span>`:''}
+        <span onclick="event.stopPropagation();openManualHealthEntry('${color}','${containerId}')" style="flex:1;min-width:130px;text-align:center;font-size:11px;color:${color};font-weight:700;padding:8px 10px;border:1px solid ${hexToRgba(color,.4)};border-radius:20px">Log It Yourself</span>
       </div>`,
       {style:'margin-top:14px'});
+}
+// Same tile rendering as healthMetricsCardHtml() above (metricStatChip + the "—" empty
+// state), but sourced from PTW's own /metrics history instead of a live native read --
+// deliberately reuses the identical visual language so manually-entered numbers show up
+// exactly the same way real device data would, not as a visibly-lesser second-class card.
+function manualHealthTilesHtml(snap, fields, color) {
+  const tiles=[];
+  if(fields.includes('steps')) tiles.push(metricStatChip('Steps', snap?.steps!=null?Math.round(snap.steps).toLocaleString():'—', color));
+  if(fields.includes('heartRate')) tiles.push(metricStatChip('Heart Rate', snap?.heartRate?.value!=null?Math.round(snap.heartRate.value)+' bpm':'—', color));
+  if(fields.includes('sleep')) tiles.push(metricStatChip('Sleep', snap?.sleepHours!=null?snap.sleepHours.toFixed(1)+'h':'—', color));
+  if(fields.includes('weight')) tiles.push(metricStatChip('Weight', snap?.weight?.value!=null?(Math.round(snap.weight.value*10)/10)+' '+(snap.weight.unit||''):'—', color));
+  if(!tiles.length) return '';
+  return `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">${tiles.map(t=>`<div style="flex:1;min-width:78px">${t}</div>`).join('')}</div>`;
+}
+// Reads back today's manually (or, going forward, natively-once-it-ships) logged steps/
+// sleep/heart_rate, and the latest logged weight (not date-restricted, matching how the
+// existing Weight card already treats weight -- it's not a daily-reset metric). All under
+// the Fitness pillar, same as steps/weight already are.
+async function manualHealthSnapshotToday() {
+  const p=PILLARS.fitness;
+  const today=new Date().toISOString().split('T')[0];
+  const dateOf=l=>(l.logged_at||'').split('T')[0];
+  const [stepsData, weightData, sleepData, hrData]=await Promise.all([
+    req('GET','/metrics?pillar_id='+p.id+'&log_type=steps&days=1'),
+    req('GET','/metrics?pillar_id='+p.id+'&log_type=weight&days=60'),
+    req('GET','/metrics?pillar_id='+p.id+'&log_type=sleep&days=1'),
+    req('GET','/metrics?pillar_id='+p.id+'&log_type=heart_rate&days=1'),
+  ]);
+  const stepsToday=(stepsData?.logs||[]).filter(l=>dateOf(l)===today).reduce((s,l)=>s+(Number(l.value)||0),0);
+  const latestWeight=(weightData?.logs||[])[0];
+  const latestSleep=(sleepData?.logs||[]).filter(l=>dateOf(l)===today)[0];
+  const latestHr=(hrData?.logs||[]).filter(l=>dateOf(l)===today)[0];
+  return {
+    steps: stepsToday||null,
+    weight: latestWeight?{value:Number(latestWeight.value), unit:latestWeight.unit||'kg'}:null,
+    sleepHours: latestSleep?Number(latestSleep.value):null,
+    heartRate: latestHr?{value:Number(latestHr.value)}:null,
+  };
+}
+// Manual health-data entry -- the fallback shown above (plain web, or iOS before it has the
+// native plugin): the user copies today's numbers over from their own phone's health app by
+// hand. Writes through the *same* POST /metrics path and log_types the native readers
+// use/would use for steps and weight; sleep/heart_rate are new log_types (the native side
+// never persisted those either, only displayed them live) established here so a manual entry
+// is genuinely equivalent history, not a second disconnected data silo -- both the AI (via
+// the same /metrics API every other pillar log already goes through) and this same Health
+// Metrics card can see it. data.source:'manual_health_entry' keeps provenance honest, same
+// pattern as data.source:'health_connect' on the native sync path.
+function openManualHealthEntry(color, containerId) {
+  const field=(id,label,placeholder,step)=>`
+    <div style="margin-top:10px;text-align:left">
+      <label style="font-size:10px;color:var(--stone);letter-spacing:.4px">${label}</label>
+      <input type="number" id="${id}" placeholder="${placeholder}"${step?` step="${step}"`:''} style="width:100%;margin-top:4px;padding:10px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);font-size:15px;outline:none">
+    </div>`;
+  document.getElementById('confirm-title').textContent="Log Today's Health Data";
+  document.getElementById('confirm-body').innerHTML=`
+    <div style="font-size:12px;color:var(--stone)">Copy these from your phone's health app — leave blank whatever you don't have.</div>
+    ${field('mhe-steps','STEPS TODAY','e.g. 8000')}
+    ${field('mhe-weight','WEIGHT (kg)','e.g. 76','0.1')}
+    ${field('mhe-sleep','SLEEP LAST NIGHT (hours)','e.g. 7.5','0.1')}
+    ${field('mhe-hr','RESTING HEART RATE (bpm)','e.g. 62')}`;
+  const btn=document.getElementById('confirm-yes-btn');
+  btn.textContent='Save';
+  btn.onclick=()=>saveManualHealthEntry(color, containerId);
+  document.getElementById('modal-confirm').classList.add('open');
+}
+async function saveManualHealthEntry(color, containerId) {
+  const p=PILLARS.fitness;
+  const steps=Number(document.getElementById('mhe-steps').value)||null;
+  const weight=Number(document.getElementById('mhe-weight').value)||null;
+  const sleep=Number(document.getElementById('mhe-sleep').value)||null;
+  const heartRate=Number(document.getElementById('mhe-hr').value)||null;
+  const jobs=[];
+  if(steps) jobs.push(req('POST','/metrics',{pillar_id:p.id, log_type:'steps', value:steps, unit:'steps', data:{source:'manual_health_entry'}}));
+  if(weight) jobs.push(req('POST','/metrics',{pillar_id:p.id, log_type:'weight', value:weight, unit:'kg', data:{source:'manual_health_entry'}}));
+  if(sleep) jobs.push(req('POST','/metrics',{pillar_id:p.id, log_type:'sleep', value:sleep, unit:'hours', data:{source:'manual_health_entry'}}));
+  if(heartRate) jobs.push(req('POST','/metrics',{pillar_id:p.id, log_type:'heart_rate', value:heartRate, unit:'bpm', data:{source:'manual_health_entry'}}));
+  if(!jobs.length) { toast('Enter at least one value'); return; }
+  closeModal('modal-confirm');
+  await Promise.all(jobs);
+  toast('Health data logged');
+  const sub=document.getElementById(containerId+'-manual');
+  if(sub) {
+    const fields=healthMetricsFieldsByContainer[containerId]||MANUAL_HEALTH_TYPES;
+    const snap=await manualHealthSnapshotToday();
+    sub.innerHTML=manualHealthTilesHtml(snap, fields, color);
+  }
 }
 // Renders into a placeholder div after the async native read resolves -- kept out of the
 // main Promise.all in loadFitnessMap/loadDietMap since a health-permission prompt can be
@@ -9889,7 +10019,16 @@ function healthMetricsUnavailableHtml(color) {
 async function renderHealthMetricsInto(containerId, color, fields) {
   const el=document.getElementById(containerId);
   if(!el) return;
-  if(!nativeHealthPlugin()) { el.innerHTML=healthMetricsUnavailableHtml(color); return; }
+  if(!nativeHealthPlugin()) {
+    el.innerHTML=healthMetricsUnavailableHtml(color, containerId, fields);
+    const manualFields=fields.filter(f=>MANUAL_HEALTH_TYPES.includes(f));
+    if(manualFields.length) {
+      const snap=await manualHealthSnapshotToday();
+      const sub=document.getElementById(containerId+'-manual');
+      if(sub) sub.innerHTML=manualHealthTilesHtml(snap, manualFields, color);
+    }
+    return;
+  }
   el.innerHTML=healthMetricsCardHtml(color, null, fields); // "—" placeholders while the read is in flight
   const snap=await getNativeHealthSnapshot();
   const el2=document.getElementById(containerId); // screen may have navigated away while awaiting
