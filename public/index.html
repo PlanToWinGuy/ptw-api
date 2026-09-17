@@ -9364,13 +9364,54 @@ async function submitMealRefine() {
 // each gets its own portion, then Continue folds the running totals into the SAME
 // mealLogDraft shape the photo-scan flow produces and hands off to the untouched
 // renderMealReview()/renderMealIngredientsList() for the final name/macro tweak + log step.
-let mealManualItems=[], mealSearchTimer=null, mealSearchResults=[], mealSearchSeq=0, mealFoodPortionFood=null;
+let mealManualItems=[], mealSearchTimer=null, mealSearchResults=[], mealSearchSeq=0, mealFoodPortionFood=null, mealSearchSizeHint=null;
 
 function renderMealManualEntry() {
   mealLogDraft=null;
   mealManualItems=[];
   mealSearchResults=[];
+  mealSearchSizeHint=null;
   renderMealManualSearch();
+}
+
+// Natural phrasing like "medium banana" or "a cup of rice" doesn't match well against
+// USDA's food-name search (it matches on food name, not casual quantity phrasing) -- this
+// strips common size/quantity qualifiers before the query goes out, while keeping the
+// detected size word around so openMealFoodPortion() can default the portion selector to
+// a sensible size instead of the generic 100g/1-serving default. Deliberately not a full
+// NLP parser -- just the handful of qualifiers people actually type.
+const FOOD_QTY_STRIP_RE = /\b(a|an|one|\d+(\.\d+)?)\b|\b(cups?|servings?|slices?|pieces?|bowls?|glass(es)?)\s+of\b/g;
+function parseFoodSearchQuery(raw) {
+  const original=(raw||'').trim();
+  let q=' '+original.toLowerCase()+' ';
+  let size=null;
+  const sizeMatch=q.match(/\b(small|medium|large)\b/);
+  if(sizeMatch) { size=sizeMatch[1]; q=q.replace(sizeMatch[0], ' '); }
+  q=q.replace(FOOD_QTY_STRIP_RE, ' ').replace(/\s+/g,' ').trim();
+  return { cleanQuery: q||original, size };
+}
+
+// Reasonable per-piece gram weights for very common whole foods people size by hand
+// ("medium banana") rather than by weight -- matched against the search result's own
+// name so it only applies when the picked food is actually one of these, not a recipe or
+// branded product that happens to contain the word. Not exhaustive by design.
+const FOOD_SIZE_DEFAULTS = {
+  banana: {small:101, medium:118, large:136},
+  apple: {small:149, medium:182, large:223},
+  egg: {small:38, medium:44, large:50},
+  potato: {small:170, medium:213, large:299},
+  'sweet potato': {small:130, medium:180, large:250},
+  avocado: {small:100, medium:150, large:200},
+  orange: {small:96, medium:131, large:184},
+  tomato: {small:91, medium:123, large:182},
+  onion: {small:70, medium:110, large:150},
+  carrot: {small:50, medium:61, large:72},
+};
+function defaultGramsForFood(f, size) {
+  if(!size || !f?.name) return null;
+  const name=f.name.toLowerCase();
+  const key=Object.keys(FOOD_SIZE_DEFAULTS).find(k=>name.includes(k));
+  return key ? FOOD_SIZE_DEFAULTS[key][size] : null;
 }
 
 function renderMealManualSearch() {
@@ -9411,7 +9452,9 @@ function onMealFoodSearchInput(val) {
 
 async function runMealFoodSearch(q) {
   const seq=++mealSearchSeq;
-  const data=await req('GET','/metrics?action=food-search&query='+encodeURIComponent(q));
+  const {cleanQuery, size}=parseFoodSearchQuery(q);
+  mealSearchSizeHint=size;
+  const data=await req('GET','/metrics?action=food-search&query='+encodeURIComponent(cleanQuery));
   if(seq!==mealSearchSeq) return; // a newer keystroke's search already landed -- drop this stale response
   const statusEl=document.getElementById('ml-food-search-status');
   const resultsEl=document.getElementById('ml-food-search-results');
@@ -9435,15 +9478,20 @@ function openMealFoodPortion(i) {
   const f=mealSearchResults[i];
   if(!f) return;
   mealFoodPortionFood=f;
+  // "medium banana" typed into the search box -> default the portion selector straight
+  // to a medium banana's real gram weight instead of the generic 100g/1-serving default
+  // -- see parseFoodSearchQuery()/FOOD_SIZE_DEFAULTS above.
+  const sizeGrams=defaultGramsForFood(f, mealSearchSizeHint);
   openConfirm('Add Food', '', ()=>{});
   document.getElementById('confirm-body').innerHTML=`
     <div style="font-size:14px;color:var(--text);font-weight:600;margin-bottom:2px">${f.name}</div>
     ${f.brand?`<div style="font-size:11px;color:var(--stone);margin-bottom:8px">${f.brand}</div>`:''}
+    ${sizeGrams?`<div style="font-size:11px;color:var(--diet);margin-bottom:8px">Defaulted to a ${mealSearchSizeHint} portion (${sizeGrams}g) — adjust below if needed</div>`:''}
     <div style="display:flex;gap:8px;align-items:center;margin:10px 0">
-      <input type="number" id="mfp-qty" value="${f.servingSize?1:100}" min="0" step="any" oninput="updateMealFoodPortionPreview()" style="flex:1;padding:10px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none">
+      <input type="number" id="mfp-qty" value="${sizeGrams || (f.servingSize?1:100)}" min="0" step="any" oninput="updateMealFoodPortionPreview()" style="flex:1;padding:10px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none">
       <select id="mfp-unit" onchange="updateMealFoodPortionPreview()" style="flex:1.4;padding:10px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text)">
-        ${f.servingSize?`<option value="serving">serving${f.householdServing?' ('+f.householdServing+')':' ('+f.servingSize+f.servingSizeUnit+')'}</option>`:''}
-        <option value="g" ${!f.servingSize?'selected':''}>grams</option>
+        ${f.servingSize?`<option value="serving" ${!sizeGrams?'selected':''}>serving${f.householdServing?' ('+f.householdServing+')':' ('+f.servingSize+f.servingSizeUnit+')'}</option>`:''}
+        <option value="g" ${sizeGrams||!f.servingSize?'selected':''}>grams</option>
         <option value="oz">ounces</option>
       </select>
     </div>
