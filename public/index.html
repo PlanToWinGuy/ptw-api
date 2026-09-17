@@ -5039,6 +5039,41 @@ function openRefineChatFromBlueprint() {
   S.refineChatPlan = { ...plan };
   S.refineChatMessages = [{role:'assistant', text:`Let's refine your ${p.label} plan. Tell me what you'd like to change, or ask me why I set something up a certain way.`}];
   S.refineChatHistory = [];
+  // Came from initial activation's Review Blueprint -- Approve should run the normal
+  // pillar-activation flow (see approveRefinedPlan()/closeRefineChat() below).
+  S.refineChatReturnTo = 'blueprint';
+  showScreen('refine-chat');
+  switchRefineChatTab('chat');
+  renderRefineChatMessages();
+}
+
+// Same chat-based refinement as openRefineChatFromBlueprint() above, but reached from an
+// ALREADY-ACTIVE pillar's Roadmap tab instead of initial activation. Two real differences:
+// 1) seeds S.refineChatPlan with the goal's REAL current state (S.roadmapActiveGoal, set
+//    by loadPillarRoadmap()) instead of a freshly-generated draft.
+// 2) Approve/Back both return to Roadmap (see approveRefinedPlan()/closeRefineChat()) --
+//    this pillar is already active, so the "pillar just got activated" congratulations
+//    flow the activation entry point uses would be wrong here.
+// The backend side needs no equivalent branch: api/goals/refine-chat.js's finalizePlan()
+// already updates the SAME goal_id in place (deactivate its stale routines, clear its
+// pending tasks, reapply via applyPlanToTasksAndRoutines) exactly like refine-patch.js's
+// single-shot "Refine This Goal" does against an active goal -- it never creates a new
+// goal row or touches is_active/unlocked-pillar state the way a retake/supersede
+// (generateGoal()'s own cleanup step) does, and Completed tasks are never touched either
+// way. So the exact same finalize call is correct for both entry points.
+function openRefineChatFromRoadmap(pillarKey) {
+  const g = S.roadmapActiveGoal;
+  if(!g?.id) { toast('Nothing to refine yet'); return; }
+  const p = PILLARS[pillarKey];
+  S.refineChatPillar = pillarKey;
+  S.refineChatPlan = {
+    id: g.id, title: g.title||g.goal, timeline: g.timeline, why: g.why,
+    phases: g.phases||[], dailyAnchor: g.dailyAnchor, milestones: g.milestones||[],
+    alts: g.alts||[], tips: g.tips||[], timelineType: g.timelineType, endDate: g.endDate,
+  };
+  S.refineChatMessages = [{role:'assistant', text:`Let's refine your active ${p.label} plan. Tell me what you'd like to change, or ask me why I set something up a certain way.`}];
+  S.refineChatHistory = [];
+  S.refineChatReturnTo = 'roadmap';
   showScreen('refine-chat');
   switchRefineChatTab('chat');
   renderRefineChatMessages();
@@ -5091,20 +5126,43 @@ async function sendRefineChatMessage(prefilled) {
   if(document.getElementById('refine-chat-tab-plan').style.display==='flex') renderRefineChatPlanPreview();
 }
 
-// Discards nothing -- carries whatever refinement happened so far back into the fast-path
-// Review Blueprint screen (same plan object, same buttons) instead of losing it.
+// Discards nothing -- carries whatever refinement happened so far back to wherever this
+// chat was opened from. From initial activation, that's the fast-path Review Blueprint
+// screen (same plan object, same buttons). From an already-active pillar's Roadmap
+// (S.refineChatReturnTo==='roadmap'), there's no draft screen to return to -- just go
+// back to Roadmap itself; nothing was finalized so it still shows the pre-refinement plan.
 function closeRefineChat() {
+  if(S.refineChatReturnTo==='roadmap') {
+    S.refineChatReturnTo = null;
+    showPillarScreen(S.refineChatPillar);
+    switchPillarTab('roadmap');
+    return;
+  }
   S.pendingActivationPlan = S.refineChatPlan;
   renderReviewBlueprint(S.pendingActivationPlan, S.pendingActivationPillar);
 }
 
 // "✓ Approve This Plan" -- resyncs the goal's real tasks/routines to the (possibly
-// refined) plan server-side, then runs the EXACT SAME acceptPillarPlan() the fast path
-// uses. No second, parallel activation mechanism.
+// refined) plan server-side (api/goals/refine-chat.js's finalizePlan(), which updates the
+// SAME goal_id in place -- see openRefineChatFromRoadmap()'s comment for why that's
+// correct for both entry points this function serves).
+// From initial activation (S.refineChatReturnTo==='blueprint'), runs the EXACT SAME
+// acceptPillarPlan() the fast path uses -- no second, parallel activation mechanism.
+// From an already-active pillar's Roadmap (==='roadmap'), that pillar is already active
+// and already unlocked -- routing through acceptPillarPlan()'s congratulations flow would
+// be wrong (and would re-run pillar-activation side effects that already happened), so
+// this just returns to Roadmap, which reloads fresh from the server and shows the update.
 async function approveRefinedPlan() {
   toast('Finalizing your plan…');
   const data = await req('POST','/goals/refine-chat?action=finalize',{goal_id:S.refineChatPlan.id, plan:S.refineChatPlan});
   if(!data || data.errors || !data.data) { toast(data?.message||"Couldn't finalize your plan — try again"); return; }
+  if(S.refineChatReturnTo==='roadmap') {
+    S.refineChatReturnTo = null;
+    toast('Plan updated ⚡');
+    showPillarScreen(S.refineChatPillar);
+    switchPillarTab('roadmap');
+    return;
+  }
   S.pendingActivationPlan = data.data;
   S.pendingActivationPillar = S.refineChatPillar;
   await acceptPillarPlan();
@@ -13987,6 +14045,10 @@ async function loadPillarRoadmap(pillarKey) {
     req('GET','/simple-tasks'),
   ]);
   const g = (data?.data||[])[0];
+  // Stashed for openRefineChatFromRoadmap() -- lets the chat-based refine entry point
+  // pre-seed S.refineChatPlan with this goal's REAL current state (not a fresh draft)
+  // without a second round-trip to re-fetch what's already sitting right here.
+  S.roadmapActiveGoal = g||null;
 
   if(!g) {
     container.innerHTML = `<div class="empty">
@@ -14026,6 +14088,10 @@ async function loadPillarRoadmap(pillarKey) {
       <button class="view-log-btn" style="flex:1" onclick="openRefineGoalPatch(${g.id},'${pillarKey}')">✎ Refine This Goal</button>
       <button class="view-log-btn" style="flex:1" onclick="refinePillarGoal('${pillarKey}')">+ Start a New Goal</button>
     </div>
+    <!-- Same real back-and-forth chat refinement as Review Blueprint's "Refine with AI"
+         (see openRefineChatFromRoadmap()) -- for an ALREADY-ACTIVE goal, seeded with its
+         real current plan instead of a fresh draft. -->
+    <button class="view-log-btn" style="width:100%;margin-top:8px;border-color:rgba(91,164,220,.4);color:var(--blue)" onclick="openRefineChatFromRoadmap('${pillarKey}')">💬 Refine with AI</button>
     <!-- Sometimes the real class/work/practice schedule only turns up after the plan's
          already been generated -- this doesn't need to live behind Settings only. -->
     <button class="view-log-btn" style="width:100%;margin-top:8px" onclick="openScheduleImport('${pillarKey}')">📄 Upload Your Schedule (PDF/Word)</button>
