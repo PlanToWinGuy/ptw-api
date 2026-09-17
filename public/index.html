@@ -225,46 +225,48 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
    shift position every time the banner appeared/disappeared. */
 .home-center{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;min-height:0}
 
-/* CTA Circle -- premium-glass treatment: a soft blurred glass disc + colour-matched
-   ambient glow (#cta-ring-halo, set/tinted via setCtaAccent() in JS) sits behind the ring
-   itself, the same "the current focus sits in its own soft light" language as an Apple
-   Fitness ring glow or a Material You dynamic-colour surface, rather than a plain circle
-   dropped straight onto the background. The ring itself also picks up the app's glass
-   fill (translucent + blur) instead of a flat --bg3 tile, consistent with every other
-   card in the app now. */
+/* CTA Circle -- back to the original solid ring (no halo glow, no backdrop-filter) per
+   explicit feedback that the full-glass version read hazy and the halo's pulse visibly
+   flickered: #cta-ring-halo had ZERO css before the glass pass (an inert, invisible div)
+   -- that pass is what gave it its glow, so it's reverted to inert here rather than
+   "toned down". The pulse-flicker was a real bug, not just taste: the glass pass added a
+   resting box-shadow (0 14px 34px...) to #cta-ring, but ctaPulse ALSO animates box-shadow
+   -- since a CSS animation's box-shadow value fully replaces the element's box-shadow
+   rather than merging with it, every 3.5s cycle the depth shadow was being clobbered by
+   the pulse's own shadow and popping back, reading as a visible glitch. Back to the
+   original's neutral resting shadow (0 0 0 0, only the pulse itself ever paints a
+   shadow) fixes that outright. The one deliberate carry-over from the glass exploration:
+   the ring's own fill gets a LIGHT glass touch (a couple of opacity points of blur) --
+   just the ring body itself, nothing else -- instead of a flat --bg3 tile. */
 .cta-ring-wrap{position:relative;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-#cta-ring-halo{
-  position:absolute;width:270px;height:270px;border-radius:50%;
-  background:rgba(255,255,255,.04);
-  backdrop-filter:blur(22px) saturate(160%);
-  -webkit-backdrop-filter:blur(22px) saturate(160%);
-  box-shadow:0 0 60px 8px rgba(91,164,220,.3);
-  pointer-events:none;z-index:0;
-  transition:box-shadow .4s ease;
-}
+#cta-ring-halo{position:absolute;width:270px;height:270px;border-radius:50%;pointer-events:none;z-index:0}
 #cta-ring{
   width:224px;height:224px;border-radius:50%;
-  background:rgba(255,255,255,.05);border:2.5px solid var(--blue);
-  backdrop-filter:blur(18px) saturate(160%);
-  -webkit-backdrop-filter:blur(18px) saturate(160%);
+  background:rgba(32,30,27,.92);border:2.5px solid var(--blue);
+  backdrop-filter:blur(5px) saturate(130%);
+  -webkit-backdrop-filter:blur(5px) saturate(130%);
   display:flex;flex-direction:column;align-items:center;justify-content:center;
   cursor:pointer;position:relative;z-index:1;transition:transform .15s,border-color .3s ease;
-  box-shadow:0 14px 34px -14px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.14);
+  box-shadow:0 0 0 0 rgba(91,164,220,0);
 }
 #cta-ring.active{animation:ctaPulse 3.5s ease-in-out infinite}
 #cta-ring:active{transform:scale(.97)}
 @keyframes ctaPulse{0%,100%{box-shadow:0 0 0 0 rgba(91,164,220,0)}50%{box-shadow:0 0 0 20px rgba(91,164,220,.07)}}
 .cta-inner{display:flex;flex-direction:column;align-items:center;gap:6px;padding:0 20px}
-.cta-name{font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:var(--text);text-align:center;line-height:1.3;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+/* Sized/weighted up from the original 16px/700 -- this is the single most important
+   thing on the Home screen, it should read as that at a glance, not compete with
+   decorative chrome around it. */
+.cta-name{font-family:'Syne',sans-serif;font-size:17px;font-weight:800;color:var(--text);text-align:center;line-height:1.28;letter-spacing:-.01em;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
 /* The task's real scheduled slot (e.g. "3:00 - 3:30 PM") -- every task has one now
    (auto-slotted by priority if not given an explicit time), so it's always shown, not
    just when there's nothing else to say. Sits above the live countdown, not instead
    of it, so you can see both what was planned and how much time is actually left. */
 .cta-time-range{font-size:11px;font-weight:600;color:var(--stone);letter-spacing:.3px}
 .cta-glyph{font-size:24px;color:var(--stone);line-height:1}
-/* Two sizes up from the old 12px, and near-white instead of the muted stone tone --
-   this is the number the user actually glances at most, it should read instantly. */
-.cta-timer-label{font-size:20px;font-weight:800;color:var(--text);letter-spacing:.3px;margin-top:2px}
+/* Two sizes up from the original 12px (now three), and near-white instead of the muted
+   stone tone -- this is the number the user actually glances at most, it should read
+   instantly as the dominant element in the ring. */
+.cta-timer-label{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--text);letter-spacing:.2px;margin-top:2px}
 #cta-timer-arc{transition:stroke-dashoffset 1s linear,stroke .4s ease}
 .cta-btns{display:flex;gap:20px;margin-top:14px}
 .cta-micro{
