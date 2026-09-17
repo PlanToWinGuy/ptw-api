@@ -7363,7 +7363,10 @@ async function loadProfileMetrics() {
   };
 
   const formatDuration = m => { m=Math.round(m||0); const h=Math.floor(m/60), r=m%60; return h ? `${h}h ${r}m` : `${r}m`; };
-  const intentionTimeMinutes = intentionTimeDaily.reduce((s,d)=>s+d.value,0);
+  // Average per active day, not a running lifetime total -- "Daily Intention Time" reads
+  // as a per-day figure by its own name, and a cumulative sum only ever grows, which stops
+  // being a meaningful at-a-glance number the longer someone's used the app.
+  const intentionTimeMinutes = intentionTimeDaily.length ? intentionTimeDaily.reduce((s,d)=>s+d.value,0)/intentionTimeDaily.length : 0;
 
   const cards = [
     metricCard(ICONS.badge, data?.total_tasks_completed??0, 'Tasks Completed', completedDaily, '#5BA4DC', 'tasksCompleted'),
@@ -7420,8 +7423,8 @@ const PROFILE_METRIC_DETAILS = {
     format:v=>Math.round(v)+'%',
   },
   intentionTime: {
-    label:'Daily Intention Time', icon:ICONS.clock, color:'#C46882', unit:'m', agg:'sum', higherIsBetter:true,
-    blurb:"The real time you spent doing the work — pulled from the timer when you ran one, or the task's planned length when you didn't. This is your intentional time: the total time you actually showed up for yourself, not just a box you checked.",
+    label:'Daily Intention Time', icon:ICONS.clock, color:'#C46882', unit:'m', agg:'avg', higherIsBetter:true,
+    blurb:"The real time you spent doing the work each day — pulled from the timer when you ran one, or the task's planned length when you didn't. This is your intentional time: how much of an average day you actually show up for yourself, not just a box you checked.",
     format:v=>{ const m=Math.round(v||0), h=Math.floor(m/60), r=m%60; return h ? `${h}h ${r}m` : `${r}m`; },
   },
 };
