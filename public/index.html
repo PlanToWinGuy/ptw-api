@@ -1936,19 +1936,35 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
 </div>
 
 <!-- ══════════════════════════════════
-     PREFERRED QUICK-ADD APPS -- since a PWA has no way to see what's actually installed
-     on the device, this is the honest substitute: the user tells us which apps in the
-     catalog they actually use, and Essential Apps suggestions weight toward those first.
+     ESSENTIAL APPS SETTINGS -- the one dedicated home for everything Essential Apps-
+     related, consolidated out of general Settings: which catalog apps you actually use
+     (Preferred Apps), which specific app is pinned to which kind of task (App Pairings,
+     otherwise only editable in-context from Task Detail's own Pin-an-App picker -- see
+     openAppPairingPicker), and your own added apps (4.20, since a PWA has no way to see
+     what's actually installed on the device). Reachable from Settings' main list
+     (openEssentialAppsPrefs) and via the gear icon on the Essential Apps drawer itself --
+     same convention a pillar's own screen uses for its gear -> openPillarPreferences.
 ══════════════════════════════════ -->
 <div id="screen-essential-apps-prefs" class="screen">
   <div class="pillar-top-bar">
     <button class="icon-btn ghost" onclick="openSettingsHub()">←</button>
-    <h2 style="font-size:15px">Preferred Apps</h2>
+    <h2 style="font-size:15px">Essential Apps Settings</h2>
     <button class="icon-btn ghost" onclick="saveEssentialAppsPrefs()" title="Save">✓</button>
   </div>
   <div class="scroll-body" style="padding:0 18px">
-    <div style="font-size:12px;color:var(--stone);margin:14px 0 16px;line-height:1.5">Tell us which of these you actually use — Essential Apps suggestions (on Home, during breaks, and mid-task) will favor these first.</div>
+    <div class="section-sub" style="margin-top:14px">PREFERRED APPS</div>
+    <div style="font-size:12px;color:var(--stone);margin:6px 0 16px;line-height:1.5">Tell us which of these you actually use — Essential Apps suggestions (on Home, during breaks, and mid-task) will favor these first.</div>
     <div id="ea-prefs-body"></div>
+
+    <!-- App Pairings -- the same app_pairings preferences scope Task Detail's own
+         Pin-an-App picker (openAppPairingPicker) writes to; that contextual quick-pairing
+         flow still works exactly as before, this just gives the resulting pairings a
+         place to be reviewed and removed without having to stumble back into the right
+         task first. -->
+    <div class="section-sub" style="margin-top:22px">APP PAIRINGS</div>
+    <div style="font-size:12px;color:var(--stone);margin:6px 0 12px;line-height:1.5">Apps pinned to always open for a specific kind of task (also pinnable from any task's detail screen).</div>
+    <div id="ea-pairings-list" style="margin-bottom:10px"></div>
+    <button class="btn-p" style="width:100%;margin:4px 0 6px" onclick="openAddAppPairingFromSettings()">+ Add a Pairing</button>
 
     <!-- "Add your own app" fallback (4.20) -- neither iOS nor Android lets a third-party
          app enumerate everything actually installed on a device, so our curated catalog
@@ -2315,7 +2331,13 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
   <div class="modal" style="display:flex;flex-direction:column;max-height:calc(80vh / var(--text-scale,1));padding-bottom:16px">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-shrink:0;margin-bottom:4px">
       <h3 style="margin-bottom:0">Essential Apps</h3>
-      <button class="modal-close" style="float:none;margin:0" onclick="closeEssentialApps()">×</button>
+      <div style="display:flex;gap:4px;align-items:center">
+        <!-- Same gear-icon-to-preferences convention a pillar's own screen uses
+             (openSettings(S.activePillar,'pillar') -> openPillarPreferences) -- this
+             drawer's proper settings home is Essential Apps Settings. -->
+        <button class="icon-btn ghost" style="width:26px;height:26px;min-width:0;font-size:13px" onclick="closeEssentialApps();openEssentialAppsPrefs()" title="Essential Apps Settings">⚙️</button>
+        <button class="modal-close" style="float:none;margin:0" onclick="closeEssentialApps()">×</button>
+      </div>
     </div>
     <div class="modal-scroll" style="flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch">
       <!-- Open library search (4.19) -- PTW can't enumerate what's actually installed on
@@ -3221,7 +3243,7 @@ function renderSettingsBody() {
     + settingsRow('📏','Measurement Units',"openMeasurementUnits()")
     + settingsRow('☀️','Daily Briefings',"openDailyBriefingsSettings()")
     + settingsRow('📅','Import a Schedule',"openScheduleImport()",'Upload a class, work, or practice schedule')
-    + settingsRow('🧩','Preferred Quick-Add Apps',"openEssentialAppsPrefs()",'Which apps you actually use')
+    + settingsRow('🧩','Essential Apps Settings',"openEssentialAppsPrefs()",'Preferred apps, pairings & your own added apps')
     + settingsRow('🎯','Pillar Priority',"openPillarPriority()",'Which pillar leads the nav and swiping')
     + settingsRow('🖼️','Home Background',"showScreen('home-background');renderHomeBackgroundPresets()",'Photo or color behind your Home screen');
 
@@ -8057,17 +8079,26 @@ function launchEssentialApp(i) {
 // zero frontend changes, instead of silently drifting out of sync like the old 18-entry
 // hardcoded list already had (missing scan_food/phone on purpose, but otherwise stale-
 // prone by construction).
+// Every task type a pairing can be pinned to, for Essential Apps Settings' own "+ Add a
+// Pairing" flow (which has no current task to infer a tool_hint from the way Task
+// Detail's picker does) -- reuses TOOL_HINT_ACTION_LABEL's wording so the two entry
+// points describe the same task type identically; 'workout' is the one tool_hint with no
+// entry there (primaryActionLabel special-cases it instead), added back in here.
+const TOOL_HINT_PAIRING_LABEL = Object.assign({workout:'Start Workout'}, TOOL_HINT_ACTION_LABEL);
 // Task Detail's own "pin an app for this kind of task" -- e.g. always Spotify for a
 // workout, always Notes for journaling. Reuses the generic Confirm modal as a simple
 // picker (same pattern as openLogPastActivityPicker/openSwapExercise); saved to its own
 // preferences scope (app_pairings) keyed by tool_hint, read back by GET /essential-apps
 // so this exact task type opens straight to that app from here on.
-async function openAppPairingPicker() {
+// `explicitToolHint` lets Essential Apps Settings' own "+ Add a Pairing" flow (below)
+// reuse this exact picker for a task type chosen directly rather than inferred from
+// S.taskDetailTask -- Task Detail's own call site (no args) is unchanged.
+async function openAppPairingPicker(explicitToolHint) {
   const task=S.taskDetailTask;
-  const toolHint=task && resolveTaskToolHint(task);
+  const toolHint=explicitToolHint || (task && resolveTaskToolHint(task));
   if(!toolHint) { toast("This task doesn't have a specific action type to pin an app to"); return; }
   S.pinningToolHint=toolHint;
-  openConfirm('Pin an App', `Always open this for ${TOOL_HINT_ACTION_LABEL[toolHint]||'this kind of task'}:`, ()=>{});
+  openConfirm('Pin an App', `Always open this for ${TOOL_HINT_PAIRING_LABEL[toolHint]||'this kind of task'}:`, ()=>{});
   document.getElementById('confirm-yes-btn').style.display='none';
   // The generic Confirm modal (a bottom sheet with no max-height/scroll of its own) is
   // fine for the handful of options it's normally used for -- but a 50+ app catalog
@@ -8097,6 +8128,60 @@ async function pinAppForToolHint(toolHint, key, label) {
   closeModal('modal-confirm');
   document.getElementById('confirm-yes-btn').style.display='';
   toast(`Pinned ${label} for this task type ✓`);
+  // Keep Essential Apps Settings' own App Pairings list in sync when a pairing is made
+  // from there (openAddAppPairingFromSettings) rather than from Task Detail, since this
+  // same function backs both entry points.
+  if(document.getElementById('screen-essential-apps-prefs')?.classList.contains('active')) {
+    eaPairings=existing;
+    renderEssentialAppPairings();
+  }
+}
+// ─── APP PAIRINGS (Essential Apps Settings) ───
+// Gives the app_pairings preferences scope above a place to be reviewed and removed --
+// previously write-only from Settings' side (only Task Detail's openAppPairingPicker
+// could create a pairing; nothing showed what was already pinned or let it be undone
+// short of overwriting it by pinning a different app to the same task type).
+let eaPairings={};
+async function loadEssentialAppPairings() {
+  eaPairings=await req('GET','/preferences/app_pairings')||{};
+  renderEssentialAppPairings();
+}
+function renderEssentialAppPairings() {
+  const el=document.getElementById('ea-pairings-list');
+  if(!el) return;
+  const lib=essentialLibraryCache||[];
+  const entries=Object.entries(eaPairings||{});
+  el.innerHTML = entries.length ? entries.map(([th,key])=>{
+    const app=lib.find(a=>a.key===key);
+    return `<div class="sq-card" style="align-items:center">
+      <div class="sq-info" style="flex:1;min-width:0">
+        <div class="sq-name">${TOOL_HINT_PAIRING_LABEL[th]||th}</div>
+        <div class="sq-meta">${app?app.appName:key}</div>
+      </div>
+      <button class="icon-btn ghost" onclick="removeEssentialAppPairing('${th}')" title="Remove">×</button>
+    </div>`;
+  }).join('') : '<div style="font-size:12px;color:var(--muted);margin-bottom:4px">None pinned yet.</div>';
+}
+async function removeEssentialAppPairing(toolHint) {
+  delete eaPairings[toolHint];
+  await req('PUT','/preferences/app_pairings',eaPairings);
+  renderEssentialAppPairings();
+  toast('Pairing removed');
+}
+// "+ Add a Pairing" from Settings has no current task to infer a tool_hint from (unlike
+// Task Detail's picker), so this adds a first step: pick the task type, then hand off to
+// the exact same openAppPairingPicker/pinAppForToolHint flow Task Detail uses.
+function openAddAppPairingFromSettings() {
+  openConfirm('Pin an App', 'Choose a task type to pin an app to:', ()=>{});
+  document.getElementById('confirm-yes-btn').style.display='none';
+  document.getElementById('confirm-body').innerHTML = Object.keys(TOOL_HINT_PAIRING_LABEL).map(th=>
+    `<div class="view-log-btn" style="text-align:left;justify-content:space-between" onclick="chooseAppPairingType('${th}')">${TOOL_HINT_PAIRING_LABEL[th]}${eaPairings[th]?' <span style="color:var(--stone);font-size:11px">(pinned)</span>':''} <span>›</span></div>`
+  ).join('');
+}
+function chooseAppPairingType(toolHint) {
+  closeModal('modal-confirm');
+  document.getElementById('confirm-yes-btn').style.display='';
+  openAppPairingPicker(toolHint);
 }
 let eaPreferredKeys=[];
 async function openEssentialAppsPrefs() {
@@ -8116,6 +8201,7 @@ async function openEssentialAppsPrefs() {
       ${apps.map(a=>`<button type="button" class="q-opt${eaPreferredKeys.includes(a.key)?' sel':''}" data-key="${a.key}" onclick="toggleEssentialAppPref(this)">${a.appName}</button>`).join('')}
     </div>`).join('');
   loadCustomEssentialApps();
+  loadEssentialAppPairings();
 }
 function toggleEssentialAppPref(btn) {
   btn.classList.toggle('sel');
