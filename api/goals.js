@@ -13,7 +13,7 @@ const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 // guest2 account's Fitness project. Same no-AI-call cost-discipline precedent as
 // inferToolHint/isRecurringAction.
 const TIP_PHRASING_PATTERN = /\b(try |consider )?introduc(e|ing) (a |one |an )?(new|small|extra|optional)\b|\bwhen you can\b|\bif you (can|have time)\b|\bkeep in mind\b|\bconsider\b/i;
-function moveTipPhrasedActionsToTips(plan) {
+export function moveTipPhrasedActionsToTips(plan) {
   const phases = plan.phases || [];
   const tips = [...(plan.tips || [])];
   const filteredPhases = phases.map(ph => {
@@ -29,7 +29,7 @@ function moveTipPhrasedActionsToTips(plan) {
 
 // Mirrors map-of-you's GOAL_PLAN_SYSTEM shape exactly, so a plan generated on the
 // Map site and one generated here are interchangeable.
-const SYSTEM = `You create a personalized goal plan from someone's pillar, goal type, and situation. The timeline depends on the goal type and starting point — not everything is 90 days. Return ONLY JSON:
+export const SYSTEM = `You create a personalized goal plan from someone's pillar, goal type, and situation. The timeline depends on the goal type and starting point — not everything is 90 days. Return ONLY JSON:
 {
   "title": "<specific goal title — what they will achieve, 1 sentence>",
   "timeline": "<e.g. '21 days', '6 weeks', '60 days', '90 days' — based on type + stage>",
@@ -53,7 +53,7 @@ For a significant, quantifiable goal (e.g. "lose 20kg", "save $10,000"), first w
 // Science-backed reasoning rules per pillar (from the Pillar Playbooks doc) -- appended to
 // SYSTEM based on which pillar is generating, so the AI's judgment calls are grounded in
 // the same principles across every generation, not just vibes.
-const PILLAR_PRINCIPLES = {
+export const PILLAR_PRINCIPLES = {
   fitness: `Fitness principles: always include a daily step target (~8,000) alongside any training plan. For Strength Training/Build Muscle goals, use progressive overload — assign a target rep range and note that logging reps beyond the target on the final set is the signal to increase weight next session.`,
   diet: `Diet principles: base calorie targets on their stated goal direction (deficit for weight loss, surplus for muscle gain) relative to an estimated TDEE from their profile. If they rarely cook, shift from recipes to meal suggestions and healthy takeaway guidelines instead.`,
   finances: `Finance principles: if they don't currently track spending, the first phase must be establishing a simple daily/weekly expense-tracking habit before anything else. If their goal is getting out of debt, that takes priority over every other financial goal (use a debt-snowball-style approach). If income is variable/freelance, budget for a larger emergency fund. Any investing suggestion must match their stated risk tolerance.`,
@@ -64,7 +64,7 @@ const PILLAR_PRINCIPLES = {
 
 // Appended to SYSTEM only for Fitness -- asks for real starter workout plans in the same
 // call rather than a second AI request, so this doesn't add extra cost.
-const FITNESS_ADDENDUM = `
+export const FITNESS_ADDENDUM = `
 Also include a "workoutPlans" array — 2 concrete starter workout plans matching their equipment/experience/split from the questionnaire:
 "workoutPlans": [
   {"name": "<e.g. Push Day A>", "durationMin": <number>, "exercises": [
@@ -77,7 +77,7 @@ Also include a "workoutPlans" array — 2 concrete starter workout plans matchin
 // plans (recipe-grained, matching the workoutPlans granularity of "one plan = one session")
 // in the same call, plus a real per-ingredient list so the Grocery List can genuinely sync
 // to what the plan requires instead of staying a disconnected manual checklist.
-const DIET_ADDENDUM = `
+export const DIET_ADDENDUM = `
 Also include a "dailyTargets" object and a "mealPlans" array.
 "dailyTargets": {"calories": <number>, "protein_g": <number>, "carbs_g": <number>, "fat_g": <number>}
 Estimate a real TDEE from whatever profile signals are available (age/weight/sex/activity level if present, else reasonable adults-in-general defaults) and adjust for their stated goal direction (deficit for weight loss, surplus for muscle gain, maintenance otherwise) per the Diet principles above -- this becomes their actual daily target, not a placeholder.
@@ -92,7 +92,7 @@ Estimate a real TDEE from whatever profile signals are available (age/weight/sex
 // same 4-category model (Needs/Wants/Savings/Debt) the Finance Hub's transaction logging
 // already uses, so a fresh budget target isn't a blank $2500 the user has to type in
 // themselves before the Budgets tab means anything.
-const FINANCE_ADDENDUM = `
+export const FINANCE_ADDENDUM = `
 Also include a "budgetPlan" object:
 "budgetPlan": {
   "monthlyBudget": <number, total monthly spending target>,
@@ -254,7 +254,7 @@ async function listGoals(req, res, user) {
 // Pulls the Map of You reading into plan generation -- the archetype/edge/gap for this
 // specific pillar, so a goal is grounded in the person's actual values, not just the
 // questionnaire. Personal benefits most (mindset/identity work), but every pillar gets it.
-function valueprintContext(valueprint_data, pillar_name) {
+export function valueprintContext(valueprint_data, pillar_name) {
   if (!valueprint_data) return null;
   const gapEntry = Array.isArray(valueprint_data.gap)
     ? valueprint_data.gap.find(g => (g?.pillar || '').toLowerCase() === pillar_name.toLowerCase())
@@ -293,7 +293,7 @@ function deriveGoalText(answers, pillarName) {
 // profile" claim actually has something to estimate from -- previously the AI prompt
 // never included height/weight/age/gender at all, so that instruction was aspirational
 // text with no real data behind it regardless of what the user had entered at signup.
-function profileContext(user) {
+export function profileContext(user) {
   const lines = [];
   if (user.dob) {
     const ageMs = Date.now() - new Date(user.dob).getTime();
@@ -304,6 +304,122 @@ function profileContext(user) {
   if (user.weight) lines.push(`Weight: ${user.weight}kg`);
   if (user.fitness_level) lines.push(`Self-rated fitness level: ${user.fitness_level}`);
   return lines.length ? 'Profile: ' + lines.join(', ') : null;
+}
+
+// Turns a plan object (the same shape the AI returns from generation OR a refine-chat
+// turn) into real routines/tasks under an existing goal row. Extracted out of
+// generateGoal() so api/goals/refine-chat.js's "Approve This Plan" finalize step can
+// call the exact same materialization logic when it resyncs a goal's tasks/routines to
+// a plan the user actually iterated on in conversation, instead of a second
+// hand-rolled copy that could quietly drift out of sync with what fresh generation does.
+// Assumes the CALLER has already cleared out whatever stale routines/pending tasks this
+// goal_id previously had (see generateGoal()'s supersede step and refine-chat.js's own
+// resync cleanup) -- this function only ever inserts, never deletes.
+export async function applyPlanToTasksAndRoutines(user, goal_id, pillar_id, pillar_name, goal_type, plan, questionnaire_answers) {
+  const today = new Date().toISOString().split('T')[0];
+  const pillarKey = pillar_name.toLowerCase();
+  const clockStart = timeOfDayToClock(questionnaire_answers?.time_of_day);
+
+  // The Review Blueprint highlights whichever real, concrete action the user will actually
+  // do first -- a scheduled sub-task if one exists, else the daily anchor habit/routine.
+  // Ties the plan back to the Valueprint/mapper framing ("this whole plan traces back to
+  // one real action") without a second AI call -- it's just the first thing already in `plan`.
+  let firstStep = plan.dailyAnchor ? { type: 'routine', name: plan.dailyAnchor } : null;
+
+  // The daily anchor is a routine, not a one-off task -- materializes every day via
+  // materializeRoutinesForDate() regardless of whether yesterday's instance was ever
+  // completed, instead of the old completion-gated regeneration that silently stopped
+  // forever the first time a day was missed. end_date null: habits are indefinite. This
+  // runs for EVERY goal_type -- a project/skill goal still names one keystone daily habit
+  // (the entire point of "dailyAnchor" in the AI schema) that must actually appear on the
+  // schedule, not just live as descriptive text on the Roadmap. Previously this only ran
+  // for goal_type 'habit'/'mindset', so a project-type goal's anchor (e.g. "log every
+  // purchase every evening," "write the next action before opening email") was generated,
+  // shown on the Roadmap, and then never materialized into any real task at all --
+  // confirmed live on Diet/Finance/Work goals, which had zero routines despite each having
+  // a stated daily anchor.
+  if (plan.dailyAnchor) {
+    const toolHint = inferToolHint(pillarKey, plan.dailyAnchor);
+    await sql`
+      INSERT INTO routines (user_id, goal_id, name, category, is_active, schedule_days, schedule_time, steps, tool_hint, end_date)
+      VALUES (${user.id}, ${goal_id}, ${plan.dailyAnchor}, ${pillar_name}, true, ${[]}, ${inferClockFromText(plan.dailyAnchor, clockStart)}::time,
+              ${JSON.stringify([{ name: plan.dailyAnchor, durationMinutes: 15 }])}::jsonb, ${toolHint}, NULL)
+    `;
+  }
+
+  if (goal_type === 'habit' || goal_type === 'mindset') {
+    // Anchor already handled above -- these types have no further phase-action processing.
+  } else {
+    // A project/skill goal becomes one real parent Project (kind='project', the thing
+    // that shows up as a single "ProjectTask" block on the schedule) with its NON-recurring
+    // phase actions as real sub-tasks (parent_task_id). An action whose own text says
+    // "every day"/"daily"/etc. instead becomes its own routine (see above) -- reappearing
+    // every day for the goal's duration rather than a one-off checkbox that never repeats
+    // even though the plan describes it as recurring.
+    const phases = plan.phases || [];
+    const allActions = [];
+    phases.forEach(ph => (ph.actions || []).forEach(a => allActions.push({ text: a, phaseLabel: ph.label || null })));
+
+    const recurringActions = allActions.filter(a => isRecurringAction(a.text));
+    const oneOffActions = allActions.filter(a => !isRecurringAction(a.text));
+
+    for (const action of recurringActions) {
+      const toolHint = inferToolHint(pillarKey, action.text);
+      // end_date NULL -> indefinite, same as the daily anchor above. A recurring action IS
+      // an ongoing habit ("log every purchase", "review what you logged daily"); tying it
+      // to the goal's own end_date made it silently stop materializing onto Daily Overview
+      // once the goal timeline passed, while still showing as active in the Routines Library
+      // -- the exact "shows in Routines but not Daily Overview" glitch. Retake/goal cleanup
+      // still deactivates these routines when a plan is genuinely replaced.
+      await sql`
+        INSERT INTO routines (user_id, goal_id, name, category, is_active, schedule_days, schedule_time, steps, tool_hint, end_date)
+        VALUES (${user.id}, ${goal_id}, ${action.text}, ${pillar_name}, true, ${[]}, ${inferClockFromText(action.text, clockStart)}::time,
+                ${JSON.stringify([{ name: action.text, durationMinutes: 30 }])}::jsonb, ${toolHint}, NULL)
+      `;
+    }
+
+    if (oneOffActions.length) {
+      const subtaskMinutes = 30;
+      const parentRows = await sql`
+        INSERT INTO tasks (user_id, goal_id, pillar_id, name, kind, due_date, estimated_duration_minutes)
+        VALUES (${user.id}, ${goal_id}, ${pillar_id}, ${plan.title}, 'project', ${today}, ${oneOffActions.length * subtaskMinutes})
+        RETURNING id
+      `;
+      const parent_task_id = parentRows[0].id;
+
+      // Bin-pack sub-tasks into sequential days, each capped at the questionnaire's daily
+      // time budget -- this only avoids collisions within THIS goal's own sub-tasks, since
+      // it's a pure in-memory calculation with no idea what's already on the calendar from
+      // other active goals/pillars, routines, or fixed commitments. Once a user has more
+      // than one active goal, two different pillars' plans landing on the same clockStart
+      // (e.g. both defaulting to "Morning") silently collide at the exact same time --
+      // confirmed live in testing. Each bin-packed day is re-resolved through
+      // findOpenSlot right before insert, which does check all of that, preserving the
+      // day-grouping/budget intent above while guaranteeing the actual inserted time is
+      // real and conflict-free (searchDays:3 lets it spill into the next day or two
+      // rather than stacking on top of something if that original day is genuinely full).
+      const dailyBudgetMinutes = Number(questionnaire_answers?.daily_time_budget) || 60;
+      const scheduled = scheduleSubTasks(oneOffActions, { startDate: today, clockStart, dailyBudgetMinutes, subtaskMinutes });
+
+      for (let i = 0; i < scheduled.length; i++) {
+        const action = scheduled[i];
+        const toolHint = inferToolHint(pillarKey, action.text);
+        const slot = await findOpenSlot(sql, user.id, { earliestDate: action.dueDate, searchDays: 3, durationMinutes: subtaskMinutes });
+        const slotEndTime = addMinutesToClock(slot.startTime, subtaskMinutes);
+        const insertedRows = await sql`
+          INSERT INTO tasks (user_id, goal_id, pillar_id, parent_task_id, name, kind, phase_label, due_date, estimated_duration_minutes, start_time, end_time, tool_hint)
+          VALUES (${user.id}, ${goal_id}, ${pillar_id}, ${parent_task_id}, ${action.text}, 'simple', ${action.phaseLabel}, ${slot.date}, ${subtaskMinutes}, ${slot.startTime}, ${slotEndTime}, ${toolHint})
+          RETURNING id
+        `;
+        // The very first scheduled sub-task, in real chronological order -- this is what
+        // the Review Blueprint highlights as "your first step," a concrete tie back to the
+        // Valueprint/mapper framing that this whole plan traces back to a single real action.
+        if (i === 0) firstStep = { type: 'task', taskId: insertedRows[0].id, name: action.text };
+      }
+    }
+  }
+
+  return firstStep;
 }
 
 async function generateGoal(req, res, user) {
@@ -407,8 +523,6 @@ async function generateGoal(req, res, user) {
   }
 
   const today = new Date().toISOString().split('T')[0];
-  const pillarKey = pillar_name.toLowerCase();
-  const clockStart = timeOfDayToClock(questionnaire_answers?.time_of_day);
 
   // Dynamic (default): end_date is a best-effort estimate parsed from the AI's own
   // timeline text, purely informational until Plan Shift starts adjusting it. Strict:
@@ -428,104 +542,10 @@ async function generateGoal(req, res, user) {
   `;
   const goal_id = goalRows[0].id;
 
-  // The Review Blueprint highlights whichever real, concrete action the user will actually
-  // do first -- a scheduled sub-task if one exists, else the daily anchor habit/routine.
-  // Ties the plan back to the Valueprint/mapper framing ("this whole plan traces back to
-  // one real action") without a second AI call -- it's just the first thing already in `plan`.
-  let firstStep = plan.dailyAnchor ? { type: 'routine', name: plan.dailyAnchor } : null;
-
-  // The daily anchor is a routine, not a one-off task -- materializes every day via
-  // materializeRoutinesForDate() regardless of whether yesterday's instance was ever
-  // completed, instead of the old completion-gated regeneration that silently stopped
-  // forever the first time a day was missed. end_date null: habits are indefinite. This
-  // runs for EVERY goal_type -- a project/skill goal still names one keystone daily habit
-  // (the entire point of "dailyAnchor" in the AI schema) that must actually appear on the
-  // schedule, not just live as descriptive text on the Roadmap. Previously this only ran
-  // for goal_type 'habit'/'mindset', so a project-type goal's anchor (e.g. "log every
-  // purchase every evening," "write the next action before opening email") was generated,
-  // shown on the Roadmap, and then never materialized into any real task at all --
-  // confirmed live on Diet/Finance/Work goals, which had zero routines despite each having
-  // a stated daily anchor.
-  if (plan.dailyAnchor) {
-    const toolHint = inferToolHint(pillarKey, plan.dailyAnchor);
-    await sql`
-      INSERT INTO routines (user_id, goal_id, name, category, is_active, schedule_days, schedule_time, steps, tool_hint, end_date)
-      VALUES (${user.id}, ${goal_id}, ${plan.dailyAnchor}, ${pillar_name}, true, ${[]}, ${inferClockFromText(plan.dailyAnchor, clockStart)}::time,
-              ${JSON.stringify([{ name: plan.dailyAnchor, durationMinutes: 15 }])}::jsonb, ${toolHint}, NULL)
-    `;
-  }
-
-  if (goal_type === 'habit' || goal_type === 'mindset') {
-    // Anchor already handled above -- these types have no further phase-action processing.
-  } else {
-    // A project/skill goal becomes one real parent Project (kind='project', the thing
-    // that shows up as a single "ProjectTask" block on the schedule) with its NON-recurring
-    // phase actions as real sub-tasks (parent_task_id). An action whose own text says
-    // "every day"/"daily"/etc. instead becomes its own routine (see above) -- reappearing
-    // every day for the goal's duration rather than a one-off checkbox that never repeats
-    // even though the plan describes it as recurring.
-    const phases = plan.phases || [];
-    const allActions = [];
-    phases.forEach(ph => (ph.actions || []).forEach(a => allActions.push({ text: a, phaseLabel: ph.label || null })));
-
-    const recurringActions = allActions.filter(a => isRecurringAction(a.text));
-    const oneOffActions = allActions.filter(a => !isRecurringAction(a.text));
-
-    for (const action of recurringActions) {
-      const toolHint = inferToolHint(pillarKey, action.text);
-      // end_date NULL -> indefinite, same as the daily anchor above. A recurring action IS
-      // an ongoing habit ("log every purchase", "review what you logged daily"); tying it
-      // to the goal's own end_date made it silently stop materializing onto Daily Overview
-      // once the goal timeline passed, while still showing as active in the Routines Library
-      // -- the exact "shows in Routines but not Daily Overview" glitch. Retake/goal cleanup
-      // still deactivates these routines when a plan is genuinely replaced.
-      await sql`
-        INSERT INTO routines (user_id, goal_id, name, category, is_active, schedule_days, schedule_time, steps, tool_hint, end_date)
-        VALUES (${user.id}, ${goal_id}, ${action.text}, ${pillar_name}, true, ${[]}, ${inferClockFromText(action.text, clockStart)}::time,
-                ${JSON.stringify([{ name: action.text, durationMinutes: 30 }])}::jsonb, ${toolHint}, NULL)
-      `;
-    }
-
-    if (oneOffActions.length) {
-      const subtaskMinutes = 30;
-      const parentRows = await sql`
-        INSERT INTO tasks (user_id, goal_id, pillar_id, name, kind, due_date, estimated_duration_minutes)
-        VALUES (${user.id}, ${goal_id}, ${pillar_id}, ${plan.title}, 'project', ${today}, ${oneOffActions.length * subtaskMinutes})
-        RETURNING id
-      `;
-      const parent_task_id = parentRows[0].id;
-
-      // Bin-pack sub-tasks into sequential days, each capped at the questionnaire's daily
-      // time budget -- this only avoids collisions within THIS goal's own sub-tasks, since
-      // it's a pure in-memory calculation with no idea what's already on the calendar from
-      // other active goals/pillars, routines, or fixed commitments. Once a user has more
-      // than one active goal, two different pillars' plans landing on the same clockStart
-      // (e.g. both defaulting to "Morning") silently collide at the exact same time --
-      // confirmed live in testing. Each bin-packed day is re-resolved through
-      // findOpenSlot right before insert, which does check all of that, preserving the
-      // day-grouping/budget intent above while guaranteeing the actual inserted time is
-      // real and conflict-free (searchDays:3 lets it spill into the next day or two
-      // rather than stacking on top of something if that original day is genuinely full).
-      const dailyBudgetMinutes = Number(questionnaire_answers?.daily_time_budget) || 60;
-      const scheduled = scheduleSubTasks(oneOffActions, { startDate: today, clockStart, dailyBudgetMinutes, subtaskMinutes });
-
-      for (let i = 0; i < scheduled.length; i++) {
-        const action = scheduled[i];
-        const toolHint = inferToolHint(pillarKey, action.text);
-        const slot = await findOpenSlot(sql, user.id, { earliestDate: action.dueDate, searchDays: 3, durationMinutes: subtaskMinutes });
-        const slotEndTime = addMinutesToClock(slot.startTime, subtaskMinutes);
-        const insertedRows = await sql`
-          INSERT INTO tasks (user_id, goal_id, pillar_id, parent_task_id, name, kind, phase_label, due_date, estimated_duration_minutes, start_time, end_time, tool_hint)
-          VALUES (${user.id}, ${goal_id}, ${pillar_id}, ${parent_task_id}, ${action.text}, 'simple', ${action.phaseLabel}, ${slot.date}, ${subtaskMinutes}, ${slot.startTime}, ${slotEndTime}, ${toolHint})
-          RETURNING id
-        `;
-        // The very first scheduled sub-task, in real chronological order -- this is what
-        // the Review Blueprint highlights as "your first step," a concrete tie back to the
-        // Valueprint/mapper framing that this whole plan traces back to a single real action.
-        if (i === 0) firstStep = { type: 'task', taskId: insertedRows[0].id, name: action.text };
-      }
-    }
-  }
+  // Real routines/tasks for this plan -- shared with api/goals/refine-chat.js's finalize
+  // step so a chat-refined plan materializes through the exact same logic as a
+  // fresh-generated one (see applyPlanToTasksAndRoutines's own comment above).
+  const firstStep = await applyPlanToTasksAndRoutines(user, goal_id, pillar_id, pillar_name, goal_type, plan, questionnaire_answers);
 
   // Fitness gets real workout plan templates stored as metric_logs, so the Workout Hub's
   // "My Plans" tab has something real to show without a second AI call.

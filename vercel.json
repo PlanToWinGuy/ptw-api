@@ -4,6 +4,7 @@
     "api/goals/feasibility-check.js": { "maxDuration": 45 },
     "api/goals/clarify.js": { "maxDuration": 45 },
     "api/goals/refine-patch.js": { "maxDuration": 45 },
+    "api/goals/refine-chat.js": { "maxDuration": 45 },
     "api/metrics.js": { "maxDuration": 45 },
     "api/essential-apps.js": { "maxDuration": 45 },
     "api/schedule-import.js": { "maxDuration": 45 },

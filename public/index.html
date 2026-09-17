@@ -1525,6 +1525,38 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
   <div class="scroll-body" style="padding:0 18px" id="review-blueprint-body"></div>
 </div>
 
+<!-- ══════════════════════════════════
+     REFINE WITH AI -- chat-based plan iteration off Review Blueprint. Chat tab (reuses
+     the AI Coach's own bubble/input pattern) + a live Plan Preview tab (reuses
+     renderBlueprintPlanHtml -- the exact same renderer Review Blueprint itself uses) so
+     the plan visibly updates as the conversation goes, not just a chat log divorced from
+     it. See openRefineChatFromBlueprint()/sendRefineChatMessage()/approveRefinedPlan().
+══════════════════════════════════ -->
+<div id="screen-refine-chat" class="screen">
+  <div class="pillar-top-bar">
+    <button class="icon-btn ghost" onclick="closeRefineChat()">←</button>
+    <h2 style="font-size:15px">Refine with AI</h2>
+    <span style="width:36px"></span>
+  </div>
+  <div style="display:flex;gap:8px;padding:0 18px 10px">
+    <button class="pg-btn sel" id="rc-tab-chat" style="background:var(--blue);flex:1;font-size:11px" onclick="switchRefineChatTab('chat')">💬 Chat</button>
+    <button class="pg-btn" id="rc-tab-plan" style="background:var(--bg4);flex:1;font-size:11px" onclick="switchRefineChatTab('plan')">📋 Plan Preview</button>
+  </div>
+  <div id="refine-chat-tab-chat" style="display:flex;flex-direction:column;flex:1;min-height:0">
+    <div class="scroll-body" style="padding:0 18px 20px;display:flex;flex-direction:column;justify-content:flex-end;min-height:0" id="refine-chat-messages"></div>
+    <div style="display:flex;gap:8px;padding:10px 18px calc(10px + var(--sb));background:var(--bg2);border-top:1px solid rgba(196,184,168,.1)">
+      <input type="text" id="refine-chat-input" placeholder="Ask for a change, or ask why..." style="flex:1;padding:12px 14px;background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:20px;color:var(--text);font-size:14px;font-family:'Inter',sans-serif;outline:none" onkeydown="if(event.key==='Enter')sendRefineChatMessage()">
+      <button class="icon-btn" style="background:var(--blue)" onclick="sendRefineChatMessage()">➢</button>
+    </div>
+  </div>
+  <div id="refine-chat-tab-plan" style="display:none;flex-direction:column;flex:1;min-height:0">
+    <div class="scroll-body" style="padding:0 18px" id="refine-chat-plan-body"></div>
+    <div style="padding:10px 18px calc(10px + var(--sb));background:var(--bg2);border-top:1px solid rgba(196,184,168,.1)">
+      <button class="btn-p filled" style="margin:0" onclick="approveRefinedPlan()">✓ Approve This Plan</button>
+    </div>
+  </div>
+</div>
+
 <div id="screen-pillar-congrats" class="screen">
   <div class="scroll-body" style="display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 30px;gap:16px">
     <div id="congrats-icon" style="font-size:56px">🎉</div>
@@ -4942,9 +4974,12 @@ function isRecurringActionText(text) {
   return /\bevery ?day\b|\bdaily\b|\beach day\b|\bevery morning\b|\bevery evening\b|\bevery night\b/i.test(String(text||''));
 }
 
-function renderReviewBlueprint(plan, pillarKey) {
+// Pure plan-details renderer -- no buttons, no showScreen(), no target element. Shared
+// between the fast-path Review Blueprint screen and the new "Refine with AI" chat
+// screen's live Plan Preview tab, so the two can never visually drift out of sync (a
+// refined plan looks exactly like a freshly-generated one, just with different content).
+function renderBlueprintPlanHtml(plan, pillarKey) {
   const p = PILLARS[pillarKey];
-  showScreen('review-blueprint');
   let html = `
     <div class="section-title" style="margin-top:14px">${plan.title||plan.goal||''}</div>
     <div class="section-sub">${plan.why||''}</div>`;
@@ -4972,10 +5007,107 @@ function renderReviewBlueprint(plan, pillarKey) {
     });
     html += `</div>`;
   }
+  return html;
+}
+
+function renderReviewBlueprint(plan, pillarKey) {
+  showScreen('review-blueprint');
+  let html = renderBlueprintPlanHtml(plan, pillarKey);
   html += `
     <button class="btn-p filled" style="margin:16px 0 8px" onclick="acceptPillarPlan()">✓ Accept & Start This Plan</button>
+    <button class="btn-p" style="margin-bottom:8px;border-color:rgba(91,164,220,.4);color:var(--blue)" onclick="openRefineChatFromBlueprint()">💬 Refine with AI</button>
     <button class="btn-p" style="margin-bottom:20px;border-color:transparent;color:var(--stone)" onclick="activationBack()">← Back</button>`;
   document.getElementById('review-blueprint-body').innerHTML = html;
+}
+
+// ════════════════════════════════════════
+// REFINE WITH AI -- chat-based plan iteration, reached from Review Blueprint. Real
+// back-and-forth with the AI (api/goals/refine-chat.js) that can actually modify the
+// structured plan, not freeform chat divorced from it -- reuses the AI Coach's own
+// bubble styling/interaction pattern (see sendChatMessage()/renderChatMessages()) but
+// keeps entirely separate state (S.refineChat*) so it never touches the general
+// #screen-ai-chat's own S.chatMessages/S.chatHistory.
+// ════════════════════════════════════════
+const REFINE_CHAT_QUICK_PROMPTS = ['Swap something out for me', 'Can we make this easier to start?', 'Why did you structure it this way?'];
+
+function openRefineChatFromBlueprint() {
+  const pillarKey = S.pendingActivationPillar;
+  const plan = S.pendingActivationPlan;
+  if(!pillarKey || !plan?.id) { toast('Nothing to refine yet — try generating a plan first'); return; }
+  const p = PILLARS[pillarKey];
+  S.refineChatPillar = pillarKey;
+  S.refineChatPlan = { ...plan };
+  S.refineChatMessages = [{role:'assistant', text:`Let's refine your ${p.label} plan. Tell me what you'd like to change, or ask me why I set something up a certain way.`}];
+  S.refineChatHistory = [];
+  showScreen('refine-chat');
+  switchRefineChatTab('chat');
+  renderRefineChatMessages();
+}
+
+function switchRefineChatTab(tab) {
+  ['chat','plan'].forEach(t=>{
+    const btn=document.getElementById('rc-tab-'+t);
+    btn.classList.toggle('sel', t===tab);
+    btn.style.background = t===tab ? 'var(--blue)' : 'var(--bg4)';
+    document.getElementById('refine-chat-tab-'+t).style.display = t===tab ? 'flex' : 'none';
+  });
+  if(tab==='plan') renderRefineChatPlanPreview();
+}
+
+function renderRefineChatPlanPreview() {
+  document.getElementById('refine-chat-plan-body').innerHTML = renderBlueprintPlanHtml(S.refineChatPlan, S.refineChatPillar);
+}
+
+function renderRefineChatMessages() {
+  const el=document.getElementById('refine-chat-messages');
+  const bubbles=S.refineChatMessages.map(m=>{
+    const isUser=m.role==='user';
+    return `<div style="display:flex;justify-content:${isUser?'flex-end':'flex-start'};margin:8px 0">
+      <div style="max-width:78%;padding:10px 14px;border-radius:14px;background:${isUser?'var(--blue)':'var(--bg3)'};color:${isUser?'#fff':'var(--text)'};font-size:14px;line-height:1.4">${m.text}</div>
+    </div>`;
+  }).join('');
+  const showQuickReplies=S.refineChatMessages.length<=1;
+  const quickReplies=showQuickReplies?`<div style="display:flex;flex-direction:column;gap:8px;margin-top:20px">
+    ${REFINE_CHAT_QUICK_PROMPTS.map(t=>`<button type="button" class="chat-quick-btn" onclick="sendRefineChatMessage('${t.replace(/'/g,"\\'")}')">${t}</button>`).join('')}
+  </div>`:'';
+  el.innerHTML=bubbles+quickReplies;
+  el.scrollTop=el.scrollHeight;
+}
+
+async function sendRefineChatMessage(prefilled) {
+  const input=document.getElementById('refine-chat-input');
+  const text=(prefilled!==undefined?prefilled:input.value).trim();
+  if(!text) return;
+  S.refineChatMessages.push({role:'user', text});
+  if(input) input.value='';
+  renderRefineChatMessages();
+  const data=await req('POST','/goals/refine-chat',{goal_id:S.refineChatPlan.id, message:text, conversation_history:S.refineChatHistory, current_plan:S.refineChatPlan});
+  if(!data || data.errors) { S.refineChatMessages.push({role:'assistant', text:"Sorry, I couldn't process that — try again."}); renderRefineChatMessages(); return; }
+  S.refineChatHistory.push({role:'user', content:text});
+  S.refineChatHistory.push({role:'assistant', content:data.reply});
+  S.refineChatMessages.push({role:'assistant', text:data.reply + (data.planChanged ? '\n\n✓ Updated your plan — see the Plan Preview tab.' : '')});
+  if(data.planChanged) S.refineChatPlan = data.plan;
+  renderRefineChatMessages();
+  if(document.getElementById('refine-chat-tab-plan').style.display==='flex') renderRefineChatPlanPreview();
+}
+
+// Discards nothing -- carries whatever refinement happened so far back into the fast-path
+// Review Blueprint screen (same plan object, same buttons) instead of losing it.
+function closeRefineChat() {
+  S.pendingActivationPlan = S.refineChatPlan;
+  renderReviewBlueprint(S.pendingActivationPlan, S.pendingActivationPillar);
+}
+
+// "✓ Approve This Plan" -- resyncs the goal's real tasks/routines to the (possibly
+// refined) plan server-side, then runs the EXACT SAME acceptPillarPlan() the fast path
+// uses. No second, parallel activation mechanism.
+async function approveRefinedPlan() {
+  toast('Finalizing your plan…');
+  const data = await req('POST','/goals/refine-chat?action=finalize',{goal_id:S.refineChatPlan.id, plan:S.refineChatPlan});
+  if(!data || data.errors || !data.data) { toast(data?.message||"Couldn't finalize your plan — try again"); return; }
+  S.pendingActivationPlan = data.data;
+  S.pendingActivationPillar = S.refineChatPillar;
+  await acceptPillarPlan();
 }
 
 async function acceptPillarPlan() {
