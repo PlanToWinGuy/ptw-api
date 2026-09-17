@@ -7241,6 +7241,16 @@ setupSwipeNav('screen-todo-routines', {
     const activeTab=[...el.querySelectorAll('.scroll-body')].find(t=>t.style.display!=='none');
     scrollTopAtStart = activeTab ? activeTab.scrollTop : 0;
   }, {passive:true});
+  // Deliberate-gesture threshold (100px + a clearer 2x axis ratio, vs. the 70px/1.5x
+  // default every other setupSwipeNav screen uses) -- same reasoning as Daily Overview's
+  // day-change swipe just above: this element mixes a horizontal action (cycle pillars)
+  // with a vertical one (home) on top of a tab whose content actually scrolls. Map/
+  // Roadmap/Trophies rarely scroll far enough for this to matter, but Side-Quests
+  // routinely has enough Active/Library/Completed cards -- each with its own Done/Start
+  // button right in the list -- that an ordinary drag-to-scroll or reach-for-the-button
+  // gesture easily has a 70px, mildly-diagonal component under the old default and got
+  // misread as a swipe (cycling pillars or exiting to Home mid-scroll). The default was
+  // never wrong on Map/Roadmap/Trophies, it was just never exercised there.
   detectSwipe(el, (dx, dy) => {
     if(Math.abs(dx)>Math.abs(dy)) {
       const list=S.unlocked;
@@ -7255,7 +7265,7 @@ setupSwipeNav('screen-todo-routines', {
       if(scrollTopAtStart>4) return;
       showScreen('home');
     }
-  });
+  }, { minDist: 100, ratio: 2 });
 })();
 
 // ════════════════════════════════════════
