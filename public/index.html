@@ -449,9 +449,9 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
 .soft-icon{
   width:40px;height:40px;border-radius:13px;
   display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;
-  color:#fff;
+  color:#FFF8F2; /* warm off-white, not clinical pure #fff -- reads more premium */
 }
-.soft-icon svg{filter:drop-shadow(0 1px 1px rgba(0,0,0,.15))}
+.soft-icon svg{filter:drop-shadow(0 1.5px 2px rgba(0,0,0,.28))}
 /* Faint full-screen accent wash behind everything -- a single fixed element per screen,
    its background gradient set inline (per-pillar colour) by JS since #screen-pillar's
    Map/Quests/Roadmap/Trophies tabs are one shared template reused across all 6 pillars. */
@@ -8254,6 +8254,16 @@ function tintColor(hex, amt) {
   const nr=Math.round(r+(255-r)*amt), ng=Math.round(g+(255-g)*amt), nb=Math.round(b+(255-b)*amt);
   return `rgb(${nr},${ng},${nb})`;
 }
+// Darkens a hex colour toward black by `amt` (0-1) -- the deep end of softIcon()'s
+// within-hue gradient, so its "light" end can stay a much smaller tintColor() blend
+// (rich, not pastel) while the gradient still has real range/depth top to bottom.
+function shadeColor(hex, amt) {
+  hex=String(hex||'').replace('#','');
+  if(hex.length===3) hex=hex.split('').map(c=>c+c).join('');
+  const r=parseInt(hex.slice(0,2),16)||0, g=parseInt(hex.slice(2,4),16)||0, b=parseInt(hex.slice(4,6),16)||0;
+  const nr=Math.round(r*(1-amt)), ng=Math.round(g*(1-amt)), nb=Math.round(b*(1-amt));
+  return `rgb(${nr},${ng},${nb})`;
+}
 // A couple of pillar colours (diet's mustard-gold, most notably) are light enough that
 // white text loses contrast -- everything else defaults to white.
 function pillarTextOn(color) {
@@ -8273,20 +8283,26 @@ function glassIcon(svg, color) {
   return `<div class="glass-icon" style="background:${hexToRgba(color,.16)};color:${tintColor(color,.4)}">${svg}</div>`;
 }
 // Soft-gradient duotone icon container -- colourful (a real per-item accent colour) but
-// not flat (diagonal tint-to-full-colour gradient + a soft coloured glow) and not the
-// glossy/emoji feel of a raw emoji character sitting flush against a flat tinted tile.
-// White glyph/emoji on top reads clearly against the gradient at any lightness. Same
-// 40x40/13px footprint as .glass-icon/.sq-icon by default -- opts.size overrides for a
-// bigger container (e.g. a FAB) while keeping the same gradient+glow recipe.
+// not flat (diagonal gradient + a soft coloured glow) and not the glossy/emoji feel of a
+// raw emoji character sitting flush against a flat tinted tile. Gradient stays WITHIN the
+// hue (a brighter cast of the colour down to a deep shade of it) rather than blending
+// toward white -- an earlier version tinted 45% toward white for the light stop, which
+// read pastel/washed-out rather than premium; this is a much smaller tint plus a real
+// shaded dark stop, so the range comes from light-vs-dark, not colour-vs-white. Glyph on
+// top is a warm off-white (not clinical pure #fff, which read flat/cheap) with a
+// slightly deeper drop-shadow for real dimension. Same 40x40/13px footprint as
+// .glass-icon/.sq-icon by default -- opts.size overrides for a bigger container (e.g. a
+// FAB) while keeping the same gradient+glow recipe.
 function softIcon(icon, color, opts) {
   opts=opts||{};
-  const light=tintColor(color, opts.tint!=null?opts.tint:.45);
+  const light=tintColor(color, opts.tint!=null?opts.tint:.16);
+  const deep=shadeColor(color, opts.shade!=null?opts.shade:.28);
   const dim=[
     opts.size?`width:${opts.size}px`:'', opts.size?`height:${opts.size}px`:'',
     opts.size?`border-radius:${opts.radius||Math.round(opts.size*.32)}px`:'',
     opts.size?`font-size:${opts.fontSize||Math.round(opts.size*.42)}px`:'',
   ].filter(Boolean).join(';');
-  return `<div class="soft-icon" style="background:linear-gradient(155deg, ${light}, ${color});box-shadow:0 4px 14px -4px ${hexToRgba(color,.55)}, inset 0 1px 0 rgba(255,255,255,.22);${dim}${dim?';':''}${opts.style||''}"${opts.attrs?' '+opts.attrs:''}>${icon}</div>`;
+  return `<div class="soft-icon" style="background:linear-gradient(155deg, ${light}, ${deep});box-shadow:0 4px 14px -4px ${hexToRgba(color,.6)}, inset 0 1px 0 rgba(255,255,255,.22);${dim}${dim?';':''}${opts.style||''}"${opts.attrs?' '+opts.attrs:''}>${icon}</div>`;
 }
 // The solid, filled-with-pillar-colour hero treatment for primary elements (the day's
 // main CTA card) -- the deliberate opposite of glassCard(), for hierarchy.
