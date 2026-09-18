@@ -445,3 +445,61 @@ ALTER TABLE users
 ALTER TABLE tasks
   ADD COLUMN IF NOT EXISTS google_calendar_event_id TEXT;
 
+-- Beta support tooling: user-submitted "Report a Problem" (Settings + a couple of
+-- dead-end entry points), most likely followed up with a status change from the new
+-- founder-only admin panel (see lib/auth.js's ADMIN_EMAIL / getAdminFromRequest, and
+-- api/bug-reports.js). user_id is nullable -- a report can come from a screen reached
+-- before/without a session. context holds auto-attached debug info (screen, viewport,
+-- online state, and screenshot_url when one was attached) as one flexible JSON blob
+-- rather than a pile of narrow columns, same "AI/product logic owns the shape" reasoning
+-- as metric_logs.data above.
+CREATE TABLE IF NOT EXISTS bug_reports (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  email TEXT,
+  description TEXT NOT NULL,
+  screen TEXT,
+  app_version TEXT,
+  user_agent TEXT,
+  context JSONB,
+  status TEXT NOT NULL DEFAULT 'new',   -- 'new' | 'reviewed' | 'resolved'
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  reviewed_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_bug_reports_status ON bug_reports(status, created_at DESC);
+
+-- Global window.onerror / unhandledrejection capture (see the frontend's ERROR CAPTURE
+-- block and api/error-logs.js). Self-hosted in this same Postgres -- no third-party
+-- error-tracking service, matching how cost-conscious this whole project has been.
+-- Deduped in a simple time window: a repeat of the same message from the same user
+-- within the window bumps occurrence_count/last_seen_at on the existing row instead of
+-- inserting a new one, so one broken loop can't spam thousands of near-identical rows.
+CREATE TABLE IF NOT EXISTS error_logs (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  message TEXT NOT NULL,
+  stack TEXT,
+  url TEXT,
+  user_agent TEXT,
+  occurrence_count INTEGER NOT NULL DEFAULT 1,
+  first_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_error_logs_recent ON error_logs(last_seen_at DESC);
+
+-- Lightweight coaching-oversight log for the admin panel (AI Assistant chat, api/ai/chat.js,
+-- and goal-refinement chat, api/goals/refine-chat.js) -- one row per turn holding a
+-- TRUNCATED excerpt of the user's message and the AI's reply (never the full running
+-- conversation_history the client already holds), plus whether that turn errored. Enough
+-- for the founder to spot a bad/erroring reply during a small trusted beta without
+-- building full transcript surveillance that logs everything forever.
+CREATE TABLE IF NOT EXISTS coach_sessions (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,          -- 'assistant' | 'goal_refine'
+  user_message TEXT,
+  ai_reply TEXT,
+  had_error BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_coach_sessions_recent ON coach_sessions(created_at DESC);

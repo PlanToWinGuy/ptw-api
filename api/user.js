@@ -1,6 +1,6 @@
 import { sql, PILLARS } from '../lib/db.js';
 import { cors } from '../lib/cors.js';
-import { getUserFromRequest } from '../lib/auth.js';
+import { getUserFromRequest, isAdminUser } from '../lib/auth.js';
 import { calculateLifeScore, PILLAR_CAPS } from '../lib/lifescore.js';
 import { getPillarState, buildPillarStates } from '../lib/pillarState.js';
 
@@ -125,6 +125,10 @@ export default async function handler(req, res) {
       subscription_plan: user.subscription_plan || null,
       subscription_renews_at: user.subscription_current_period_end || null,
       valueprint_data: user.valueprint_data || null,
+      // Gates the client-side admin panel nav entry only -- every admin endpoint
+      // re-checks isAdminUser() against the real token server-side regardless of this
+      // flag, so a normal account spoofing it client-side still gets 403s with no data.
+      is_admin: isAdminUser(user),
       google_calendar_connected: !!user.google_calendar_refresh_token,
       google_calendar_sync_enabled: !!user.google_calendar_sync_enabled,
     },

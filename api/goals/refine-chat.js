@@ -176,6 +176,7 @@ async function chatTurn(req, res, user) {
     // (possibly a scheduled sub-task with a real taskId) the same way fresh generation does.
     const firstStep = plan.dailyAnchor ? { type: 'routine', name: plan.dailyAnchor } : (current_plan.firstStep || null);
 
+    logCoachSession(user.id, message, reply, false);
     res.status(200).json({
       reply: reply || "Okay, here's the updated plan.",
       planChanged: !!planChanged,
@@ -183,8 +184,18 @@ async function chatTurn(req, res, user) {
     });
   } catch (e) {
     console.error('goals.refine-chat: AI call failed', { goal_id, user_id: user.id, error: String(e) });
+    logCoachSession(user.id, message, null, true);
     return res.status(500).json({ message: "Couldn't process that -- try again." });
   }
+}
+
+// Fire-and-forget row for the admin panel's Coaching Oversight section (see
+// api/ai/chat.js's own copy of this pattern) -- truncated excerpts only, never awaited.
+function logCoachSession(userId, userMessage, aiReply, hadError) {
+  sql`
+    INSERT INTO coach_sessions (user_id, kind, user_message, ai_reply, had_error)
+    VALUES (${userId}, 'goal_refine', ${String(userMessage || '').slice(0, 500)}, ${aiReply ? String(aiReply).slice(0, 500) : null}, ${hadError})
+  `.catch(e => console.error('coach_sessions insert failed', String(e)));
 }
 
 // "Approve This Plan": resyncs the goal's REAL routines/tasks to whatever plan state the

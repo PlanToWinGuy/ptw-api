@@ -167,8 +167,21 @@ export default async function handler(req, res) {
     const response_text = finalContent.filter(b => b.type === 'text').map(b => b.text).join('\n').trim()
       || "Okay, done!";
 
+    logCoachSession(user.id, 'assistant', message, response_text, false);
     res.status(200).json({ response_text, action_taken });
   } catch (e) {
+    logCoachSession(user.id, 'assistant', message, null, true);
     res.status(200).json({ response_text: "Something went wrong on my end -- try again in a moment.", action_taken: null });
   }
+}
+
+// Fire-and-forget row for the admin panel's Coaching Oversight section -- truncated
+// excerpts only (never the full conversation_history the client holds), so this stays a
+// spot-check log, not a transcript archive. Never awaited by the caller and never lets a
+// logging failure affect the real chat response.
+function logCoachSession(userId, kind, userMessage, aiReply, hadError) {
+  sql`
+    INSERT INTO coach_sessions (user_id, kind, user_message, ai_reply, had_error)
+    VALUES (${userId}, ${kind}, ${String(userMessage || '').slice(0, 500)}, ${aiReply ? String(aiReply).slice(0, 500) : null}, ${hadError})
+  `.catch(e => console.error('coach_sessions insert failed', String(e)));
 }
