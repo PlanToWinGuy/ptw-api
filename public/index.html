@@ -418,12 +418,19 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
    near-invisible in light mode, since it blends toward the page's very pale --bg there.
    Pinning it to the padding-bottom's own pixel height guarantees every real content line
    stays in the strong, constant-alpha zone (same contrast the solid-blue LifeScore card
-   already shipped with) and only the empty padding strip below all text fades to 0. */
+   already shipped with) and only the empty padding strip below all text fades to 0.
+   2026-09-18: the top used to jump straight to full alpha at 0 -- a hard edge against the
+   plain page background above it, reading as a flat rectangle rather than a layered
+   surface. Now fades in over the same first ~16px as the top padding, landing at full
+   alpha right as the row's real content begins (same "content always stays in the
+   constant-alpha zone" rule as the bottom), so both edges of the hero soften instead of
+   just one. */
 .profile-hero{
   margin:0 -18px 4px;
   padding:14px 18px 40px;
   background:linear-gradient(180deg,
-    rgba(91,164,220,.88) 0,
+    rgba(91,164,220,0) 0,
+    rgba(91,164,220,.88) 16px,
     rgba(91,164,220,.74) calc(100% - 40px),
     rgba(91,164,220,0) 100%);
 }
