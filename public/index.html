@@ -267,7 +267,12 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
 /* Two sizes up from the original 12px (now three), and near-white instead of the muted
    stone tone -- this is the number the user actually glances at most, it should read
    instantly as the dominant element in the ring. */
-.cta-timer-label{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--text);letter-spacing:.2px;margin-top:2px}
+.cta-timer-label{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--text);letter-spacing:.2px;margin-top:2px;text-align:center}
+/* The overtime string ("+123:45 over") runs meaningfully longer than a normal countdown
+   ("12:34") -- at the same 22px it could overflow the ring's inner width and wrap
+   without this, and even centered text looks oversized for a secondary/urgent state
+   that shouldn't visually compete with the task name above it. */
+.cta-timer-label.overtime{font-size:16px;letter-spacing:.1px}
 #cta-timer-arc{transition:stroke-dashoffset 1s linear,stroke .4s ease}
 .cta-btns{display:flex;gap:20px;margin-top:14px}
 .cta-micro{
@@ -5942,7 +5947,7 @@ function updateCtaTimerRing() {
   // With no live arc to draw, the pillar-coloured border IS the ring. When the arc DOES
   // draw (below), the border is hidden instead so we never show two concentric rings --
   // the arc alone is the ring, matching the manually-started task's countdown ring.
-  if(totalMs<=0) { svg.style.display='none'; label.style.display='block'; label.textContent=timeRangeText; if(miniTimer) miniTimer.textContent=timeRangeText;
+  if(totalMs<=0) { svg.style.display='none'; label.style.display='block'; label.textContent=timeRangeText; label.classList.remove('overtime'); if(miniTimer) miniTimer.textContent=timeRangeText;
     const p0=PILLARS[getPillarKey(t.pillar)]||PILLARS.personal; setCtaAccent(p0.color); return; }
 
   const arc=document.getElementById('cta-timer-arc');
@@ -5981,6 +5986,7 @@ function updateCtaTimerRing() {
     countdownText=mm+':'+String(sec).padStart(2,'0');
   }
   label.textContent=countdownText;
+  label.classList.toggle('overtime', now>=end);
   svg.style.display='block';
   // Arc is now the ring -- hide the solid pillar border so the two don't stack (the
   // "doubled ring" on a scheduled/routine current task).
@@ -6101,7 +6107,7 @@ function updateManualTaskCountdown(homeScreen, svg, label, miniTimer, timeRangeE
   const absMs=Math.abs(remaining);
   const mm=Math.floor(absMs/60000), ss=Math.floor((absMs%60000)/1000);
   const timeText = remaining>0 ? (mm+':'+String(ss).padStart(2,'0')) : ('+'+mm+':'+String(ss).padStart(2,'0')+' over');
-  if(label) label.textContent=timeText;
+  if(label) { label.textContent=timeText; label.classList.toggle('overtime', remaining<=0); }
   if(miniTimer) miniTimer.textContent=timeText;
   renderTaskDetailTimerUI();
 }
