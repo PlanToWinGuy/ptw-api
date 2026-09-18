@@ -511,6 +511,14 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
   position:relative;z-index:2;
 }
 
+/* Review Blueprint / refine-chat Plan Preview -- shared renderBlueprintPlanHtml(). The
+   "Your First Step" card is this screen's one dominant element, so it gets extra bottom
+   padding + an elevated shadow, and the block right after it (Daily Anchor, or the first
+   Phase card if there's no anchor) is pulled up to overlap its bottom edge -- see the
+   rbpOverlapPending logic in renderBlueprintPlanHtml(). */
+.rbp-hero-card{padding-bottom:32px!important;box-shadow:0 2px 8px -2px rgba(0,0,0,.4), 0 22px 40px -14px rgba(0,0,0,.55);position:relative;z-index:1}
+.rbp-overlap-card{margin-top:-20px!important;position:relative;z-index:2;box-shadow:0 14px 28px -10px rgba(0,0,0,.55)}
+
 /* ══════════════════════════════════
    GLASS REFRESH -- app-wide reskin, extending the pillar Map/Hub Glass system above to
    the rest of the app (Home, Daily Overview, To-Do & Routines, Profile, Settings + its
@@ -5525,14 +5533,25 @@ function renderBlueprintPlanHtml(plan, pillarKey) {
     <div class="section-title" style="margin-top:14px">${plan.title||plan.goal||''}</div>
     <div class="section-sub">${plan.why||''}</div>`;
   html += `<div class="section-sub" style="margin-top:-8px">${plan.timelineType==='strict'?'🔒 Strict deadline':'🔀 Dynamic timeline'}${plan.endDate?' · Projected: '+new Date(plan.endDate).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):''}</div>`;
-  if(plan.firstStep) html += `<div class="rm-goal-card" style="background:${p.color};margin:12px 0">
+  // Layered/3D treatment (2026-09-18, see the LAYERED / 3D DEPTH CSS comment): "Your
+  // First Step" is this screen's one genuinely dominant element, so it gets the elevated
+  // hero shadow + extra bottom padding, and whichever block comes right after it (the
+  // Daily Anchor bar if there is one, else the first Phase card) is pulled up to overlap
+  // its bottom edge instead of sitting flush underneath -- a real stacked-card feel for
+  // the one plan-preview screen, not the whole app.
+  let rbpOverlapPending=!!plan.firstStep;
+  if(plan.firstStep) html += `<div class="rm-goal-card rbp-hero-card" style="background:${p.color};margin:12px 0 0">
     <div style="font-size:11px;color:rgba(255,255,255,.75);letter-spacing:.4px">🎯 YOUR FIRST STEP</div>
     <div style="font-family:'Syne',sans-serif;font-weight:700;color:#fff;margin-top:4px">${plan.firstStep.name}</div>
     <div style="font-size:12px;color:rgba(255,255,255,.85);margin-top:6px">This is the first real action that moves you toward this goal — and toward who you're becoming.</div>
   </div>`;
-  if(plan.dailyAnchor) html += `<div class="rm-strategy" style="background:${p.color};margin-bottom:8px">Daily anchor: ${plan.dailyAnchor} <span style="opacity:.8">· 🔁 Every day</span></div>`;
+  if(plan.dailyAnchor) {
+    const ov=rbpOverlapPending; rbpOverlapPending=false;
+    html += `<div class="rm-strategy${ov?' rbp-overlap-card':''}" style="background:${p.color};margin-bottom:8px">Daily anchor: ${plan.dailyAnchor} <span style="opacity:.8">· 🔁 Every day</span></div>`;
+  }
   (plan.phases||[]).forEach(ph=>{
-    html += `<div class="rm-goal-card" style="margin-bottom:10px">
+    const ov=rbpOverlapPending; rbpOverlapPending=false;
+    html += `<div class="rm-goal-card${ov?' rbp-overlap-card':''}" style="margin-bottom:10px">
       <div style="display:flex;justify-content:space-between;margin-bottom:6px">
         <span style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text)">${ph.label||''}</span>
         <span style="font-size:11px;color:var(--stone)">${ph.duration||''}</span>
