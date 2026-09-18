@@ -481,6 +481,37 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
 .accent-wash{position:absolute;inset:0;z-index:-1;pointer-events:none;opacity:.16}
 
 /* ══════════════════════════════════
+   LAYERED / 3D DEPTH -- a deliberately small set of "key big" drill-downs (2026-09-18
+   direction: "not all the time but for certain key big things... that 3D feel of
+   layering") get real z-depth instead of the flat single-shadow default every other
+   glass-card uses: a hero element with a heavier, two-layer shadow that overlapping
+   content is pulled UP into via negative margin + higher z-index, so it visually reads
+   as sitting a level above what's behind it -- Samsung Health's own summary-strip-over-
+   header pattern. Used by: Profile's metric-detail popup (.pmd-hero-card/.pmd-chips-row
+   below), Task Detail (.td-hero-card), and the goal Review Blueprint / refine-chat plan
+   preview (.rbp-hero-card/.rbp-overlap-card). Everything else (list rows, plain glass
+   cards) intentionally keeps the flat single-shadow look -- this is not a global change. */
+.pmd-hero-card{position:relative;z-index:1;box-shadow:0 2px 8px -2px rgba(0,0,0,.4), 0 22px 38px -14px rgba(0,0,0,.6)!important}
+.pmd-chips-row{position:relative;z-index:2}
+.pmd-chips-row .glass-card{box-shadow:0 10px 22px -8px rgba(0,0,0,.55)!important}
+
+/* Task Detail hero -- background colour set inline per-task (its pillar's colour) by
+   openTaskDetail(), same convention as pillarMapHero(). Generous bottom padding gives
+   the floating controls dock below room to overlap up into it. */
+.td-hero-card{
+  border-radius:24px;padding:24px 20px 46px;margin-top:16px;
+  box-shadow:0 2px 8px -2px rgba(0,0,0,.4), 0 24px 42px -16px rgba(0,0,0,.6);
+  position:relative;z-index:1;
+}
+.td-controls-dock{
+  display:flex;justify-content:center;align-items:center;gap:14px;
+  width:fit-content;margin:-28px auto 26px;padding:10px 18px;
+  background:var(--bg2);border-radius:30px;
+  box-shadow:0 16px 32px -10px rgba(0,0,0,.55), 0 2px 6px rgba(0,0,0,.3);
+  position:relative;z-index:2;
+}
+
+/* ══════════════════════════════════
    GLASS REFRESH -- app-wide reskin, extending the pillar Map/Hub Glass system above to
    the rest of the app (Home, Daily Overview, To-Do & Routines, Profile, Settings + its
    sub-screens, Notifications, Trophies, shared modals). Same hierarchy rule as the pillar
@@ -1749,13 +1780,20 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
     <span style="width:36px"></span>
   </div>
   <div class="scroll-body" style="padding:0 24px;text-align:center">
-    <div id="td-icon" style="font-size:34px;margin-bottom:10px">📝</div>
-    <div id="td-name" style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--text);margin-bottom:6px">Task Name</div>
-    <div id="td-time" style="font-size:13px;color:var(--stone);margin-bottom:20px">Time: —</div>
-    <div style="height:5px;background:var(--bg4);border-radius:3px;overflow:hidden;margin-bottom:22px">
-      <div id="td-progress-fill" style="height:100%;width:0%;background:var(--blue);transition:width 1s linear"></div>
+    <!-- Layered/3D treatment (2026-09-18, see the LAYERED / 3D DEPTH CSS comment) --
+         id="td-hero" gets its background painted per the task's own pillar colour by
+         openTaskDetail(), same gradient-hero convention as pillarMapHero(). The controls
+         row below is pulled up to float as its own dock overlapping the hero's bottom
+         edge instead of sitting flush underneath it. -->
+    <div id="td-hero" class="td-hero-card">
+      <div id="td-icon" style="font-size:34px;margin-bottom:10px">📝</div>
+      <div id="td-name" style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:#fff;margin-bottom:6px">Task Name</div>
+      <div id="td-time" style="font-size:13px;color:rgba(255,255,255,.8);margin-bottom:20px">Time: —</div>
+      <div style="height:5px;background:rgba(255,255,255,.28);border-radius:3px;overflow:hidden">
+        <div id="td-progress-fill" style="height:100%;width:0%;background:#fff;transition:width 1s linear"></div>
+      </div>
     </div>
-    <div style="display:flex;justify-content:center;gap:16px;margin-bottom:26px">
+    <div class="td-controls-dock">
       <button class="cta-micro" style="width:40px;height:40px;font-size:16px" onclick="openEditTask(S.taskDetailTask)" title="Edit">✏</button>
       <button class="cta-micro" id="td-playpause-btn" style="width:40px;height:40px;font-size:16px;background:var(--blue);color:#fff" onclick="toggleTaskDetailTimer()" title="Start"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>
       <button class="cta-micro" style="width:40px;height:40px;font-size:16px" onclick="skipTaskDetailTask()" title="Skip">⏭</button>
@@ -1936,6 +1974,20 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
 </div>
 
 <!-- ══════════════════════════════════
+     GOOGLE CALENDAR SYNC -- one-directional PTW -> Google Calendar push. A separate
+     connect/disconnect flow from Google Sign-In (incremental authorization: this asks for
+     the calendar.events scope only when someone actually opts in here, not at login).
+══════════════════════════════════ -->
+<div id="screen-calendar-sync" class="screen">
+  <div class="pillar-top-bar">
+    <button class="icon-btn ghost" onclick="openSettingsHub()">←</button>
+    <h2 style="font-size:15px">Google Calendar Sync</h2>
+    <span style="width:36px"></span>
+  </div>
+  <div class="scroll-body" style="padding:0 18px" id="calendar-sync-body"></div>
+</div>
+
+<!-- ══════════════════════════════════
      MEASUREMENT UNITS
 ══════════════════════════════════ -->
 <div id="screen-measurement-units" class="screen">
@@ -2062,6 +2114,48 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
     <span style="width:36px"></span>
   </div>
   <div class="scroll-body" style="padding:0 18px" id="static-page-body"></div>
+</div>
+
+<!-- ══════════════════════════════════
+     REPORT A PROBLEM (bug_reports) -- reached from Settings and from the Help/FAQ
+     page's dead-end fallback (see STATIC_PAGES.help below).
+══════════════════════════════════ -->
+<div id="screen-report-problem" class="screen">
+  <div class="pillar-top-bar">
+    <button class="icon-btn ghost" onclick="closeReportProblem()">←</button>
+    <h2 style="font-size:15px">Report a Problem</h2>
+    <span style="width:36px"></span>
+  </div>
+  <div class="scroll-body" style="padding:0 18px" id="report-problem-body">
+    <div class="field" style="margin-top:14px">
+      <label>WHAT HAPPENED?</label>
+      <textarea id="rp-description" rows="6" placeholder="Tell us what you were doing and what went wrong…" style="width:100%;padding:12px 14px;background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:10px;color:var(--text);font-size:14px;font-family:'Inter',sans-serif;outline:none;resize:none"></textarea>
+    </div>
+    <div class="field">
+      <label>SCREENSHOT (OPTIONAL)</label>
+      <button type="button" class="btn-p" style="border-color:var(--blue);color:var(--blue)" id="rp-file-btn" onclick="document.getElementById('rp-file-input').click()">📎 Attach a screenshot</button>
+      <input type="file" id="rp-file-input" accept="image/*" style="display:none" onchange="onReportScreenshotPicked(event)">
+    </div>
+    <div style="font-size:11px;color:var(--stone);margin:6px 0 20px;line-height:1.5">We'll automatically include your current screen and basic device info to help us investigate — nothing else.</div>
+    <button class="btn-p filled" style="background:var(--blue);border-color:var(--blue)" id="rp-submit-btn" onclick="submitBugReport()">Send Report</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     ADMIN PANEL -- founder-only. This screen only ever gets a nav entry when
+     S.userData.is_admin is true (see renderSettingsBody), but that's a UX convenience,
+     not the real gate: every fetch this screen makes (bug-reports/error-logs/admin) is
+     re-checked server-side against lib/auth.js's ADMIN_EMAIL on every request, so a
+     normal account forcing this screen open still gets 403s and empty panels, never data.
+══════════════════════════════════ -->
+<div id="screen-admin" class="screen">
+  <div class="pillar-top-bar">
+    <button class="icon-btn ghost" onclick="openSettingsHub()">←</button>
+    <h2 style="font-size:15px">Admin Panel</h2>
+    <span style="width:36px"></span>
+  </div>
+  <div style="display:flex;gap:6px;padding:12px 18px 0;overflow-x:auto" id="admin-tabs"></div>
+  <div class="scroll-body" style="padding:0 18px" id="admin-body"></div>
 </div>
 
 <!-- ══════════════════════════════════
@@ -2547,6 +2641,7 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
 // CONFIG
 // ════════════════════════════════════════
 const API = 'https://ptw-api.vercel.app/api';
+const APP_VERSION = '1.0.0';
 
 // Sleek single-color line/solid glyphs (same fill="currentColor" convention as the pillar
 // bottom-nav's Map/Quests/Roadmap/Trophies icons) instead of full-color detail emoji --
@@ -2721,6 +2816,49 @@ async function req(method, path, body) {
     return null;
   }
 }
+
+// ════════════════════════════════════════
+// ERROR CAPTURE -- global window.onerror + unhandledrejection -> POST /api/error-logs
+// -> error_logs table, so a freeze/crash shows up for the founder instead of only ever
+// reaching them as an email. Deliberately does NOT go through req() above: this must
+// never toast, never trigger doLogout() on a 401, and never let a logging failure become
+// a second error to report -- it's fire-and-forget, best-effort, always silent. Reads
+// S.token/S.user directly rather than via any helper since this can fire before the rest
+// of the app has finished initializing.
+// ════════════════════════════════════════
+const _sentErrorLogAt = new Map(); // message -> last-sent timestamp, client-side throttle
+function reportClientError(message, stack, url) {
+  try {
+    if (!message) return;
+    const key = String(message).slice(0,200);
+    const now = Date.now();
+    // A broken loop can throw the same error hundreds of times a second -- only the
+    // server's own 15-minute dedupe (see api/error-logs.js) is the real backstop, but
+    // there's no reason to even fire the network request more than once every few
+    // seconds for the exact same message.
+    if (_sentErrorLogAt.has(key) && now - _sentErrorLogAt.get(key) < 5000) return;
+    _sentErrorLogAt.set(key, now);
+    const h = {'Content-Type':'application/json','Accept':'application/json'};
+    if (S.token) h['Authorization'] = 'Bearer ' + S.token;
+    fetch(API + '/error-logs', {
+      method:'POST', headers:h,
+      body: JSON.stringify({
+        message: String(message).slice(0,1000),
+        stack: stack ? String(stack).slice(0,4000) : null,
+        url: url || location.href,
+        user_agent: navigator.userAgent,
+      }),
+    }).catch(()=>{});
+  } catch(e) { /* never let error reporting itself throw */ }
+}
+window.addEventListener('error', (e)=>{
+  reportClientError(e.message || 'Unknown error', e.error?.stack, e.filename);
+});
+window.addEventListener('unhandledrejection', (e)=>{
+  const reason=e.reason;
+  const message = reason?.message || (typeof reason==='string' ? reason : 'Unhandled promise rejection');
+  reportClientError(message, reason?.stack, location.href);
+});
 
 // ════════════════════════════════════════
 // SPLASH ANIMATION
@@ -3038,6 +3176,61 @@ async function handleGoogleCredential(response) {
   }
 }
 
+// ════════════════════════════════════════
+// GOOGLE CALENDAR SYNC (incremental authorization)
+// A DELIBERATELY separate grant from Google Sign-In above -- someone can sign in with
+// Google for login convenience without also handing over calendar access in that same
+// moment, and someone who signed in with email/password can connect Calendar later from
+// Settings. This uses the OAuth2 "code client" half of the same Google Identity Services
+// script (already loaded for Sign-In, so no extra script tag needed), requesting only the
+// calendar.events scope (create/update/delete events -- never full calendar management,
+// never read access this feature has no use for). Requires the same GOOGLE_CLIENT_ID as
+// Sign-In above once it's configured; see api/calendar.js for what happens server-side.
+// ════════════════════════════════════════
+const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
+
+function connectGoogleCalendar() {
+  if(GOOGLE_CLIENT_ID.startsWith('REPLACE_WITH')) { toast('Google Calendar sync needs a Google Client ID configured first'); return; }
+  if(!window.google?.accounts?.oauth2) { toast('Still loading Google — try again in a moment'); return; }
+  const client = google.accounts.oauth2.initCodeClient({
+    client_id: GOOGLE_CLIENT_ID,
+    scope: CALENDAR_SCOPE,
+    ux_mode: 'popup',
+    callback: handleCalendarAuthCode,
+  });
+  client.requestCode();
+}
+
+async function handleCalendarAuthCode(response) {
+  if(response?.error) { toast('Google Calendar connection was cancelled or failed'); return; }
+  if(!response?.code) { toast('Could not get permission from Google — try again'); return; }
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+  const data = await req('POST','/calendar/connect',{ code: response.code, timezone });
+  if(!data || data.connected !== true) { toast(data?.message||'Could not connect Google Calendar'); return; }
+  toast('Google Calendar connected ✓');
+  await openCalendarSyncSettings();
+}
+
+async function disconnectGoogleCalendar() {
+  const data = await req('POST','/calendar/disconnect',{});
+  toast(data?.message||'Google Calendar disconnected');
+  await openCalendarSyncSettings();
+}
+
+async function toggleGoogleCalendarSync(enabled) {
+  const data = await req('PUT','/calendar/toggle',{ enabled });
+  toast(data?.message||(enabled?'Sync turned on':'Sync turned off'));
+}
+
+async function syncGoogleCalendarNow() {
+  toast('Syncing today’s schedule to Google Calendar…');
+  const today = new Date().toISOString().split('T')[0];
+  const data = await req('POST','/calendar/sync-day',{ date: today });
+  if(!data) return;
+  if(data.skipped) { toast('Nothing to sync yet — connect Google Calendar first'); return; }
+  toast(`Synced: ${data.created||0} added, ${data.updated||0} updated, ${data.deleted||0} removed`);
+}
+
 async function doOnboarding() {
   const username=document.getElementById('ob-username').value.trim();
   const dob=document.getElementById('ob-dob').value;
@@ -3268,6 +3461,13 @@ function renderSettingsBody() {
     + settingsRow('👤','Edit Profile',"openProfileEditScreen()")
     + settingsRow('🔑','Account & Security',"openAccountSecurity()");
 
+  // Founder-only -- server-gated (see lib/auth.js ADMIN_EMAIL), this flag just decides
+  // whether the nav entry itself shows up for this account.
+  if (S.userData?.is_admin) {
+    html += `<div class="section-sub" style="margin-top:20px">FOUNDER</div>`
+      + settingsRow('🛠️','Admin Panel',"openAdminPanel()",'Bug reports, error log, users & coaching');
+  }
+
   const currentTheme=localStorage.getItem('ptw_theme')||'dark';
   const currentTextScale=localStorage.getItem('ptw_text_scale')||'1';
   html += `<div class="section-sub" style="margin-top:20px">APP PREFERENCES</div>`
@@ -3285,6 +3485,7 @@ function renderSettingsBody() {
     + settingsRow('🔔','Notification Settings',"openNotificationSettings()")
     + settingsRow('📏','Measurement Units',"openMeasurementUnits()")
     + settingsRow('☀️','Daily Briefings',"openDailyBriefingsSettings()")
+    + settingsRow('📆','Google Calendar Sync',"openCalendarSyncSettings()", S.userData?.google_calendar_sync_enabled ? 'On' : (S.userData?.google_calendar_connected ? 'Off' : 'Not connected'))
     + settingsRow('📅','Import a Schedule',"openScheduleImport()",'Upload a class, work, or practice schedule')
     + settingsRow('🧩','Essential Apps Settings',"openEssentialAppsPrefs()",'Preferred apps, pairings & your own added apps')
     + settingsRow('🎯','Pillar Priority',"openPillarPriority()",'Which pillar leads the nav and swiping')
@@ -3302,6 +3503,7 @@ function renderSettingsBody() {
   });
 
   html += `<div class="section-sub" style="margin-top:20px">SUPPORT & LEGAL</div>`
+    + settingsRow('🐞','Report a Problem',"openReportProblem()",'Tell us what broke — we can see it in one place')
     + settingsRow('❓','Help & Support / FAQ',"openStaticPage('help')")
     + settingsRow('📄','Terms of Service',"openStaticPage('terms')")
     + settingsRow('🛡️','Privacy Policy',"openStaticPage('privacy')");
@@ -3314,7 +3516,7 @@ function renderSettingsBody() {
     <div class="field"><input type="text" id="settings-promo-input" placeholder="Enter a promo code" autocapitalize="off" onkeydown="if(event.key==='Enter') submitPromoCode()"></div>`;
 
   html += `<button class="btn-p filled" style="background:#C46882;border-color:#C46882;margin:20px 0 6px" onclick="confirmLogout()">Log Out</button>`;
-  html += `<div style="text-align:center;font-size:11px;color:var(--stone);margin-bottom:24px">Version 1.0.0 (Build 1)</div>`;
+  html += `<div style="text-align:center;font-size:11px;color:var(--stone);margin-bottom:24px">Version ${APP_VERSION} (Build 1)</div>`;
   body.innerHTML=html;
 }
 
@@ -3493,6 +3695,46 @@ async function saveDailyBriefingsSettings() {
   await req('PUT','/preferences/daily_briefings',data);
   toast('Daily Briefings settings saved ✓');
   openSettingsHub();
+}
+
+// ─── GOOGLE CALENDAR SYNC ───
+// One-directional PTW -> Google Calendar: your scheduled tasks get pushed as real events
+// so they show up alongside your existing meetings/commitments. Nothing ever flows back
+// from Google into PTW. Connect/disconnect here is its own Google permission grant,
+// separate from Google Sign-In (you can sign in with email and still connect Calendar).
+async function openCalendarSyncSettings() {
+  showScreen('calendar-sync');
+  const body=document.getElementById('calendar-sync-body');
+  body.innerHTML='<div class="spinner"></div>';
+  const status = await req('GET','/calendar') || {};
+
+  if(!status.connected) {
+    body.innerHTML = `
+      <div style="margin-top:14px;font-size:13px;color:var(--stone);line-height:1.6">
+        Connect Google Calendar to automatically push your scheduled PTW tasks (with real times) onto your calendar, right alongside your other meetings and commitments. This only ever sends your PTW schedule TO Google — nothing is ever read back from your calendar.
+      </div>
+      <button class="social-btn" style="margin-top:18px" onclick="connectGoogleCalendar()">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+        Connect Google Calendar
+      </button>`;
+    return;
+  }
+
+  const connectedDate = status.connectedAt ? new Date(status.connectedAt).toLocaleDateString() : null;
+  body.innerHTML = `
+    <div class="settings-row" style="cursor:default;margin-top:14px">
+      <div class="sr-label" style="flex:1">📆 Sync to Google Calendar</div>
+      <label class="toggle-switch"><input type="checkbox" id="cs-enabled" ${status.syncEnabled?'checked':''} onchange="toggleGoogleCalendarSync(this.checked)"><span class="toggle-slider"></span></label>
+    </div>
+    <div style="font-size:12px;color:var(--stone);margin:8px 0 18px;line-height:1.5">
+      ${connectedDate ? `Connected since ${connectedDate}.` : 'Connected.'} ${status.timezone ? `Events use your ${status.timezone} timezone.` : ''} Completing, rescheduling, or deleting a task updates or removes its calendar event automatically.
+    </div>
+    <button class="view-log-btn" onclick="syncGoogleCalendarNow()">Sync Today Now</button>
+    <button class="btn-p" style="width:100%;margin:10px 0 6px;background:#C46882;border-color:#C46882;color:#fff" onclick="confirmDisconnectGoogleCalendar()">Disconnect Google Calendar</button>`;
+}
+
+function confirmDisconnectGoogleCalendar() {
+  openConfirm('Disconnect Google Calendar?', 'Events already pushed to your calendar will be removed, and PTW will stop syncing your schedule.', disconnectGoogleCalendar);
 }
 
 // ─── MEASUREMENT UNITS ───
@@ -3770,7 +4012,8 @@ const STATIC_PAGES={
     </div>`).join('')
     + `<div style="text-align:center;margin:18px 0 24px;display:flex;flex-direction:column;gap:10px">
         <button class="btn-p" style="border-color:var(--blue);color:var(--blue)" onclick="replayTutorial()">🔄 Replay the app tour</button>
-        <button class="btn-p filled" style="background:var(--blue);border-color:var(--blue)" onclick="window.location.href='mailto:hello@plantowin.app'">✉️ Email Support</button>
+        <button class="btn-p filled" style="background:var(--blue);border-color:var(--blue)" onclick="openReportProblem()">🐞 Report a Problem</button>
+        <button class="btn-p" style="border-color:var(--stone);color:var(--stone)" onclick="window.location.href='mailto:hello@plantowin.app'">✉️ Email Support</button>
       </div>`
   },
   terms: {title:'Terms of Service', body:
@@ -3807,6 +4050,15 @@ function openStaticPage(key) {
 // ════════════════════════════════════════
 async function enterApp() {
   await loadUserData();
+  // Self-healing Google Calendar catch-up: task mutations already push/update/remove
+  // their own event directly (see lib/googleCalendar.js's call sites), but this covers
+  // anything that creates tasks a different way (goal generation, routine materialization)
+  // without needing every one of those wired individually. Fire-and-forget -- never
+  // awaited, never allowed to delay entering the app, and a no-op server-side unless sync
+  // is actually connected+enabled.
+  if(S.userData?.google_calendar_sync_enabled) {
+    req('POST','/calendar/sync-day',{date:new Date().toISOString().split('T')[0]}).catch(()=>{});
+  }
   await checkPendingValueprint();
   showScreen('home');
   renderPillarApps();
@@ -5734,6 +5986,14 @@ function openTaskDetail(task, returnScreen) {
   const pillarVal=task.pillar_name||task.pillar||task.pillar_id;
   const pk=getPillarKey(pillarVal);
   const p=PILLARS[pk]||PILLARS.personal;
+  // Hero background is the task's own pillar colour (same gradient + light/dark-text-pick
+  // convention as pillarMapHero()) -- part of the Task Detail layered/3D treatment, see
+  // .td-hero-card.
+  const heroTextColor=pillarTextOn(p.color);
+  const heroDark=heroTextColor!=='#fff';
+  document.getElementById('td-hero').style.background=`linear-gradient(150deg, ${p.color}, ${p.color}bb)`;
+  document.getElementById('td-name').style.color=heroTextColor;
+  document.getElementById('td-time').style.color=heroDark?'rgba(26,22,17,.7)':'rgba(255,255,255,.8)';
   document.getElementById('td-icon').innerHTML=task.icon||p.icon;
   document.getElementById('td-name').textContent=task.name;
   const durMin=task.estimated_duration_minutes!=null?task.estimated_duration_minutes:task.durationMinutes;
@@ -7651,13 +7911,20 @@ function renderProfileMetricDetail(key, cfg, chrono, targetId) {
   // a ring hero was deliberately skipped here since these 6 don't have a fixed target the
   // way Water (of 3L) or a workout goal does, so "today vs. a target" framing doesn't fit;
   // "the trend over time" framing (what a sparkline shows) does.
-  const hero=`<div class="glass-card" style="border:1px solid ${hexToRgba(color,.22)};text-align:center;padding:20px 16px">
+  // Layered/3D treatment (2026-09-18): this is one of the handful of "key big" drill-downs
+  // picked for genuine z-depth (see .pmd-hero-card/.pmd-chips-row below) rather than every
+  // screen getting it -- the hero card gets extra bottom padding + a heavier two-layer
+  // shadow so it visually sits a level above the page, and the stat-chip row is pulled up
+  // to overlap its bottom edge (negative margin + higher z-index) instead of sitting flush
+  // underneath it, the way Samsung Health's own drill-downs overlap a summary strip onto
+  // its header card. History rows further down stay flat -- not everything needs this.
+  const hero=`<div class="glass-card pmd-hero-card" style="border:1px solid ${hexToRgba(color,.22)};text-align:center;padding:20px 16px 40px">
     <div class="section-sub" style="margin:0 0 4px">MOST RECENT DAY</div>
     <div style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:var(--text)">${cfg.format(current)} ${deltaChipHtml(delta,cfg.unit,cfg.higherIsBetter)}</div>
     <div style="margin-top:14px">${sparklineSvg(vals.slice(-30), color, {w:300,h:70})}</div>
   </div>`;
 
-  const chips=`<div style="display:flex;gap:8px;margin:12px 0">
+  const chips=`<div class="pmd-chips-row" style="display:flex;gap:8px;margin:-22px 6px 12px">
     ${metricStatChip('This Week', cfg.format(weekStat), color)}
     ${metricStatChip('Average', cfg.format(allAvg), color)}
     ${metricStatChip(cfg.bestLabel||'Best Day', cfg.format(best), color)}
