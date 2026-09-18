@@ -9353,7 +9353,7 @@ function renderMealCapture() {
   document.getElementById('meal-log-body').innerHTML=`
     <div style="text-align:center;padding:30px 0 10px">
       <div style="font-size:44px;margin-bottom:14px">📷</div>
-      <div style="font-size:13px;color:var(--stone);margin-bottom:16px;line-height:1.5">Snap a photo and AI estimates the nutrition, or enter it yourself.</div>
+      <div style="font-size:13px;color:var(--stone);margin-bottom:16px;line-height:1.5">Snap a photo and AI estimates the nutrition, or describe it yourself.</div>
       <input type="file" accept="image/*" capture="environment" id="meal-photo-input" style="display:none" onchange="handleMealPhoto(this)">
       <button class="btn-p filled" onclick="document.getElementById('meal-photo-input').click()">Take / Choose Photo</button>
       <button class="btn-p" style="margin-top:10px" onclick="renderMealManualEntry()">Enter Manually</button>
@@ -9429,12 +9429,20 @@ async function submitMealRefine() {
   renderMealReview();
 }
 
-// ── Manual meal entry: real food search (USDA FoodData Central via /api/metrics
-// ?action=food-search, proxied server-side so the API key never ships to the client) with
-// a live-scaling quantity/portion selector, MyFitnessPal-style -- add one or more foods,
-// each gets its own portion, then Continue folds the running totals into the SAME
-// mealLogDraft shape the photo-scan flow produces and hands off to the untouched
-// renderMealReview()/renderMealIngredientsList() for the final name/macro tweak + log step.
+// ── Manual meal entry ──
+// Two paths, both folding into the same mealLogDraft shape the photo-scan flow produces
+// and handing off to the untouched renderMealReview()/renderMealIngredientsList() for the
+// final tweak + log step:
+//   1. AI text estimate (renderMealTextEntry, THE DEFAULT) -- free-text description sent to
+//      /api/metrics?action=estimate-meal-text, the text-only sibling of the photo scan's
+//      Haiku call. Doesn't depend on any external API key, so this is what actually works
+//      out of the box.
+//   2. USDA food-database search (renderMealManualSearch, kept as a secondary/optional
+//      path) -- real nutrition data when it's got a match, but backed by USDA FoodData
+//      Central (/api/metrics?action=food-search) which currently runs on USDA's
+//      heavily-rate-limited public DEMO_KEY until a real key is registered -- see
+//      foodSearch() in api/metrics.js. Left in place (not ripped out) since a real key
+//      later would make this the more accurate option for foods it actually has.
 let mealManualItems=[], mealSearchTimer=null, mealSearchResults=[], mealSearchSeq=0, mealFoodPortionFood=null, mealSearchSizeHint=null;
 
 function renderMealManualEntry() {
@@ -9442,7 +9450,32 @@ function renderMealManualEntry() {
   mealManualItems=[];
   mealSearchResults=[];
   mealSearchSizeHint=null;
-  renderMealManualSearch();
+  renderMealTextEntry();
+}
+
+function renderMealTextEntry() {
+  document.getElementById('meal-log-body').innerHTML=`
+    <div class="field" style="margin-top:6px">
+      <label>WHAT DID YOU EAT?</label>
+      <textarea id="ml-text-desc" rows="3" placeholder="Be specific -- e.g. &quot;a medium banana&quot; or &quot;2 eggs scrambled in butter&quot;" style="width:100%;padding:12px;background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:10px;color:var(--text);font-size:14px;font-family:'Inter',sans-serif;outline:none;resize:none" onkeydown="if(event.key==='Enter'&&(event.metaKey||event.ctrlKey)){event.preventDefault();analyzeMealText();}"></textarea>
+    </div>
+    <div style="font-size:11px;color:var(--stone);margin:-8px 0 16px;line-height:1.4">The more specific (portion size, cooking method, what's in it), the better the estimate.</div>
+    <button class="btn-p filled" style="background:var(--diet);border-color:var(--diet);padding:17px;font-size:16px;font-weight:700" onclick="analyzeMealText()">Estimate Nutrition →</button>
+    <button class="btn-p" style="margin-top:10px;border-color:transparent;color:var(--blue)" onclick="renderMealManualSearch()">Search food database instead</button>`;
+  document.getElementById('ml-text-desc')?.focus();
+}
+
+async function analyzeMealText() {
+  const description=(document.getElementById('ml-text-desc')?.value||'').trim();
+  if(!description) { toast('Describe what you ate first'); return; }
+  document.getElementById('meal-log-body').innerHTML=`<div style="padding:80px 0;text-align:center"><div class="spinner"></div><div style="font-size:13px;color:var(--stone);margin-top:12px">Estimating nutrition…</div></div>`;
+  const data=await req('POST','/metrics?action=estimate-meal-text',{description});
+  if(!data || data.message) { toast(data?.message||'Could not estimate that'); renderMealTextEntry(); return; }
+  // ai_text_estimate flags this draft for renderMealReview()'s "(AI ESTIMATE)" label --
+  // same honesty-about-confidence treatment the photo scan gets, since this number is just
+  // as much a guess, only without a photo to Refine against.
+  mealLogDraft={...data.data, ai_text_estimate:true};
+  renderMealReview();
 }
 
 // Natural phrasing like "medium banana" or "a cup of rice" doesn't match well against
@@ -9488,6 +9521,7 @@ function defaultGramsForFood(f, size) {
 function renderMealManualSearch() {
   const total=mealManualItems.reduce((a,it)=>({calories:a.calories+it.calories,protein_g:a.protein_g+it.protein_g,carbs_g:a.carbs_g+it.carbs_g,fat_g:a.fat_g+it.fat_g}),{calories:0,protein_g:0,carbs_g:0,fat_g:0});
   document.getElementById('meal-log-body').innerHTML=`
+    <div style="margin:2px 0 12px"><span style="font-size:12px;color:var(--blue);cursor:pointer;text-decoration:underline;text-underline-offset:2px" onclick="renderMealTextEntry()">↺ Describe it instead</span></div>
     <div class="field" style="margin-top:6px">
       <label>SEARCH FOOD DATABASE</label>
       <input type="text" id="ml-food-search" placeholder="e.g. grilled chicken breast, greek yogurt..." autocomplete="off" oninput="onMealFoodSearchInput(this.value)" style="width:100%;padding:12px;background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:10px;color:var(--text);font-size:13px;font-family:'Inter',sans-serif;outline:none">
@@ -9685,7 +9719,7 @@ function renderMealReview() {
     ${d.image?`<div style="text-align:center;margin:14px 0"><img src="${d.image}" style="width:160px;height:160px;object-fit:cover;border-radius:12px;border:1px solid rgba(196,184,168,.15)"></div>`:''}
     <div class="field"><label>MEAL NAME</label><input type="text" id="ml-name" value="${d.name||''}" placeholder="e.g. Chicken & Rice Bowl"></div>
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:14px">
-      <div class="section-sub" style="margin:0">${d.image?'NUTRITIONAL OVERVIEW (AI ESTIMATE)':d.ingredients?'FROM YOUR MEAL PLAN':'NUTRITIONAL OVERVIEW'}</div>
+      <div class="section-sub" style="margin:0">${(d.image||d.ai_text_estimate)?'NUTRITIONAL OVERVIEW (AI ESTIMATE)':d.ingredients?'FROM YOUR MEAL PLAN':'NUTRITIONAL OVERVIEW'}</div>
       ${d.image&&mealLogDraft?.imageBase64?`<button type="button" onclick="openMealRefine()" style="display:flex;align-items:center;gap:5px;padding:8px 14px;border-radius:20px;border:1.5px solid var(--diet);background:rgba(201,168,50,.14);color:var(--diet);font-size:13px;font-weight:700;font-family:'Inter',sans-serif;cursor:pointer;white-space:nowrap;flex-shrink:0">✎ Refine</button>`:''}
     </div>
     <div class="metric-row">

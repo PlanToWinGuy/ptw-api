@@ -62,6 +62,48 @@ async function scanMeal(req, res) {
   }
 }
 
+// Text-only sibling of SCAN_SYSTEM/scanMeal() below -- same JSON shape, same honesty
+// discipline, just describing rather than looking at the meal. Kept as its own prompt
+// (rather than branching SCAN_SYSTEM) since "identify food in a photo" wording doesn't
+// apply when there's no image at all.
+const TEXT_ESTIMATE_SYSTEM = `You estimate the nutrition of a food or meal from a text description. Return ONLY JSON, no markdown fences:
+{"name":"<short meal name>","calories":<number>,"protein_g":<number>,"carbs_g":<number>,"fat_g":<number>,"confidence":"low"|"medium"|"high","note":"<one short caveat if the estimate is rough, else empty string>","scanned_ingredients":["<item 1>","<item 2>"]}
+List each distinct food item implied by the description in scanned_ingredients as its own short string -- typically 1-6 items. A vague description (e.g. no stated portion size or cooking method) deserves lower confidence and a note saying what you assumed -- estimates are approximate, say so honestly via confidence/note rather than pretending precision.`;
+
+// Draft-only, not saved -- same contract as scanMeal() below (client reviews/edits this
+// then POSTs it back to /api/metrics to actually save it). This is the text-only sibling:
+// manual entry's real default now that USDA search needs a registered API key the account
+// owner hasn't set up yet (still running on USDA's rate-limited DEMO_KEY). Same cheap Haiku
+// model as the photo scan, with a much shorter prompt and no image bytes, so this call is
+// at least as cheap as scanMeal(), not an upgrade to it.
+async function estimateMealText(req, res) {
+  const description = (req.body?.description || '').toString().trim();
+  if (!description) return res.status(422).json({ message: 'description is required' });
+
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key) return res.status(500).json({ message: 'ANTHROPIC_API_KEY not set on the server' });
+
+  try {
+    const r = await fetch(ANTHROPIC_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 300,
+        temperature: 0,
+        system: TEXT_ESTIMATE_SYSTEM,
+        messages: [{ role: 'user', content: `Estimate the nutrition for: "${description}"` }],
+      }),
+    });
+    const data = await r.json();
+    const text = (data.content || []).map(b => (b.type === 'text' ? b.text : '')).join('\n');
+    const parsed = JSON.parse(text.trim().replace(/^```json\n?/, '').replace(/```$/, ''));
+    res.status(200).json({ data: parsed });
+  } catch (e) {
+    res.status(500).json({ message: 'Could not estimate that — try again', error: String(e) });
+  }
+}
+
 const USDA_SEARCH_URL = 'https://api.nal.usda.gov/fdc/v1/foods/search';
 // Standard USDA FDC nutrient IDs -- stable across every food in the database (raw,
 // Foundation, SR Legacy, Survey/FNDDS, and Branded), so this mapping never needs to change
@@ -140,15 +182,18 @@ async function uploadMealPhoto(req, res, user) {
 }
 
 // GET/POST /api/metrics handles logging + fetching; POST /api/metrics/scan-meal
-// (rewritten to ?action=scan-meal) handles the AI vision draft step; GET
-// ?action=food-search handles the manual-entry USDA food lookup; POST
-// ?action=upload-meal-photo persists a meal photo (see uploadMealPhoto above).
+// (rewritten to ?action=scan-meal) handles the AI vision draft step; POST
+// ?action=estimate-meal-text handles the AI text-estimate draft step (manual entry's
+// default -- see estimateMealText above); GET ?action=food-search handles the
+// secondary/optional USDA food lookup; POST ?action=upload-meal-photo persists a meal
+// photo (see uploadMealPhoto above).
 export default async function handler(req, res) {
   if (cors(req, res)) return;
   const user = await getUserFromRequest(req);
   if (!user) return res.status(401).json({ message: 'Unauthenticated' });
 
   if (req.method === 'POST' && req.query.action === 'scan-meal') return scanMeal(req, res);
+  if (req.method === 'POST' && req.query.action === 'estimate-meal-text') return estimateMealText(req, res);
   if (req.method === 'GET' && req.query.action === 'food-search') return foodSearch(req, res);
   if (req.method === 'POST' && req.query.action === 'upload-meal-photo') return uploadMealPhoto(req, res, user);
 
