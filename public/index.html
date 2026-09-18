@@ -1614,7 +1614,11 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
     <button class="pg-btn" id="rc-tab-plan" style="background:var(--bg4);flex:1;font-size:11px" onclick="switchRefineChatTab('plan')">📋 Plan Preview</button>
   </div>
   <div id="refine-chat-tab-chat" style="display:flex;flex-direction:column;flex:1;min-height:0">
-    <div class="scroll-body" style="padding:0 18px 20px;display:flex;flex-direction:column;justify-content:flex-end;min-height:0" id="refine-chat-messages"></div>
+    <!-- No justify-content:flex-end here (see renderRefineChatMessages()) -- same fix as
+         #chat-messages: flex-end/center on an overflow:auto flex container clips
+         overflowing content at the START instead of growing scrollHeight, making older
+         messages unreachable by scrolling once a conversation gets long. -->
+    <div class="scroll-body" style="padding:0 18px 20px;display:flex;flex-direction:column;min-height:0" id="refine-chat-messages"></div>
     <div style="display:flex;gap:8px;padding:10px 18px calc(10px + var(--sb));background:var(--bg2);border-top:1px solid rgba(196,184,168,.1)">
       <input type="text" id="refine-chat-input" placeholder="Ask for a change, or ask why..." style="flex:1;padding:12px 14px;background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:20px;color:var(--text);font-size:14px;font-family:'Inter',sans-serif;outline:none" onkeydown="if(event.key==='Enter')sendRefineChatMessage()">
       <button class="icon-btn" style="background:var(--blue)" onclick="sendRefineChatMessage()">➢</button>
@@ -2333,7 +2337,12 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
        needs it to be allowed to shrink and scroll internally at all; 100% instead forced
        this to blow out past its own flex parent's height, pushing the input bar and
        everything below it off screen. -->
-  <div class="scroll-body" style="padding:0 18px 20px;display:flex;flex-direction:column;justify-content:flex-end;min-height:0" id="chat-messages"></div>
+  <!-- No justify-content:flex-end here (see renderChatMessages()) -- on an overflow:auto
+       flex container, flex-end/center clips overflowing content at the START instead of
+       growing scrollHeight, so a long conversation becomes unreachable by scrolling. The
+       bottom-hugging look for a short conversation comes from margin-top:auto on the
+       message wrapper renderChatMessages() injects instead. -->
+  <div class="scroll-body" style="padding:0 18px 20px;display:flex;flex-direction:column;min-height:0" id="chat-messages"></div>
   <div style="display:flex;gap:8px;padding:10px 18px calc(10px + var(--sb));background:var(--bg2);border-top:1px solid rgba(196,184,168,.1)">
     <input type="text" id="chat-input" placeholder="Type your message..." style="flex:1;padding:12px 14px;background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:20px;color:var(--text);font-size:14px;font-family:'Inter',sans-serif;outline:none" onkeydown="if(event.key==='Enter')sendChatMessage()">
     <button class="icon-btn" style="background:var(--blue)" onclick="sendChatMessage()">➢</button>
@@ -3056,11 +3065,18 @@ syncAppHeightToViewport();
 //      sliding up.
 //   2. visualViewport's `resize` fires when the keyboard has actually finished changing
 //      the visible area -- the one moment we know the real covered/visible geometry --
-//      so re-centering the currently-focused field there is what actually keeps it
-//      visible. It also naturally handles rotation and keyboard-dismiss (viewport grows
+//      so re-checking the currently-focused field's position there is what actually keeps
+//      it visible. It also naturally handles rotation and keyboard-dismiss (viewport grows
 //      back, nothing left focused, no-op).
-// Both just call the same recenter -- redundant on browsers where they'd agree, but each
+// Both just call the same reposition -- redundant on browsers where they'd agree, but each
 // covers a real gap the other browser/OS combo leaves open.
+// block:'nearest' (not 'center'!) -- a bottom-anchored input row (a chat screen's message
+// input, for example) only needs to clear the keyboard, not jump to the vertical middle of
+// the now-shrunk visible area. 'center' was the bug behind "it pops up too high on screen
+// when keyboard opens": on a short screen with little content above the field, centering
+// the field in the shrunk viewport visibly yanks a bottom-pinned input way up past where it
+// belongs. 'nearest' does the minimum scroll needed to clear the keyboard and leaves an
+// already-visible field alone entirely.
 function scrollFocusedInputIntoView() {
   const el = document.activeElement;
   if (!el) return;
@@ -3069,7 +3085,7 @@ function scrollFocusedInputIntoView() {
   // Native pickers/toggles reposition themselves (or don't get covered by a text
   // keyboard at all) -- scrolling under them just causes a jarring unwanted jump.
   if (['range','checkbox','radio','file','date','time','color'].includes(el.type)) return;
-  el.scrollIntoView({block:'center', behavior:'smooth'});
+  el.scrollIntoView({block:'nearest', behavior:'smooth'});
 }
 document.addEventListener('focusin', (e)=>{
   const tag=e.target?.tagName;
@@ -5709,7 +5725,10 @@ function renderRefineChatMessages() {
   const quickReplies=showQuickReplies?`<div style="display:flex;flex-direction:column;gap:8px;margin-top:20px">
     ${REFINE_CHAT_QUICK_PROMPTS.map(t=>`<button type="button" class="chat-quick-btn" onclick="sendRefineChatMessage('${t.replace(/'/g,"\\'")}')">${t}</button>`).join('')}
   </div>`:'';
-  el.innerHTML=bubbles+typingBubble+quickReplies;
+  // margin-top:auto on this wrapper (not justify-content:flex-end on #refine-chat-messages
+  // itself -- see its markup comment) is what hugs a short conversation to the bottom
+  // without breaking scrolling once it overflows.
+  el.innerHTML=`<div style="margin-top:auto">${bubbles+typingBubble+quickReplies}</div>`;
   el.scrollTop=el.scrollHeight;
 }
 
@@ -8769,7 +8788,10 @@ function renderChatMessages() {
   const lastMsg=S.chatMessages[S.chatMessages.length-1];
   const learnMore=(lastMsg?.role==='assistant' && lastMsg.text.includes(UPSELL_TEXT))
     ? `<div style="margin:6px 0 12px"><button class="btn-p filled" style="background:var(--blue);border-color:var(--blue)" onclick="openMembership()">Learn More</button></div>` : '';
-  el.innerHTML=bubbles+learnMore+quickReplies;
+  // margin-top:auto on this wrapper (not justify-content:flex-end on #chat-messages
+  // itself -- see its markup comment) is what hugs a short conversation to the bottom
+  // without breaking scrolling once it overflows.
+  el.innerHTML=`<div style="margin-top:auto">${bubbles+learnMore+quickReplies}</div>`;
   el.scrollTop=el.scrollHeight;
 }
 
@@ -9964,11 +9986,53 @@ function mealHistoryCard(m) {
     {style:'margin-bottom:8px', onclick:`viewMealDetail(${m.id})`});
 }
 
+// Micronutrient fields api/metrics.js's scanMeal()/estimateMealText() now also return
+// alongside the core macros (same AI call, no added cost -- see those prompts' own
+// comments). Kept as data on the log's `data` JSONB the same way protein_g/carbs_g/fat_g
+// already are; a logged meal predating this feature (or one entered manually) just has none
+// of these keys, which pickMicronutrients()/renderMicronutrientsGrid() treat as "nothing to
+// show" rather than as zeros.
+const MICRONUTRIENT_FIELDS = [
+  {key:'fiber_g', label:'Fiber', unit:'g'},
+  {key:'sugar_g', label:'Sugar', unit:'g'},
+  {key:'sodium_mg', label:'Sodium', unit:'mg'},
+  {key:'potassium_mg', label:'Potassium', unit:'mg'},
+  {key:'calcium_mg', label:'Calcium', unit:'mg'},
+  {key:'iron_mg', label:'Iron', unit:'mg'},
+  {key:'vitamin_c_mg', label:'Vitamin C', unit:'mg'},
+];
+// Pulls just the micronutrient keys out of an AI scan/estimate draft so confirmLogMeal()
+// can persist them alongside the macros without also having to hand-list every key itself.
+function pickMicronutrients(d) {
+  const out={};
+  if(!d) return out;
+  MICRONUTRIENT_FIELDS.forEach(f=>{ if(d[f.key]!=null && d[f.key]!=='') out[f.key]=Number(d[f.key])||0; });
+  return out;
+}
+function renderMicronutrientsGrid(d) {
+  const present=MICRONUTRIENT_FIELDS.filter(f=>d[f.key]!=null);
+  if(!present.length) return '<div style="font-size:12px;color:var(--stone)">No micronutrient data for this meal.</div>';
+  // .metric-row is a 2-column grid (see its CSS) -- 7 fields just wrap onto a 4th short row.
+  return `<div class="metric-row">${present.map(f=>`
+    <div class="metric-card"><div class="metric-label">${f.label}</div><div style="font-size:15px;color:var(--text)">${d[f.key]}${f.unit}</div></div>`).join('')}</div>`;
+}
+// The toggle itself -- collapsed by default so the detail view isn't cluttered with 7 extra
+// numbers most people won't look at most of the time, one tap away for the people who do.
+function toggleMealMicronutrients() {
+  const box=document.getElementById('meal-micronutrients');
+  const label=document.getElementById('meal-micro-toggle-label');
+  if(!box) return;
+  const showing=box.style.display!=='none';
+  box.style.display=showing?'none':'block';
+  if(label) label.textContent=showing?'Show micronutrients ▾':'Hide micronutrients ▴';
+}
+
 async function viewMealDetail(id) {
   const data=await req('GET','/metrics?pillar_id='+PILLARS.diet.id+'&days=365');
   const m=(data?.logs||[]).find(l=>l.id===id);
   if(!m) return;
   const d=m.data||{};
+  const hasMicros=MICRONUTRIENT_FIELDS.some(f=>d[f.key]!=null);
   showScreen('meal-log');
   document.getElementById('meal-log-title').textContent=d.name||'Meal';
   document.getElementById('meal-log-body').innerHTML=`
@@ -9976,9 +10040,13 @@ async function viewMealDetail(id) {
     <div style="font-size:12px;color:var(--stone);text-align:center;margin:10px 0">Logged: ${m.logged_at?new Date(m.logged_at).toLocaleDateString():''}</div>
     <div class="section-sub" style="text-align:center">NUTRITIONAL OVERVIEW</div>
     <div style="text-align:center;font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:var(--diet);margin:6px 0">${m.value||0} kcal</div>
-    <div style="display:flex;justify-content:center;gap:20px;font-size:13px;color:var(--stone);margin-bottom:20px">
+    <div style="display:flex;justify-content:center;gap:20px;font-size:13px;color:var(--stone);margin-bottom:${hasMicros?'10px':'20px'}">
       <span>Carbs: ${d.carbs_g||0}g</span><span>Protein: ${d.protein_g||0}g</span><span>Fat: ${d.fat_g||0}g</span>
     </div>
+    ${hasMicros?`<div style="text-align:center;margin-bottom:20px">
+      <span id="meal-micro-toggle-label" style="font-size:12px;color:var(--blue);cursor:pointer;text-decoration:underline;text-underline-offset:2px" onclick="toggleMealMicronutrients()">Show micronutrients ▾</span>
+      <div id="meal-micronutrients" style="display:none;margin-top:12px;text-align:left">${renderMicronutrientsGrid(d)}</div>
+    </div>`:''}
     ${renderMealDetailIngredients(d)}
     ${d.description?`<div class="section-sub" style="text-align:left">DESCRIPTION</div><div style="background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:14px;padding:14px 16px;text-align:left;font-size:13px;color:var(--text);margin-bottom:20px">${d.description}</div>`:''}
     <button class="btn-p" onclick="showScreen('meal-hub')">← Back to Meal Hub</button>`;
@@ -10713,7 +10781,9 @@ async function confirmLogMeal() {
     const up=await req('POST','/metrics?action=upload-meal-photo',{image_base64:mealLogDraft.imageBase64, media_type:mealLogDraft.imageMediaType});
     imageUrl=up?.data?.url||null;
   }
-  const result=await req('POST','/metrics',{pillar_id:p.id, log_type:'meal', value:m.calories, unit:'kcal', task_id:taskId||undefined, data:{name:m.name, protein_g:m.protein_g, carbs_g:m.carbs_g, fat_g:m.fat_g, meal_type:mealLogMealType, description:m.description||'', ...(scannedIngredients?.length?{scanned_ingredients:scannedIngredients}:{}), ...(imageUrl?{image_url:imageUrl}:{})}});
+  // Micronutrients aren't editable form fields (see renderMealReview()) -- they just ride
+  // through from whatever the AI scan/estimate draft returned, same as scanned_ingredients.
+  const result=await req('POST','/metrics',{pillar_id:p.id, log_type:'meal', value:m.calories, unit:'kcal', task_id:taskId||undefined, data:{name:m.name, protein_g:m.protein_g, carbs_g:m.carbs_g, fat_g:m.fat_g, meal_type:mealLogMealType, description:m.description||'', ...(scannedIngredients?.length?{scanned_ingredients:scannedIngredients}:{}), ...(imageUrl?{image_url:imageUrl}:{}), ...pickMicronutrients(mealLogDraft)}});
   // The "logging it clears what you used" half of the plan <-> grocery sync -- only fires
   // when this meal came from a plan (readMealForm() alone can't carry ingredients).
   if(ingredients?.length) await removeIngredientsFromGroceryList(ingredients);
