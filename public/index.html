@@ -8366,9 +8366,10 @@ function donutMultiSvg(segments, opts) {
 // Platform read for Intentionality's footer -- same precedent as isIOSPlatform() above:
 // Capacitor's own getPlatform() inside the native shell, falling back to a user-agent
 // sniff so this still tailors correctly in plain mobile Safari/Chrome today, well before
-// any native build exists. No plugin exists yet on either platform that can read another
-// app's usage (see the footer copy below), so this is only ever used to pick which honest
-// message to show, never to unlock a real device-wide number.
+// any native build exists. This only picks which of the three footer branches to render;
+// the Android branch below does its own separate plugin-presence check, since "phone
+// reports as Android" and "PtwUsageStatsPlugin is actually available" are different things
+// (plain mobile Chrome on Android is the former but not the latter).
 function detectPTWPlatform() {
   const cap=window.Capacitor?.getPlatform?.();
   if(cap==='android') return 'android';
@@ -8378,24 +8379,108 @@ function detectPTWPlatform() {
   return 'web';
 }
 
+// ── Android real usage-stats bridge (PtwUsageStatsPlugin, ptw-native) ──
+// UsageStatsManager IS a real Android API for per-app foreground time, but it sits behind
+// PACKAGE_USAGE_STATS, a "protected" special-access permission Android will not show a
+// normal runtime-permission dialog for -- the only way to grant it is the user manually
+// flipping it on in Settings > Apps > Special app access > Usage access, which this can only
+// deep-link to (openUsageAccessSettings()), never trigger itself. window.Capacitor only ever
+// exists inside the ptw-native shell (undefined in the plain web PWA and in mobile browsers,
+// even on a real Android phone), same no-op-elsewhere precedent as nativeHealthPlugin() and
+// nativeWidgetBridge() above -- so every function here is a genuine no-op outside that shell.
+function androidUsageStatsPlugin() {
+  return (window.Capacitor?.isNativePlatform?.() && window.Capacitor.Plugins?.PtwUsageStats) || null;
+}
+let androidUsageCache=null, androidUsageCacheAt=0;
+// `force` skips the cache -- used right after the user comes back from granting the
+// permission in Settings, so the tab doesn't sit on a stale "not granted" read for up to
+// the normal 2-minute window.
+async function loadAndroidUsageSnapshot(force) {
+  const plugin=androidUsageStatsPlugin();
+  if(!plugin) return null; // not the native Android shell -- footer falls back to the old honest disclaimer
+  const now=Date.now();
+  if(!force && androidUsageCache && now-androidUsageCacheAt<2*60*1000) return androidUsageCache;
+  try {
+    const access=await plugin.hasUsageAccess();
+    if(!access?.granted) {
+      androidUsageCache={granted:false};
+    } else {
+      const res=await plugin.getUsageStats({});
+      androidUsageCache={granted:true, apps:(res?.apps||[]).map(a=>({packageName:a.packageName, appName:a.appName||a.packageName, minutes:(Number(a.timeInForegroundMs)||0)/60000}))};
+    }
+  } catch(e) {
+    console.warn('android usage stats read failed', e);
+    androidUsageCache={granted:false, error:true};
+  }
+  androidUsageCacheAt=now;
+  return androidUsageCache;
+}
+// "Grant Usage Access" button handler -- opens the one settings screen that can actually
+// grant PACKAGE_USAGE_STATS. There's no callback for "the user granted it and came back";
+// the visibilitychange resume hook below re-checks and re-renders if this tab is still open.
+async function requestAndroidUsageAccess() {
+  const plugin=androidUsageStatsPlugin();
+  if(!plugin) return;
+  try { await plugin.openUsageAccessSettings(); } catch(e) { toast('Could not open Usage Access settings'); }
+}
+// Re-check on foreground resume (Capacitor's WebView survives backgrounding, so nothing
+// else would re-render this after the user grants access in Settings and switches back) --
+// same "catch the brought-back-to-foreground case" precedent as syncNativeWidgets() below.
+// Scoped to only fire while the Intentionality tab is actually the one on screen, so this
+// never does unnecessary work on every app resume.
+document.addEventListener('visibilitychange', async ()=>{
+  if(document.hidden) return;
+  if(!androidUsageStatsPlugin()) return;
+  const onDetail=document.getElementById('screen-profile-metric-detail')?.classList.contains('active');
+  if(!onDetail || S.pmdIntentTab!=='intentionality') return;
+  await loadAndroidUsageSnapshot(true);
+  renderIntentionalityTab();
+});
+
 // Platform-appropriate footer for "how does this compare to my total phone time" --
-// Android: honestly labeled coming-soon (UsageStatsManager is a real Android API, but
-// only a native app can request its Usage Access permission or call it at all; no such
-// plugin is wired into this app yet, native wrapper or not, so nothing here pretends to
-// toggle a permission that doesn't do anything). iOS: a real, working "Open Apple Screen
-// Time" hand-off -- Apple's own Screen Time already tracks this device-wide, PTW just
-// can't read it back (see openAppleScreenTime() below). Plain web/desktop: the plainest
-// honest statement -- no browser has any OS-level usage API at all.
-function intentionalityFooterHtml(platform, color) {
+// Android: a real permission-gated flow backed by PtwUsageStatsPlugin (see above) when
+// running inside the native shell -- "grant access" card if ungranted, real per-app
+// breakdown once it is; falls back to the old honest not-yet-available disclaimer outside
+// the native shell (plain mobile browser on Android), since no plugin can exist there.
+// iOS: a real, working "Open Apple Screen Time" hand-off -- Apple's own Screen Time already
+// tracks this device-wide, PTW just can't read it back (see openAppleScreenTime() below).
+// Plain web/desktop: the plainest honest statement -- no browser has any OS-level usage API
+// at all.
+function intentionalityFooterHtml(platform, color, androidUsage) {
   if(platform==='android') {
-    return `<div class="glass-card" style="margin-top:18px;padding:14px;opacity:.7;border:1px solid ${hexToRgba(color,.16)}">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
-        <div style="min-width:0">
-          <div style="font-size:12.5px;color:var(--text);font-weight:700">Compared to Your Total Phone Time</div>
-          <div style="font-size:10.5px;color:var(--muted);margin-top:3px;line-height:1.5">Real per-app usage needs Android's Usage Access permission, which only a native app can request. Coming soon in a PTW app update — not available in this browser version.</div>
+    if(!androidUsageStatsPlugin()) {
+      return `<div class="glass-card" style="margin-top:18px;padding:14px;opacity:.7;border:1px solid ${hexToRgba(color,.16)}">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+          <div style="min-width:0">
+            <div style="font-size:12.5px;color:var(--text);font-weight:700">Compared to Your Total Phone Time</div>
+            <div style="font-size:10.5px;color:var(--muted);margin-top:3px;line-height:1.5">Real per-app usage needs Android's Usage Access permission, which only the PTW app can request. Not available in this browser version — open the PTW app to use it.</div>
+          </div>
+          <span style="font-size:9px;color:var(--stone);border:1px solid var(--bg4);border-radius:20px;padding:3px 9px;flex-shrink:0;white-space:nowrap">SOON</span>
         </div>
-        <span style="font-size:9px;color:var(--stone);border:1px solid var(--bg4);border-radius:20px;padding:3px 9px;flex-shrink:0;white-space:nowrap">SOON</span>
+      </div>`;
+    }
+    if(!androidUsage || !androidUsage.granted) {
+      return `<div class="glass-card" style="margin-top:18px;padding:14px;border:1px solid ${hexToRgba(color,.2)}">
+        <div style="font-size:12.5px;color:var(--text);font-weight:700;margin-bottom:4px">Compared to Your Total Phone Time</div>
+        <div style="font-size:10.5px;color:var(--muted);line-height:1.5;margin-bottom:10px">Android can show real per-app usage time, but only after you grant Usage Access — a permission Android requires you to turn on yourself in Settings, not something PTW can request directly.</div>
+        <button class="btn-p" style="width:100%;border-color:${color};color:${color}" onclick="requestAndroidUsageAccess()">Grant Usage Access</button>
+      </div>`;
+    }
+    const apps=(androidUsage.apps||[]).slice(0,8);
+    const totalMs=(androidUsage.apps||[]).reduce((s,a)=>s+a.minutes,0);
+    const rows=apps.length ? apps.map(a=>`
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid ${hexToRgba(color,.1)}">
+        <span style="font-size:12px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:10px">${a.appName}</span>
+        <span style="font-size:11px;color:var(--stone);flex-shrink:0">${fmtIntentDuration(a.minutes)}</span>
+      </div>`).join('') : `<div style="font-size:11.5px;color:var(--muted);padding:6px 0">No other app usage recorded on this device yet today.</div>`;
+    return `<div class="glass-card" style="margin-top:18px;padding:14px;border:1px solid ${hexToRgba(color,.2)}">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px">
+        <div style="font-size:12.5px;color:var(--text);font-weight:700">Compared to Your Total Phone Time</div>
+        <div style="font-family:'Syne',sans-serif;font-size:12.5px;font-weight:800;color:var(--text)">${fmtIntentDuration(totalMs)}</div>
       </div>
+      <div style="font-size:10.5px;color:var(--muted);line-height:1.5;margin-bottom:8px">Real device usage today, from Android's Usage Access — every app with any foreground time, not just PTW's own.</div>
+      ${rows}
+      <button class="btn-p" style="width:100%;border-color:${hexToRgba(color,.4)};color:${color};margin-top:10px;font-size:11px" onclick="requestAndroidUsageAccess()">Manage Usage Access</button>
     </div>`;
   }
   if(platform==='ios') {
@@ -11495,6 +11580,47 @@ const ACTIVITY_TYPES=[
 ];
 function activityIcon(type) { return (ACTIVITY_TYPES.find(t=>t.key===type)||ACTIVITY_TYPES[0]).icon; }
 
+// ── Exercise stick-figure illustrations ── Hand-authored, minimal line-art poses (same
+// stroke/currentColor convention as ICONS above, so they inherit the same soft-icon/
+// glass-icon tinting wherever they're dropped in) -- a "cool stickman" per common
+// exercise instead of a generic dumbbell glyph on every workout/exercise screen. Each
+// pose is a head dot + a handful of polylines (well under the ~15-20 shape budget), no
+// external image assets, consistent with this file's inline-everything approach.
+const STICK_FIGURE_POSES = {
+  standing: '<svg width="1em" height="1em" viewBox="0 0 60 60" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.15em"><circle cx="30" cy="11" r="6" fill="currentColor" stroke="none"/><polyline points="30,17 30,35"/><polyline points="30,21 19,32"/><polyline points="30,21 41,32"/><polyline points="30,35 22,53"/><polyline points="30,35 38,53"/></svg>',
+  pushup: '<svg width="1em" height="1em" viewBox="0 0 60 60" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.15em"><circle cx="10" cy="40" r="5" fill="currentColor" stroke="none"/><polyline points="15,38 44,29"/><polyline points="19,37 13,47 20,50"/><polyline points="44,29 55,36"/></svg>',
+  squat: '<svg width="1em" height="1em" viewBox="0 0 60 60" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.15em"><circle cx="30" cy="11" r="6" fill="currentColor" stroke="none"/><polyline points="30,17 30,29"/><polyline points="30,21 17,18"/><polyline points="30,21 43,18"/><polyline points="30,29 19,37 21,53"/><polyline points="30,29 41,37 39,53"/></svg>',
+  lunge: '<svg width="1em" height="1em" viewBox="0 0 60 60" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.15em"><circle cx="27" cy="10" r="6" fill="currentColor" stroke="none"/><polyline points="27,16 29,30"/><polyline points="28,20 18,28"/><polyline points="28,20 39,25"/><polyline points="29,30 38,38 38,53"/><polyline points="29,30 17,43 9,52"/></svg>',
+  plank: '<svg width="1em" height="1em" viewBox="0 0 60 60" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.15em"><circle cx="11" cy="32" r="5" fill="currentColor" stroke="none"/><polyline points="16,31 47,26"/><polyline points="19,31 19,45"/><polyline points="47,26 55,38"/></svg>',
+  burpee: '<svg width="1em" height="1em" viewBox="0 0 60 60" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.15em"><circle cx="30" cy="9" r="6" fill="currentColor" stroke="none"/><polyline points="30,15 30,31"/><polyline points="29,17 14,6"/><polyline points="31,17 46,6"/><polyline points="30,31 24,51"/><polyline points="30,31 36,49"/></svg>',
+  jumpingjack: '<svg width="1em" height="1em" viewBox="0 0 60 60" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.15em"><circle cx="30" cy="10" r="6" fill="currentColor" stroke="none"/><polyline points="30,16 30,32"/><polyline points="30,18 15,5"/><polyline points="30,18 45,5"/><polyline points="30,32 15,55"/><polyline points="30,32 45,55"/></svg>',
+  situp: '<svg width="1em" height="1em" viewBox="0 0 60 60" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.15em"><circle cx="14" cy="14" r="6" fill="currentColor" stroke="none"/><polyline points="19,20 40,46"/><polyline points="28,32 39,37"/><polyline points="40,46 54,30 46,52"/></svg>',
+  running: '<svg width="1em" height="1em" viewBox="0 0 60 60" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.15em"><circle cx="33" cy="10" r="6" fill="currentColor" stroke="none"/><polyline points="33,16 27,32"/><polyline points="30,20 41,14"/><polyline points="30,20 19,27"/><polyline points="27,32 35,40 25,50"/><polyline points="27,32 15,39 8,49"/></svg>',
+  stretch: '<svg width="1em" height="1em" viewBox="0 0 60 60" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.15em"><circle cx="29" cy="10" r="6" fill="currentColor" stroke="none"/><polyline points="29,16 33,32"/><polyline points="31,18 45,5"/><polyline points="31,20 21,27"/><polyline points="33,32 25,53"/><polyline points="33,32 41,51"/></svg>',
+};
+// Fuzzy keyword match on the exercise/stretch/plan name, same deterministic-regex
+// precedent as EXERCISE_SUBSTITUTE_RULES above -- no AI call just to pick an icon.
+// `fallbackKey` lets a call site bias the "didn't match anything specific" case toward
+// a pose that still fits its context (e.g. a mobility session falling back to the
+// stretch pose rather than a generic standing figure) instead of always landing on
+// 'standing'.
+const EXERCISE_POSE_RULES=[
+  [/push.?up/i, 'pushup'],
+  [/squat/i, 'squat'],
+  [/lunge/i, 'lunge'],
+  [/plank/i, 'plank'],
+  [/burpee/i, 'burpee'],
+  [/jumping.?jack/i, 'jumpingjack'],
+  [/sit.?up|crunch/i, 'situp'],
+  [/running|\brun\b|jog|sprint|treadmill|\bcardio\b/i, 'running'],
+  [/stretch|mobility|\byoga\b/i, 'stretch'],
+];
+function exerciseStickFigureSvg(name, fallbackKey) {
+  const n=String(name||'');
+  for(const [re,key] of EXERCISE_POSE_RULES) if(re.test(n)) return STICK_FIGURE_POSES[key];
+  return STICK_FIGURE_POSES[fallbackKey] || STICK_FIGURE_POSES.standing;
+}
+
 function workoutPlanSummary(d) {
   const type=d.activityType||'strength';
   if(type==='cardio') return `${d.intensity||'Moderate'} · ${d.durationMin||20} min${d.distance?` · ${d.distance}km`:''}`;
@@ -11806,12 +11932,15 @@ function viewWorkoutPlanDetail(planId) {
   } else if(type==='hiit') {
     bodyHtml=`<div class="rm-goal-card"><div class="section-sub">INTERVALS</div><div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:var(--text);margin:6px 0">${d.rounds||8} rounds</div><div style="font-size:12px;color:var(--stone)">${d.workSeconds||30}s work / ${d.restSeconds||15}s rest</div></div>`;
   } else if(type==='mobility') {
-    bodyHtml=`<div class="section-title" style="margin-top:8px">Stretches (${d.durationMin||10} min)</div>${(d.stretches||[]).map(s=>`<div class="rm-goal-card" style="margin-bottom:8px">${s}</div>`).join('')}`;
+    bodyHtml=`<div class="section-title" style="margin-top:8px">Stretches (${d.durationMin||10} min)</div>${(d.stretches||[]).map(s=>`<div class="rm-goal-card" style="margin-bottom:8px;display:flex;align-items:center;gap:10px">${glassIcon(exerciseStickFigureSvg(s,'stretch'), PILLARS.fitness.color)}<div>${s}</div></div>`).join('')}`;
   } else {
     bodyHtml=`<div class="section-title" style="margin-top:8px">Exercises</div>
     ${(d.exercises||[]).map(ex=>`
       <div class="rm-goal-card" style="margin-bottom:10px">
-        <div style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text);margin-bottom:2px">${ex.name}</div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:2px">
+          ${glassIcon(exerciseStickFigureSvg(ex.name), PILLARS.fitness.color)}
+          <div style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text)">${ex.name}</div>
+        </div>
         <div style="font-size:11px;color:var(--stone);margin-bottom:6px">Rest between sets: ${ex.restSec||90}s</div>
         ${Array.from({length:ex.sets||3}).map((_,i)=>`<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--stone);padding:4px 0;border-top:1px solid rgba(196,184,168,.07)">
           <span>Set ${i+1}</span><span>Target: ${ex.targetWeight||0}kg × ${ex.targetReps||10}</span>
@@ -11878,7 +12007,7 @@ async function viewWorkoutDetail(id) {
       <div class="metric-card"><div class="metric-label">Duration</div><div class="metric-val" style="color:var(--fitness)">${d.durationMin||0} min</div></div>
       <div class="metric-card"><div class="metric-label">Stretches</div><div class="metric-val" style="color:var(--fitness)">${d.completedCount||0}/${(d.stretches||[]).length}</div></div>
     </div>`;
-    bodyHtml=`<div class="section-title" style="margin-top:16px">Stretches</div>${(d.stretches||[]).map(s=>`<div class="rm-goal-card" style="margin-bottom:8px">${s}</div>`).join('')}`;
+    bodyHtml=`<div class="section-title" style="margin-top:16px">Stretches</div>${(d.stretches||[]).map(s=>`<div class="rm-goal-card" style="margin-bottom:8px;display:flex;align-items:center;gap:10px">${glassIcon(exerciseStickFigureSvg(s,'stretch'), PILLARS.fitness.color)}<div>${s}</div></div>`).join('')}`;
   } else {
     metricsHtml=`<div class="metric-row" style="margin-top:14px">
       <div class="metric-card"><div class="metric-label">Total Duration</div><div class="metric-val" style="color:var(--fitness)">${d.durationMin||0} min</div></div>
@@ -11887,7 +12016,10 @@ async function viewWorkoutDetail(id) {
     bodyHtml=`<div class="section-title" style="margin-top:16px">Exercises</div>
     ${(d.exercises||[]).map(ex=>`
       <div class="rm-goal-card" style="margin-bottom:10px">
-        <div style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text);margin-bottom:${ex.substitutedFrom?'2px':'8px'}">${ex.name}</div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:${ex.substitutedFrom?'2px':'8px'}">
+          ${glassIcon(exerciseStickFigureSvg(ex.name), PILLARS.fitness.color)}
+          <div style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text)">${ex.name}</div>
+        </div>
         ${ex.substitutedFrom?`<div style="font-size:11px;color:var(--stone);margin-bottom:6px">Swapped from ${ex.substitutedFrom}</div>`:''}
         ${(ex.sets||[]).map((s,i)=>`<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--stone);padding:4px 0;border-top:1px solid rgba(196,184,168,.07)">
           <span>Set ${i+1}</span><span>Target: ${s.targetWeight}kg × ${s.targetReps}</span><span style="color:var(--fitness)">Actual: ${s.actualWeight||'—'}kg × ${s.actualReps||'—'}</span>
@@ -12022,7 +12154,8 @@ function renderCardioSession() {
   const w=activeWorkout;
   document.getElementById('workout-log-header').textContent=`${w.planName} · Cardio`;
   document.getElementById('workout-log-body').innerHTML=`
-    <div class="rm-goal-card" style="text-align:center;margin-top:14px">
+    <div style="display:flex;justify-content:center;margin-top:14px">${softIcon(exerciseStickFigureSvg(w.planName,'running'), PILLARS.fitness.color, {size:68, fontSize:34})}</div>
+    <div class="rm-goal-card" style="text-align:center;margin-top:12px">
       <div class="section-sub">TARGET</div>
       <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--text);margin:6px 0">${w.targetDurationMin} min${w.targetDistance?` · ${w.targetDistance}km`:''}</div>
       <div style="font-size:12px;color:var(--stone)">${w.intensity} intensity</div>
@@ -12044,8 +12177,9 @@ function renderHiitSession() {
   document.getElementById('workout-log-header').textContent=`${w.planName} · Round ${w.currentRound} of ${w.rounds}`;
   const seconds=w.phase==='work'?w.workSeconds:w.restSeconds;
   document.getElementById('workout-log-body').innerHTML=`
-    <div style="text-align:center;padding:40px 0">
-      <div class="section-sub">${w.phase==='work'?'WORK':'REST'}</div>
+    <div style="text-align:center;padding:28px 0">
+      <div style="display:flex;justify-content:center">${softIcon(STICK_FIGURE_POSES[w.phase==='work'?'burpee':'standing'], PILLARS.fitness.color, {size:64, fontSize:32})}</div>
+      <div class="section-sub" style="margin-top:10px">${w.phase==='work'?'WORK':'REST'}</div>
       <div id="hiit-countdown" style="font-family:'Syne',sans-serif;font-size:48px;font-weight:800;color:${w.phase==='work'?'var(--fitness)':'var(--text)'};margin:14px 0">${seconds}s</div>
       <button class="btn-p filled" style="background:var(--fitness);border-color:var(--fitness)" onclick="skipHiitPhase()">Skip</button>
       <button class="btn-p" style="margin-top:12px;display:block;margin:12px auto 0" onclick="finishWorkout()">Finish Early</button>
@@ -12166,6 +12300,7 @@ function renderMobilitySession() {
   const circumference=2*Math.PI*100;
   document.getElementById('workout-log-body').innerHTML=`
     <div style="text-align:center;padding:16px 0">
+      <div style="display:flex;justify-content:center;margin-bottom:8px">${softIcon(exerciseStickFigureSvg(stretch.name,'stretch'), PILLARS.fitness.color, {size:64, fontSize:32})}</div>
       <div style="font-family:'Syne',sans-serif;font-size:24px;font-weight:800;color:var(--text);margin-bottom:20px;padding:0 12px;line-height:1.3">${stretch.name}</div>
       ${mobilityControlBar(false)}
       <div style="position:relative;width:220px;height:220px;margin:22px auto 0">
@@ -12224,8 +12359,9 @@ function renderMobilityTransition() {
   document.getElementById('workout-log-header').textContent=`${w.planName} · Pose ${w.mobilityIdx+1} of ${w.stretches.length}`;
   let remaining=MOBILITY_TRANSITION_SECONDS;
   document.getElementById('workout-log-body').innerHTML=`
-    <div style="text-align:center;padding:60px 0">
+    <div style="text-align:center;padding:44px 0">
       <div class="section-sub">NEXT UP</div>
+      <div style="display:flex;justify-content:center;margin-top:10px">${softIcon(exerciseStickFigureSvg(next.name,'stretch'), PILLARS.fitness.color, {size:56, fontSize:28})}</div>
       <div style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:var(--fitness);margin:14px 0;padding:0 12px">${next.name}</div>
       <div id="mobility-transition-count" style="font-size:14px;color:var(--stone)">Starting in ${remaining}...</div>
       <button class="btn-p" style="margin-top:24px" onclick="finishWorkout()">Finish Early</button>
@@ -12274,7 +12410,8 @@ function renderActiveWorkout() {
   const elapsed=Math.floor((Date.now()-w.startTime)/60000);
   document.getElementById('workout-log-header').textContent=`${w.planName} | ${w.exerciseIdx+1} of ${w.exercises.length} | ${elapsed}m`;
   document.getElementById('workout-log-body').innerHTML=`
-    <div style="text-align:center;font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:var(--text);margin:14px 0 4px">${ex.name}</div>
+    <div style="display:flex;justify-content:center;margin-top:14px">${softIcon(exerciseStickFigureSvg(ex.name), PILLARS.fitness.color, {size:76, fontSize:38})}</div>
+    <div style="text-align:center;font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:var(--text);margin:10px 0 4px">${ex.name}</div>
     ${ex.substitutedFrom?`<div style="text-align:center;font-size:11px;color:var(--stone);margin-bottom:6px">Swapped from ${ex.substitutedFrom}</div>`:''}
     <div style="display:flex;justify-content:center;gap:16px;margin-bottom:18px">
       <button class="cta-micro" style="width:44px;height:44px" onclick="openSwapExercise()" title="Swap Exercise">⇄</button>
