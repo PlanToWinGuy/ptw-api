@@ -33,6 +33,11 @@ export default async function handler(req, res) {
       mode: 'subscription',
       line_items: [{ price: priceId, quantity: 1 }],
       client_reference_id: String(user.id),
+      // Beta perk: every new subscription starts with 60 free days on the card before the
+      // first real charge -- Stripe handles the trial-end reminder email and the actual
+      // charge automatically, no separate expiry/reminder system needed on our side.
+      // Remove/shorten this once the beta window is over and normal signups start.
+      subscription_data: { trial_period_days: 60 },
       ...(user.stripe_customer_id
         ? { customer: user.stripe_customer_id }
         : { customer_email: user.email }),
