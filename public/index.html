@@ -7614,11 +7614,19 @@ function openProfileMetricDetail(key) {
   if(!cfg || !chrono) { toast('No data for this metric yet'); return; }
   document.getElementById('pmd-title').textContent=cfg.label;
   showScreen('profile-metric-detail');
+  // Daily Intention Time is the one card that gets two tabs instead of the standard
+  // single view -- see renderIntentTimeDetailShell() below. Every other metric card keeps
+  // exactly the pre-existing single-view layout.
+  if(key==='intentionTime') { renderIntentTimeDetailShell(cfg, chrono); return; }
   renderProfileMetricDetail(key, cfg, chrono);
 }
 
-function renderProfileMetricDetail(key, cfg, chrono) {
-  const body=document.getElementById('pmd-body');
+// `targetId` lets Daily Intention Time's own "Trends" tab (below) reuse this exact,
+// unmodified view inside a sub-container instead of the full pmd-body -- every other
+// metric card still calls this with no targetId and gets the original single-screen
+// behavior untouched.
+function renderProfileMetricDetail(key, cfg, chrono, targetId) {
+  const body=document.getElementById(targetId||'pmd-body');
   const color=cfg.color;
   const info=`<div style="font-size:13px;color:var(--text);line-height:1.6;margin:14px 0 16px">${cfg.blurb}</div>`;
 
@@ -7664,6 +7672,252 @@ function renderProfileMetricDetail(key, cfg, chrono) {
     </div>`).join('')}`).join('');
 
   body.innerHTML = info + hero + chips + history;
+}
+
+// ── Intentionality (4.21) -- Daily Intention Time's detail popup gets two tabs instead
+// of the standard single view above: "Intentionality" (new, shown first -- reframes
+// screen time positively: intentional PTW tool use broken down by pillar, plus which
+// Essential Apps got reached for from inside a task or break) and "Trends" (the exact
+// pre-existing sparkline+chips+history view from renderProfileMetricDetail() above,
+// untouched, just relocated under a second tab). Product ask was explicit: don't give
+// this its own 7th Profile card -- it's the natural richer expansion of the same "how
+// much of your day you're intentional" idea this card already shows a number for, so it
+// belongs inside this card's own drill-down. Intentionality first because it's the
+// newer/more compelling hook; Trends second since it was already the whole card before.
+S.pmdIntentTab = S.pmdIntentTab || 'intentionality';
+function renderIntentTimeDetailShell(cfg, chrono) {
+  const tab=S.pmdIntentTab||'intentionality';
+  const body=document.getElementById('pmd-body');
+  const mk=(key,label)=>`<button class="pg-btn${tab===key?' sel':''}" id="pmd-tab-${key}" style="background:${tab===key?'var(--blue)':'var(--bg4)'};flex:1;font-size:11px" onclick="switchIntentTimeTab('${key}')">${label}</button>`;
+  body.innerHTML = `
+    <div style="display:flex;gap:8px;margin:14px 0 4px">
+      ${mk('intentionality','Intentionality')}
+      ${mk('trends','Trends')}
+    </div>
+    <div id="pmd-tab-content"></div>`;
+  renderIntentTimeTabContent(cfg, chrono);
+}
+function switchIntentTimeTab(tab) {
+  if(S.pmdIntentTab===tab) return;
+  S.pmdIntentTab=tab;
+  ['intentionality','trends'].forEach(t=>{
+    const btn=document.getElementById('pmd-tab-'+t);
+    if(!btn) return;
+    btn.classList.toggle('sel', t===tab);
+    btn.style.background = t===tab ? 'var(--blue)' : 'var(--bg4)';
+  });
+  renderIntentTimeTabContent(PROFILE_METRIC_DETAILS.intentionTime, (S.profileMetricSeries||{}).intentionTime);
+}
+function renderIntentTimeTabContent(cfg, chrono) {
+  if(S.pmdIntentTab==='trends') { renderProfileMetricDetail('intentionTime', cfg, chrono, 'pmd-tab-content'); return; }
+  renderIntentionalityTab();
+}
+
+// Fetched once per Profile session (not on every tab switch) and cached briefly -- same
+// "fetch once, short cache" precedent as getNativeHealthSnapshot() elsewhere in this
+// file. Two real sources, both already existed before this feature: every real completed
+// task (for pillar-linked elapsed time, same actual_minutes_spent-or-estimate rule Daily
+// Intention Time's own card total already uses) and every real essential_app_launch log
+// (already written by POST /essential-apps, just never read back anywhere until now).
+let intentionalityCache=null, intentionalityCacheAt=0;
+async function loadIntentionalityData() {
+  const now=Date.now();
+  if(intentionalityCache && now-intentionalityCacheAt<2*60*1000) return intentionalityCache;
+  const [tasks, appLogRes] = await Promise.all([
+    req('GET','/simple-tasks').catch(()=>[]),
+    req('GET','/metrics?log_type=essential_app_launch').catch(()=>null),
+  ]);
+  intentionalityCache = { tasks: tasks||[], appLogs: (appLogRes && appLogRes.logs) || [] };
+  intentionalityCacheAt = now;
+  return intentionalityCache;
+}
+async function renderIntentionalityTab() {
+  const el=document.getElementById('pmd-tab-content');
+  if(!el) return;
+  el.innerHTML='<div class="spinner"></div>';
+  const data = await loadIntentionalityData();
+  // Guard against a fast tab-switch away while this was in flight -- never paint stale
+  // content into a container the user already navigated off of.
+  if(S.pmdIntentTab!=='intentionality') return;
+  const target=document.getElementById('pmd-tab-content');
+  if(!target) return;
+  target.innerHTML = buildIntentionalityHtml(data);
+}
+
+const fmtIntentDuration = m => { m=Math.round(m||0); const h=Math.floor(m/60), r=m%60; return h ? `${h}h ${r}m` : `${r}m`; };
+
+function buildIntentionalityHtml(data) {
+  const color=PROFILE_METRIC_DETAILS.intentionTime.color;
+  const weekCutoff=Date.now()-7*86400000;
+
+  // Real elapsed minutes per completed task this week, by pillar -- exact same
+  // actual_minutes_spent-falls-back-to-estimated_duration_minutes rule Daily Intention
+  // Time's own card total uses (see loadProfileMetrics() above), so this breakdown always
+  // reconciles with that number. Nothing here is estimated or fabricated -- a task with no
+  // real duration data at all contributes 0, never a guess.
+  const completed=(data.tasks||[]).filter(t=>t.status==='Completed' && t.updated_at && new Date(t.updated_at).getTime()>weekCutoff);
+  const byPillar={};
+  completed.forEach(t=>{
+    const mins=Number(t.actual_minutes_spent)>0 ? Number(t.actual_minutes_spent) : (Number(t.estimated_duration_minutes)||0);
+    if(mins<=0) return;
+    const pk=getPillarKey(t.pillar);
+    byPillar[pk]=(byPillar[pk]||0)+mins;
+  });
+  const totalMinutes=Object.values(byPillar).reduce((a,b)=>a+b,0);
+  const segments=Object.keys(byPillar).map(pk=>({key:pk, value:byPillar[pk], color:PILLARS[pk]?.color||'#888'})).sort((a,b)=>b.value-a.value);
+
+  // Essential Apps opened from inside a task or a break this week -- essential-apps.js's
+  // POST already tags every launch with context: 'task' | 'break:<type>' | 'home', so
+  // "linked to a task/pillar" is real data, not inferred. No duration exists for what
+  // happens after the tap (a launch log can't know how long the other app was used), so
+  // these are counted/listed only -- never folded into the minutes total above.
+  const weekAppLogs=(data.appLogs||[]).filter(l=>l.logged_at && new Date(l.logged_at).getTime()>weekCutoff);
+  const linkedAppLogs=weekAppLogs.filter(l=>{ const ctx=l.data&&l.data.context; return ctx==='task' || (typeof ctx==='string' && ctx.indexOf('break:')===0); });
+  const appCounts={};
+  linkedAppLogs.forEach(l=>{
+    const name=(l.data&&l.data.appName)||'App';
+    const ctx=(l.data&&l.data.context)==='task' ? 'Task' : 'Break';
+    appCounts[name]=appCounts[name]||{name, count:0, contexts:new Set()};
+    appCounts[name].count++;
+    appCounts[name].contexts.add(ctx);
+  });
+  const appList=Object.values(appCounts).sort((a,b)=>b.count-a.count);
+
+  const donut=donutMultiSvg(segments, {size:150, stroke:18});
+
+  const pillarRows = segments.length ? segments.map(s=>{
+    const pct=totalMinutes ? Math.round(s.value/totalMinutes*100) : 0;
+    const p=PILLARS[s.key];
+    return `<div class="glass-card" style="display:flex;align-items:center;gap:10px;padding:10px 14px;margin-bottom:8px;border:1px solid ${hexToRgba(s.color,.2)}">
+      <span style="width:10px;height:10px;border-radius:50%;background:${s.color};flex-shrink:0"></span>
+      <span style="font-size:13px;color:var(--text);flex:1">${p?p.icon+' ':''}${p?p.label:s.key}</span>
+      <span style="font-size:11px;color:var(--stone)">${pct}%</span>
+      <span style="font-family:'Syne',sans-serif;font-weight:700;font-size:13px;color:var(--text);min-width:44px;text-align:right">${fmtIntentDuration(s.value)}</span>
+    </div>`;
+  }).join('') : `<div class="empty" style="padding:20px 0"><div class="empty-text">No completed tasks with real time logged this week yet.</div></div>`;
+
+  const appRows = appList.length ? appList.map(a=>`
+    <div class="glass-card" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;margin-bottom:8px;border:1px solid ${hexToRgba(color,.14)}">
+      <span style="font-size:13px;color:var(--text)">${a.name}</span>
+      <span style="font-size:10.5px;color:var(--stone)">${Array.from(a.contexts).join(' + ')} · ${a.count}×</span>
+    </div>`).join('') : `<div style="font-size:12px;color:var(--muted);padding:2px 0 4px">No Essential Apps opened from a task or break this week yet.</div>`;
+
+  const platform=detectPTWPlatform();
+  const footer=intentionalityFooterHtml(platform, color);
+
+  return `
+    <div style="font-size:13px;color:var(--text);line-height:1.6;margin:14px 0 18px">Reframing screen time as a positive: this is the time you spent intentionally this week -- inside a task, or reaching for an Essential App while doing one -- not a guilt tally.${platform==='web' ? " Running in a browser, PTW can only measure its own activity here, not your total phone time." : ''}</div>
+
+    <div class="glass-card" style="border:1px solid ${hexToRgba(color,.22)};text-align:center;padding:22px 16px">
+      <div style="position:relative;display:inline-block">
+        ${donut}
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
+          <div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:var(--text)">${fmtIntentDuration(totalMinutes)}</div>
+          <div style="font-size:9px;color:var(--stone);text-transform:uppercase;letter-spacing:.3px">This Week</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-sub" style="margin:18px 0 8px">INTENTIONAL TIME BY PILLAR</div>
+    ${pillarRows}
+
+    <div class="section-sub" style="margin:18px 0 8px">ESSENTIAL APPS USED WITH A TASK OR BREAK</div>
+    ${appRows}
+
+    ${footer}
+  `;
+}
+
+// A multi-segment donut -- concentric stroke-dasharray/-dashoffset arcs stacked on one
+// ring (the standard SVG technique for a pie/donut without a charting library). Falls
+// back to a flat unfilled track when there's no real data yet, never a fabricated split.
+function donutMultiSvg(segments, opts) {
+  opts=opts||{};
+  const size=opts.size||150, stroke=opts.stroke||18, track=opts.track||'rgba(255,255,255,.12)';
+  const r=(size-stroke)/2, c=2*Math.PI*r, cx=size/2;
+  const total=(segments||[]).reduce((s,x)=>s+(x.value||0),0);
+  if(!total) {
+    return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="display:block"><circle cx="${cx}" cy="${cx}" r="${r}" fill="none" stroke="${track}" stroke-width="${stroke}"/></svg>`;
+  }
+  let offset=0;
+  const arcs=segments.filter(s=>s.value>0).map(s=>{
+    const len=c*(s.value/total);
+    const html=`<circle cx="${cx}" cy="${cx}" r="${r}" fill="none" stroke="${s.color}" stroke-width="${stroke}" stroke-dasharray="${len.toFixed(1)} ${(c-len).toFixed(1)}" stroke-dashoffset="${(-offset).toFixed(1)}" transform="rotate(-90 ${cx} ${cx})"/>`;
+    offset+=len;
+    return html;
+  }).join('');
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="display:block">
+    <circle cx="${cx}" cy="${cx}" r="${r}" fill="none" stroke="${track}" stroke-width="${stroke}"/>
+    ${arcs}
+  </svg>`;
+}
+
+// Platform read for Intentionality's footer -- same precedent as isIOSPlatform() above:
+// Capacitor's own getPlatform() inside the native shell, falling back to a user-agent
+// sniff so this still tailors correctly in plain mobile Safari/Chrome today, well before
+// any native build exists. No plugin exists yet on either platform that can read another
+// app's usage (see the footer copy below), so this is only ever used to pick which honest
+// message to show, never to unlock a real device-wide number.
+function detectPTWPlatform() {
+  const cap=window.Capacitor?.getPlatform?.();
+  if(cap==='android') return 'android';
+  if(cap==='ios') return 'ios';
+  if(isIOSPlatform()) return 'ios';
+  if(/Android/i.test(navigator.userAgent||'')) return 'android';
+  return 'web';
+}
+
+// Platform-appropriate footer for "how does this compare to my total phone time" --
+// Android: honestly labeled coming-soon (UsageStatsManager is a real Android API, but
+// only a native app can request its Usage Access permission or call it at all; no such
+// plugin is wired into this app yet, native wrapper or not, so nothing here pretends to
+// toggle a permission that doesn't do anything). iOS: a real, working "Open Apple Screen
+// Time" hand-off -- Apple's own Screen Time already tracks this device-wide, PTW just
+// can't read it back (see openAppleScreenTime() below). Plain web/desktop: the plainest
+// honest statement -- no browser has any OS-level usage API at all.
+function intentionalityFooterHtml(platform, color) {
+  if(platform==='android') {
+    return `<div class="glass-card" style="margin-top:18px;padding:14px;opacity:.7;border:1px solid ${hexToRgba(color,.16)}">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+        <div style="min-width:0">
+          <div style="font-size:12.5px;color:var(--text);font-weight:700">Compared to Your Total Phone Time</div>
+          <div style="font-size:10.5px;color:var(--muted);margin-top:3px;line-height:1.5">Real per-app usage needs Android's Usage Access permission, which only a native app can request. Coming soon in a PTW app update — not available in this browser version.</div>
+        </div>
+        <span style="font-size:9px;color:var(--stone);border:1px solid var(--bg4);border-radius:20px;padding:3px 9px;flex-shrink:0;white-space:nowrap">SOON</span>
+      </div>
+    </div>`;
+  }
+  if(platform==='ios') {
+    return `<div class="glass-card" style="margin-top:18px;padding:14px;border:1px solid ${hexToRgba(color,.2)}">
+      <div style="font-size:12.5px;color:var(--text);font-weight:700;margin-bottom:4px">Compared to Your Total Phone Time</div>
+      <div style="font-size:10.5px;color:var(--muted);line-height:1.5;margin-bottom:10px">Apple keeps app-by-app Screen Time sandboxed from every other app, PTW included — there's no way for us to read it. Apple's own Screen Time already tracks it though, one tap away.</div>
+      <button class="btn-p" style="width:100%;border-color:${color};color:${color}" onclick="openAppleScreenTime()">Open Apple Screen Time</button>
+    </div>`;
+  }
+  return `<div class="glass-card" style="margin-top:18px;padding:14px;border:1px solid ${hexToRgba(color,.16)}">
+    <div style="font-size:12.5px;color:var(--text);font-weight:700;margin-bottom:4px">Compared to Your Total Phone Time</div>
+    <div style="font-size:10.5px;color:var(--muted);line-height:1.5">A web browser has no access to any OS-level usage data at all — this can only ever show PTW's own intentional time here. The PTW mobile app will add a real device-wide comparison.</div>
+  </div>`;
+}
+
+// Best-effort "Open Apple Screen Time" -- same disclosed-uncertainty precedent as
+// openAppleHealth() elsewhere in this file: App-Prefs:root=General&path=ScreenTime is a
+// widely-cited but UNOFFICIAL, undocumented URL scheme (Apple publishes no public scheme
+// into Settings at all), so this is a pure launch attempt PTW cannot verify without a
+// Mac/real device -- degrades silently to the toast below if the OS doesn't recognize it,
+// never a dead screen. Screen Time is architecturally unreachable by any other app
+// regardless of scheme (Apple's DeviceActivityReport API renders its own sandboxed report
+// inside the requesting app's own process and can't be read by anyone else), so this
+// button can only ever hand the user off to Apple's own view, never pull data back from it.
+async function openAppleScreenTime() {
+  let handled=false;
+  const onBlur=()=>{ handled=true; window.removeEventListener('blur', onBlur); };
+  window.addEventListener('blur', onBlur);
+  window.location.href='App-Prefs:root=General&path=ScreenTime';
+  setTimeout(()=>{
+    window.removeEventListener('blur', onBlur);
+    if(!handled) toast("Open Settings → Screen Time from your iPhone's home screen");
+  }, 1200);
 }
 
 // ─── THE VAULT (4.18.C) -- a real, curated resource library ───
