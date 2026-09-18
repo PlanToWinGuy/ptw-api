@@ -32,6 +32,16 @@ const REFINE_DIET_ADDENDUM = `This plan also has real starter meal plans ("mealP
 ${DIET_ADDENDUM}
 Critical: if they mention any dietary restriction, allergy, dislike, or ingredient to avoid (e.g. "no fish", "I'm allergic to peanuts", "cutting dairy"), don't just acknowledge it in "reply" -- actually rewrite every affected entry in "mealPlans" (swap the whole meal for a different one if removing the ingredient would break the recipe, not just delete an ingredient line) so no restricted/disliked item remains anywhere in the plan. This is a real correctness requirement, not a suggestion -- a plan that still lists a restricted ingredient after they raised it is wrong.`;
 
+// Grounds real-world facts the model wouldn't reliably know/could hallucinate (e.g. "what
+// are DQ Blizzard calories") -- product owner's own example, raised in the context of a
+// Diet refinement conversation about swapping/adding a specific real food. Anthropic's
+// Messages API has a built-in server-side web search tool -- no second AI provider/API key
+// needed for this, just another entry in `tools`. Capped with max_uses since this is a
+// refinement chat turn, not open-ended research -- one fact-check is the common case, a
+// few more covers a multi-part question.
+const WEB_SEARCH_TOOL = { type: 'web_search_20260209', name: 'web_search', max_uses: 3 };
+const WEB_SEARCH_ADDENDUM = `You also have a web_search tool. Use it when you need a specific real-world fact you're not fully confident about -- a menu item's actual nutrition numbers, a current price, a specific product's ingredients -- anything you'd otherwise be guessing at or could get wrong. Don't search for things you already know well or that don't need to be current. Searching never replaces the mandatory update_refined_plan call below -- always finish the turn by calling it, whether or not you searched first.`;
+
 const REFINE_TOOL_PLAN_BASE = {
   type: 'object',
   properties: {
@@ -104,6 +114,18 @@ async function loadQuestionnaireAnswers(userId, pillarId) {
   return rows[0]?.answers || null;
 }
 
+// Thin wrapper around one Messages API call -- chatTurn() below can make up to three of
+// these in a turn (main call, an optional pause_turn continuation, an optional forced
+// fallback), all sharing the exact same request shape apart from tools/tool_choice/messages.
+async function postRefineTurn(key, { system, tools, tool_choice, messages, maxTokens }) {
+  const r = await fetch(ANTHROPIC_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+    body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: maxTokens, temperature: 0.4, system, tools, tool_choice, messages }),
+  });
+  return r.json();
+}
+
 // One turn of the refinement conversation: no DB writes here (the goal's real tasks/
 // routines only get resynced once the user actually approves -- see finalizePlan below).
 // The plan lives on the FRONTEND between turns (S.refineChatPlan) and is sent back each
@@ -131,6 +153,7 @@ async function chatTurn(req, res, user) {
     PILLAR_PRINCIPLES[pillarKey],
     REFINE_MODE_ADDENDUM,
     pillarKey === 'diet' ? REFINE_DIET_ADDENDUM : null,
+    WEB_SEARCH_ADDENDUM,
     `Pillar: ${pillar_name}`,
     profileContext(user),
     questionnaire_answers ? `Activation questionnaire answers: ${JSON.stringify(questionnaire_answers)}` : null,
@@ -148,24 +171,49 @@ async function chatTurn(req, res, user) {
     // maxTokens bump for the exact same reason (a truncated mid-JSON tool call silently
     // falls back to the current unchanged plan below instead of applying the real edit).
     const maxTokens = pillarKey === 'diet' ? 6500 : 4000;
-    const r = await fetch(ANTHROPIC_URL, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: maxTokens,
-        temperature: 0.4,
-        system,
-        tools: [buildRefineTool(pillarKey)],
-        tool_choice: { type: 'tool', name: 'update_refined_plan' },
-        messages,
-      }),
-    });
-    const data = await r.json();
+    const refineTool = buildRefineTool(pillarKey);
+
+    // tool_choice can no longer force update_refined_plan directly on the main call --
+    // forcing a specific tool tells the model it must call THAT tool as its very next
+    // action, which never leaves room to call the server-side web_search tool first (see
+    // Anthropic's docs on mixing server tools with a forced client tool_choice). So this
+    // call uses "auto" plus an explicit system-prompt mandate (REFINE_MODE_ADDENDUM/
+    // WEB_SEARCH_ADDENDUM above) instead -- Claude can search, then call update_refined_plan
+    // itself, same as any normal agentic turn. The forced-tool guarantee comes back as a
+    // fallback below for the rare turn where the model doesn't comply on its own.
+    let data = await postRefineTurn(key, { system, tools: [WEB_SEARCH_TOOL, refineTool], tool_choice: { type: 'auto' }, messages, maxTokens });
+
+    // A long search turn can come back paused mid-loop (stop_reason: "pause_turn") --
+    // resend the assistant content as-is to let the server-side search loop continue.
+    // Capped, like any retry loop, rather than trusting an upstream state machine forever.
+    let loopMessages = messages;
+    let pauses = 0;
+    while (data.stop_reason === 'pause_turn' && pauses < 3) {
+      loopMessages = [...loopMessages, { role: 'assistant', content: data.content }];
+      data = await postRefineTurn(key, { system, tools: [WEB_SEARCH_TOOL, refineTool], tool_choice: { type: 'auto' }, messages: loopMessages, maxTokens });
+      pauses++;
+    }
+
     if (data.stop_reason === 'max_tokens') {
       console.error('goals.refine-chat: response truncated at max_tokens', { goal_id, user_id: user.id });
     }
-    const toolUse = (data.content || []).find(b => b.type === 'tool_use' && b.name === 'update_refined_plan');
+    let toolUse = (data.content || []).find(b => b.type === 'tool_use' && b.name === 'update_refined_plan');
+
+    // Fallback: the model searched (or just talked) and ended its turn without ever
+    // calling update_refined_plan, breaking the "every turn MUST call it" contract auto
+    // tool_choice can no longer guarantee on its own. One more call, forced this time (no
+    // web_search tool offered, so there's nothing left for it to do but comply), with the
+    // prior turn's content -- including anything it found via search -- kept in context so
+    // the plan update still reflects what it just learned.
+    if (!toolUse) {
+      const retryMessages = [
+        ...loopMessages,
+        { role: 'assistant', content: data.content },
+        { role: 'user', content: "Continue: call update_refined_plan now with your reply and the plan's full current state." },
+      ];
+      data = await postRefineTurn(key, { system, tools: [refineTool], tool_choice: { type: 'tool', name: 'update_refined_plan' }, messages: retryMessages, maxTokens });
+      toolUse = (data.content || []).find(b => b.type === 'tool_use' && b.name === 'update_refined_plan');
+    }
     if (!toolUse) throw new Error('No tool_use block in response');
 
     const { reply, planChanged, plan: rawPlan } = toolUse.input || {};
