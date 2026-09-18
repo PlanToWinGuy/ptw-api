@@ -12,13 +12,18 @@
     "api/side-quests/custom.js": { "maxDuration": 45 },
     "api/side-quests/[id]/refine.js": { "maxDuration": 45 },
     "api/side-quest-suggestions/index.js": { "maxDuration": 45 },
-    "api/fitness/generate-activity.js": { "maxDuration": 45 }
+    "api/fitness/generate-activity.js": { "maxDuration": 45 },
+    "api/calendar.js": { "maxDuration": 30 }
   },
   "rewrites": [
     { "source": "/api/signup", "destination": "/api/auth?action=signup" },
     { "source": "/api/login", "destination": "/api/auth?action=login" },
     { "source": "/api/auth/logout", "destination": "/api/auth?action=logout" },
     { "source": "/api/auth/google", "destination": "/api/auth?action=google" },
+    { "source": "/api/calendar/connect", "destination": "/api/calendar?action=connect" },
+    { "source": "/api/calendar/disconnect", "destination": "/api/calendar?action=disconnect" },
+    { "source": "/api/calendar/toggle", "destination": "/api/calendar?action=toggle" },
+    { "source": "/api/calendar/sync-day", "destination": "/api/calendar?action=sync-day" },
     { "source": "/api/profile-creation", "destination": "/api/profile?action=profile-creation" },
     { "source": "/api/valueprint", "destination": "/api/profile?action=valueprint" },
     { "source": "/api/change-password", "destination": "/api/profile?action=change-password" },

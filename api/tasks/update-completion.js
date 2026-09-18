@@ -3,6 +3,7 @@ import { cors } from '../../lib/cors.js';
 import { getUserFromRequest } from '../../lib/auth.js';
 import { completeTask, logTaskReschedule } from '../../lib/tasks.js';
 import { materializeRoutinesForDate } from '../../lib/routines.js';
+import { safeUpsertEventForTask } from '../../lib/googleCalendar.js';
 
 // Consolidated task-instance actions -- one serverless function, dispatched by
 // ?action=, same pattern as api/metrics.js?action=scan-meal. Default (no action) is
@@ -39,11 +40,15 @@ export default async function handler(req, res) {
       const tomorrow = new Date(anchorDate + 'T00:00:00');
       tomorrow.setDate(tomorrow.getDate() + 1);
       const tomorrowStr = tomorrow.toISOString().split('T')[0];
-      await sql`
+      const movedRows = await sql`
         UPDATE tasks SET due_date = ${tomorrowStr}, start_time = NULL, end_time = NULL, was_skipped = false, updated_at = now()
         WHERE id = ${task_id} AND user_id = ${user.id}
+        RETURNING *
       `;
       await logTaskReschedule(sql, { userId: user.id, taskId: task.id, taskName: task.name, pillarId: task.pillar_id, fromDate: anchorDate, toDate: tomorrowStr, reason: 'Skipped a second time' });
+      // No real start_time left on this row (cleared above, same as "unscheduled") -- the
+      // sync helper sees that and removes any existing calendar event for it on its own.
+      await safeUpsertEventForTask(sql, user, movedRows[0]);
       return res.status(200).json({ message: 'Task moved to tomorrow.' });
     }
 
@@ -56,7 +61,7 @@ export default async function handler(req, res) {
     `;
     if (latest_end && String(latest_end) > BANK_START) bankStart = String(latest_end);
     const durationMin = task.estimated_duration_minutes || 20;
-    await sql`
+    const bankedRows = await sql`
       UPDATE tasks SET
         due_date = ${dueDate},
         start_time = ${bankStart}::time,
@@ -64,7 +69,9 @@ export default async function handler(req, res) {
         was_skipped = true,
         updated_at = now()
       WHERE id = ${task_id} AND user_id = ${user.id}
+      RETURNING *
     `;
+    await safeUpsertEventForTask(sql, user, bankedRows[0]);
     return res.status(200).json({ message: 'Task moved to later today.' });
   }
 
@@ -76,19 +83,23 @@ export default async function handler(req, res) {
     const task = rows[0];
     if (!task) return res.status(404).json({ message: 'Task not found' });
 
-    await sql`
+    const extendedRows = await sql`
       UPDATE tasks SET end_time = COALESCE(end_time, start_time) + (${mins} || ' minutes')::interval
       WHERE id = ${task_id} AND user_id = ${user.id}
+      RETURNING *
     `;
+    await safeUpsertEventForTask(sql, user, extendedRows[0]);
     // Simple Shift: push every later task on the same day forward by the same amount.
     if (task.due_date && task.start_time) {
-      await sql`
+      const shiftedRows = await sql`
         UPDATE tasks SET
           start_time = start_time + (${mins} || ' minutes')::interval,
           end_time = end_time + (${mins} || ' minutes')::interval
         WHERE user_id = ${user.id} AND due_date = ${task.due_date}
           AND id != ${task_id} AND start_time > ${task.start_time}
+        RETURNING *
       `;
+      for (const t of shiftedRows) await safeUpsertEventForTask(sql, user, t);
     }
     return res.status(200).json({ message: `${mins} minutes added and schedule shifted successfully.` });
   }
@@ -98,18 +109,23 @@ export default async function handler(req, res) {
     if (!task_id) return res.status(422).json({ message: 'task_id is required' });
     const beforeRows = await sql`SELECT name, pillar_id, due_date FROM tasks WHERE id = ${task_id} AND user_id = ${user.id}`;
     const before = beforeRows[0];
-    await sql`
+    const rescheduledRows = await sql`
       UPDATE tasks SET
         due_date = COALESCE(${new_date || null}, due_date),
         start_time = ${new_start_time || null},
         end_time = NULL,
         updated_at = now()
       WHERE id = ${task_id} AND user_id = ${user.id}
+      RETURNING *
     `;
     if (before && new_date) {
       const oldDueStr = before.due_date ? (before.due_date instanceof Date ? before.due_date.toISOString().split('T')[0] : String(before.due_date).split('T')[0]) : null;
       await logTaskReschedule(sql, { userId: user.id, taskId: task_id, taskName: before.name, pillarId: before.pillar_id, fromDate: oldDueStr, toDate: new_date, reason: 'Manually rescheduled' });
     }
+    // Same calendar event, new date/time (end_time was just cleared above, so this uses
+    // the 30-min-default fallback until a real end_time is set some other way) -- an
+    // update, not a delete+recreate, so the event keeps its own identity/any attendee.
+    await safeUpsertEventForTask(sql, user, rescheduledRows[0]);
     return res.status(200).json({ message: 'Task successfully rescheduled.' });
   }
 
@@ -223,11 +239,13 @@ export default async function handler(req, res) {
     const { date, new_schedule, deferred_ids } = req.body || {};
     if (!Array.isArray(new_schedule)) return res.status(422).json({ message: 'new_schedule is required' });
     for (const t of new_schedule) {
-      await sql`
+      const shuffledRows = await sql`
         UPDATE tasks SET start_time = ${t.startTime}, end_time = ${t.endTime},
           estimated_duration_minutes = COALESCE(${t.estimatedDurationMinutes || null}, estimated_duration_minutes)
         WHERE id = ${t.taskId} AND user_id = ${user.id}
+        RETURNING *
       `;
+      if (shuffledRows[0]) await safeUpsertEventForTask(sql, user, shuffledRows[0]);
     }
     if (Array.isArray(deferred_ids) && deferred_ids.length) {
       const deferredRows = await sql`SELECT id, name, pillar_id, parent_task_id FROM tasks WHERE id = ANY(${deferred_ids}) AND user_id = ${user.id}`;
@@ -251,10 +269,12 @@ export default async function handler(req, res) {
       const standaloneIds = deferredRows.filter(t => t.parent_task_id == null).map(t => t.id);
       const projectSubtaskIds = deferredRows.filter(t => t.parent_task_id != null).map(t => t.id);
       if (standaloneIds.length) {
-        await sql`UPDATE tasks SET due_date = NULL, start_time = NULL, end_time = NULL WHERE id = ANY(${standaloneIds}) AND user_id = ${user.id}`;
+        const clearedRows = await sql`UPDATE tasks SET due_date = NULL, start_time = NULL, end_time = NULL WHERE id = ANY(${standaloneIds}) AND user_id = ${user.id} RETURNING *`;
+        for (const t of clearedRows) await safeUpsertEventForTask(sql, user, t); // no start_time left -> removes any existing event
       }
       if (projectSubtaskIds.length) {
-        await sql`UPDATE tasks SET start_time = NULL, end_time = NULL WHERE id = ANY(${projectSubtaskIds}) AND user_id = ${user.id}`;
+        const clearedSubRows = await sql`UPDATE tasks SET start_time = NULL, end_time = NULL WHERE id = ANY(${projectSubtaskIds}) AND user_id = ${user.id} RETURNING *`;
+        for (const t of clearedSubRows) await safeUpsertEventForTask(sql, user, t);
       }
       for (const t of deferredRows) {
         const isProjectSubtask = t.parent_task_id != null;

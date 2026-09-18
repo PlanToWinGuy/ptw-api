@@ -418,3 +418,30 @@ CREATE INDEX IF NOT EXISTS idx_users_stripe_customer ON users(stripe_customer_id
 -- (a name + a URL or URL-scheme they provide), merged server-side into every Essential
 -- Apps response so it renders identically to a curated app. See api/preferences/[scope].js
 -- (VALID_SCOPES) and api/essential-apps.js (getCustomApps/customAppToEntry).
+
+-- Google Calendar sync (one-directional PTW -> Google Calendar push, see
+-- lib/googleCalendar.js). This is a SEPARATE grant from Google Sign-In (google_id above):
+-- someone can sign in with Google without ever granting calendar access, or sign in with a
+-- password and connect Calendar later -- incremental authorization, requested only when
+-- they actually opt into sync from Settings, not bundled into login. refresh_token is the
+-- durable credential; access tokens are always re-derived from it per sync call rather than
+-- cached, since call volume here is low enough that the extra refresh round-trip is cheap
+-- and this avoids persisting a second, shorter-lived secret. sync_enabled is a separate flag
+-- from "is a refresh_token on file" so toggling off in Settings doesn't force a full
+-- reconnect to turn back on. timezone is the IANA zone (e.g. 'America/New_York') captured
+-- from the browser at connect time -- nothing else in this schema tracks a user's timezone
+-- today, and the Calendar API requires one on every event's start/end.
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS google_calendar_refresh_token TEXT,
+  ADD COLUMN IF NOT EXISTS google_calendar_sync_enabled BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS google_calendar_connected_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS timezone TEXT;
+
+-- Links a task row to the Google Calendar event pushed for it (null until first synced).
+-- Kept directly on tasks rather than a side table so the task-mutation endpoints that
+-- already have the row in hand (complete/skip/reschedule/shuffle/edit/delete) can upsert or
+-- tear down its event with no extra join, and so a hard task DELETE can clean up its event
+-- before the row (and this id) disappears.
+ALTER TABLE tasks
+  ADD COLUMN IF NOT EXISTS google_calendar_event_id TEXT;
+

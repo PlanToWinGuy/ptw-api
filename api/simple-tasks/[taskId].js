@@ -3,6 +3,7 @@ import { cors } from '../../lib/cors.js';
 import { getUserFromRequest } from '../../lib/auth.js';
 import { serializeTask } from '../simple-tasks.js';
 import { findOpenSlot, slotSearchWindowForPriority, addMinutesToClock } from '../../lib/scheduling.js';
+import { safeUpsertEventForTask, deleteEventForTask } from '../../lib/googleCalendar.js';
 
 const VALID_PRIORITIES = ['Low', 'Medium', 'High', 'Urgent'];
 
@@ -64,10 +65,14 @@ export default async function handler(req, res) {
       WHERE id = ${id}
       RETURNING *
     `;
+    await safeUpsertEventForTask(sql, user, updated[0]);
     return res.status(200).json(serializeTask(updated[0]));
   }
 
   if (req.method === 'DELETE') {
+    // Tear down the calendar event BEFORE the row goes away -- once the task id is gone
+    // there's no longer anything to look up its google_calendar_event_id from.
+    if (task.google_calendar_event_id) await deleteEventForTask(sql, user, task).catch(() => {});
     await sql`DELETE FROM tasks WHERE id = ${id}`;
     return res.status(204).end();
   }

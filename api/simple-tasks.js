@@ -2,6 +2,7 @@ import { sql, PILLARS } from '../lib/db.js';
 import { cors } from '../lib/cors.js';
 import { getUserFromRequest } from '../lib/auth.js';
 import { findOpenSlot, slotSearchWindowForPriority } from '../lib/scheduling.js';
+import { safeUpsertEventForTask } from '../lib/googleCalendar.js';
 
 const VALID_PRIORITIES = ['Low', 'Medium', 'High', 'Urgent'];
 
@@ -90,6 +91,7 @@ export default async function handler(req, res) {
       VALUES (${user.id}, ${name}, ${pillar_id}, ${dur}, ${priority}, ${finalDueDate}, ${finalStartTime}, ${description}, ${icon}, ${color}, ${kind})
       RETURNING *
     `;
+    await safeUpsertEventForTask(sql, user, rows[0]);
     return res.status(200).json(serializeTask(rows[0]));
   }
 

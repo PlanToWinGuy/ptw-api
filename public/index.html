@@ -4045,6 +4045,230 @@ function openStaticPage(key) {
   document.getElementById('static-page-body').innerHTML=`<div style="font-size:14px;color:var(--text);line-height:1.7;margin-top:16px">${page.body}</div>`;
 }
 
+function escapeHtml(str) {
+  return String(str==null?'':str).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// ════════════════════════════════════════
+// REPORT A PROBLEM (Part A -- POST /api/bug-reports -> bug_reports table). Reached from
+// Settings and from the Help/FAQ page's own dead-end fallback. Auto-attaches the screen
+// the user was on when they opened this (captured BEFORE navigating here), app version,
+// and basic device/browser info -- an optional screenshot uploads via multipart, same
+// blob pattern as avatar/vision-board uploads.
+// ════════════════════════════════════════
+let rpScreenshotFile=null;
+function openReportProblem() {
+  const activeEl=document.querySelector('.screen.active');
+  S.reportProblemFromScreen = activeEl ? activeEl.id.replace(/^screen-/,'') : null;
+  const desc=document.getElementById('rp-description'); if(desc) desc.value='';
+  const fileInput=document.getElementById('rp-file-input'); if(fileInput) fileInput.value='';
+  const fileBtn=document.getElementById('rp-file-btn'); if(fileBtn) fileBtn.textContent='📎 Attach a screenshot';
+  rpScreenshotFile=null;
+  showScreen('report-problem');
+}
+function closeReportProblem() { showScreen(S.reportProblemFromScreen||'settings'); }
+function onReportScreenshotPicked(e) {
+  const f=e.target.files?.[0];
+  if(!f) return;
+  rpScreenshotFile=f;
+  const fileBtn=document.getElementById('rp-file-btn');
+  if(fileBtn) fileBtn.textContent='✓ '+f.name;
+}
+async function submitBugReport() {
+  const description=(document.getElementById('rp-description').value||'').trim();
+  if(!description) { toast('Tell us what happened first'); return; }
+  const btn=document.getElementById('rp-submit-btn');
+  const prevText=btn.textContent;
+  btn.disabled=true; btn.textContent='Sending…';
+  // Auto-attached debug context -- non-invasive: viewport/online/theme, not location,
+  // contacts, or anything off-device.
+  const context={ viewport:`${window.innerWidth}x${window.innerHeight}`, online:navigator.onLine, theme:localStorage.getItem('ptw_theme')||'dark' };
+  const screen=S.reportProblemFromScreen||'unknown';
+  try {
+    let res;
+    if (rpScreenshotFile) {
+      const fd=new FormData();
+      fd.append('description', description);
+      fd.append('screen', screen);
+      fd.append('app_version', APP_VERSION);
+      fd.append('user_agent', navigator.userAgent);
+      fd.append('context', JSON.stringify(context));
+      fd.append('screenshot', rpScreenshotFile);
+      const h={}; if(S.token) h['Authorization']='Bearer '+S.token;
+      res = await fetch(API+'/bug-reports', {method:'POST', headers:h, body:fd});
+    } else {
+      const h={'Content-Type':'application/json','Accept':'application/json'};
+      if(S.token) h['Authorization']='Bearer '+S.token;
+      res = await fetch(API+'/bug-reports', {method:'POST', headers:h, body:JSON.stringify({description, screen, app_version:APP_VERSION, user_agent:navigator.userAgent, context})});
+    }
+    if(res.ok) { toast("Thanks — we'll take a look ✓"); closeReportProblem(); }
+    else toast('Could not send — try again');
+  } catch(e) {
+    toast('Connection error — try again');
+  } finally {
+    btn.disabled=false; btn.textContent=prevText;
+  }
+}
+
+// ════════════════════════════════════════
+// ADMIN PANEL (Part C) -- founder-only. Every fetch below hits an endpoint that
+// re-checks lib/auth.js's ADMIN_EMAIL against the real bearer token server-side, so
+// this tab being open client-side never actually exposes data to a non-founder account.
+// ════════════════════════════════════════
+const ADMIN_TABS=[
+  {key:'bugs', label:'🐞 Bug Reports'},
+  {key:'errors', label:'⚠️ Error Log'},
+  {key:'users', label:'👥 Users'},
+  {key:'coaching', label:'🤖 Coaching'},
+];
+function openAdminPanel() {
+  if(!S.userData?.is_admin) { toast('Not available'); return; }
+  S.adminTab = S.adminTab || 'bugs';
+  S.adminBugStatus = S.adminBugStatus || 'new';
+  showScreen('admin');
+  renderAdminTabs();
+  loadAdminTab();
+}
+function renderAdminTabs() {
+  const el=document.getElementById('admin-tabs');
+  if(!el) return;
+  el.innerHTML = ADMIN_TABS.map(t=>
+    `<button type="button" class="chip${S.adminTab===t.key?' sel':''}" style="white-space:nowrap" onclick="switchAdminTab('${t.key}')">${t.label}</button>`
+  ).join('');
+}
+function switchAdminTab(tab) { S.adminTab=tab; renderAdminTabs(); loadAdminTab(); }
+function loadAdminTab() {
+  const body=document.getElementById('admin-body');
+  body.innerHTML=`<div style="text-align:center;color:var(--stone);padding:40px 0">Loading…</div>`;
+  if(S.adminTab==='bugs') loadAdminBugReports();
+  else if(S.adminTab==='errors') loadAdminErrorLog();
+  else if(S.adminTab==='users') loadAdminUsers();
+  else if(S.adminTab==='coaching') loadAdminCoaching();
+}
+
+async function loadAdminBugReports() {
+  const status=S.adminBugStatus||'new';
+  const data=await req('GET', `/bug-reports?status=${status}`);
+  const body=document.getElementById('admin-body');
+  if(!body) return;
+  if(!data) { body.innerHTML=`<div style="text-align:center;color:var(--stone);padding:40px 0">Could not load</div>`; return; }
+  const rows=data.data||[];
+  const filters=['new','reviewed','resolved','all'];
+  let html=`<div style="display:flex;gap:6px;margin:12px 0;flex-wrap:wrap">`
+    + filters.map(f=>`<button type="button" class="chip${status===f?' sel':''}" onclick="S.adminBugStatus='${f}';loadAdminBugReports()">${f[0].toUpperCase()+f.slice(1)}</button>`).join('')
+    + `</div>`;
+  if(!rows.length) html+=`<div style="text-align:center;color:var(--stone);padding:40px 0">No ${status==='all'?'':status} bug reports</div>`;
+  html += rows.map(r=>{
+    const who = r.user_email ? `${escapeHtml(r.user_name||r.user_email)} · ${escapeHtml(r.user_email)}` : (r.email?escapeHtml(r.email):'Anonymous');
+    const ctx = r.context||{};
+    const shotHtml = ctx.screenshot_url ? `<a href="${escapeHtml(ctx.screenshot_url)}" target="_blank" style="display:inline-block;margin-top:8px"><img src="${escapeHtml(ctx.screenshot_url)}" style="max-width:100%;border-radius:8px;border:1px solid rgba(196,184,168,.15)"></a>` : '';
+    const statusColor = r.status==='new' ? '#C46882' : r.status==='reviewed' ? '#C9A832' : '#5A9460';
+    return glassCard(statusColor, `
+      <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">
+        <div style="font-size:13px;color:var(--text);line-height:1.5;flex:1">${escapeHtml(r.description)}</div>
+        <div style="font-size:10px;padding:3px 8px;border-radius:20px;background:${hexToRgba(statusColor,.18)};color:${statusColor};white-space:nowrap;text-transform:uppercase;font-weight:700">${r.status}</div>
+      </div>
+      <div style="font-size:11px;color:var(--stone);margin-top:8px">${who}${r.screen?' · screen: '+escapeHtml(r.screen):''} · ${timeAgo(r.created_at)}</div>
+      ${r.app_version||r.user_agent ? `<div style="font-size:10px;color:var(--muted);margin-top:4px">${r.app_version?'v'+escapeHtml(r.app_version):''}${r.app_version&&r.user_agent?' · ':''}${r.user_agent?escapeHtml(r.user_agent):''}</div>`:''}
+      ${shotHtml}
+      <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
+        ${r.status!=='reviewed'?`<button type="button" class="chip" onclick="markBugReportStatus(${r.id},'reviewed')">Mark Reviewed</button>`:''}
+        ${r.status!=='resolved'?`<button type="button" class="chip" onclick="markBugReportStatus(${r.id},'resolved')">Mark Resolved</button>`:''}
+        ${r.status!=='new'?`<button type="button" class="chip" onclick="markBugReportStatus(${r.id},'new')">Reopen</button>`:''}
+      </div>
+    `, {style:'margin-bottom:10px;padding:14px'});
+  }).join('');
+  body.innerHTML=html;
+}
+async function markBugReportStatus(id, status) {
+  const r=await req('PATCH', `/bug-reports?id=${id}`, {status});
+  if(r) { toast('Updated ✓'); loadAdminBugReports(); }
+}
+
+async function loadAdminErrorLog() {
+  const data=await req('GET','/error-logs');
+  const body=document.getElementById('admin-body');
+  if(!body) return;
+  if(!data) { body.innerHTML=`<div style="text-align:center;color:var(--stone);padding:40px 0">Could not load</div>`; return; }
+  const rows=data.data||[];
+  // Group/dedupe client-side by exact message text -- the server already collapses
+  // repeats within a 15-minute window (see api/error-logs.js), but the SAME error
+  // recurring across hours/days would otherwise still be one row per window. Grouping
+  // here keeps the list scannable (one card per distinct error) instead of a wall of
+  // near-identical entries.
+  const groups=new Map();
+  rows.forEach(r=>{
+    const key=r.message;
+    if(!groups.has(key)) groups.set(key, {message:r.message, stack:r.stack, url:r.url, totalCount:0, lastSeen:r.last_seen_at, users:new Set()});
+    const g=groups.get(key);
+    g.totalCount += Number(r.occurrence_count)||1;
+    if(new Date(r.last_seen_at) > new Date(g.lastSeen)) { g.lastSeen=r.last_seen_at; g.stack=r.stack; g.url=r.url; }
+    g.users.add(r.user_email || (r.user_id ? 'user #'+r.user_id : 'anonymous'));
+  });
+  const grouped=[...groups.values()].sort((a,b)=>new Date(b.lastSeen)-new Date(a.lastSeen));
+  let html=`<div style="font-size:11px;color:var(--stone);margin:12px 0">${grouped.length} distinct error${grouped.length===1?'':'s'}</div>`;
+  if(!grouped.length) html+=`<div style="text-align:center;color:var(--stone);padding:40px 0">No errors logged 🎉</div>`;
+  html += grouped.map(g=>glassCard('#C46882', `
+    <div style="font-size:13px;color:var(--text);font-family:monospace;line-height:1.5;word-break:break-word">${escapeHtml(g.message)}</div>
+    <div style="font-size:11px;color:var(--stone);margin-top:8px">${g.totalCount}× · ${g.users.size} user${g.users.size===1?'':'s'} · last ${timeAgo(g.lastSeen)}</div>
+    ${g.url?`<div style="font-size:10px;color:var(--muted);margin-top:4px;word-break:break-all">${escapeHtml(g.url)}</div>`:''}
+    ${g.stack?`<details style="margin-top:6px"><summary style="font-size:11px;color:var(--blue);cursor:pointer">Stack trace</summary><pre style="font-size:10px;color:var(--muted);white-space:pre-wrap;margin-top:6px">${escapeHtml(g.stack)}</pre></details>`:''}
+  `, {style:'margin-bottom:10px;padding:14px'})).join('');
+  body.innerHTML=html;
+}
+
+async function loadAdminUsers() {
+  const data=await req('GET','/admin?section=users');
+  const body=document.getElementById('admin-body');
+  if(!body) return;
+  if(!data) { body.innerHTML=`<div style="text-align:center;color:var(--stone);padding:40px 0">Could not load</div>`; return; }
+  const rows=data.data||[];
+  let html=`<div style="font-size:11px;color:var(--stone);margin:12px 0">${rows.length} signed-up user${rows.length===1?'':'s'}</div>`;
+  html += rows.map(u=>{
+    const pillars=(u.active_pillars||[]).join(', ')||'none yet';
+    const lastActive = u.last_active_at && new Date(u.last_active_at).getFullYear()>1971 ? timeAgo(u.last_active_at) : 'never';
+    return glassCard('#5BA4DC', `
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+        <div>
+          <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:14px;color:var(--text)">${escapeHtml(u.name||'—')}</div>
+          <div style="font-size:11px;color:var(--stone)">${escapeHtml(u.email)}</div>
+        </div>
+        <div style="text-align:right;font-size:11px;color:var(--stone)">
+          <div>${u.xp||0} XP</div>
+          <div>🔥 ${u.streak_days||0}d</div>
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:8px">Joined ${new Date(u.created_at).toLocaleDateString()} · Pillars: ${escapeHtml(pillars)}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:2px">Last active: ${lastActive}</div>
+    `, {style:'margin-bottom:10px;padding:14px'});
+  }).join('');
+  body.innerHTML=html;
+}
+
+async function loadAdminCoaching() {
+  const data=await req('GET','/admin?section=coaching');
+  const body=document.getElementById('admin-body');
+  if(!body) return;
+  if(!data) { body.innerHTML=`<div style="text-align:center;color:var(--stone);padding:40px 0">Could not load</div>`; return; }
+  const rows=data.data||[];
+  let html=`<div style="font-size:11px;color:var(--stone);margin:12px 0">${rows.length} recent turn${rows.length===1?'':'s'} · AI Assistant + goal refinement</div>`;
+  if(!rows.length) html+=`<div style="text-align:center;color:var(--stone);padding:40px 0">No coaching activity yet</div>`;
+  html += rows.map(c=>{
+    const kindLabel = c.kind==='goal_refine' ? 'Goal Refine' : 'AI Assistant';
+    const color = c.had_error ? '#C46882' : '#8A70C0';
+    return glassCard(color, `
+      <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
+        <div style="font-size:11px;color:${color};font-weight:700;text-transform:uppercase">${kindLabel}${c.had_error?' · ERRORED':''}</div>
+        <div style="font-size:10px;color:var(--stone)">${timeAgo(c.created_at)}</div>
+      </div>
+      <div style="font-size:11px;color:var(--stone);margin-top:6px">${escapeHtml(c.user_name||c.user_email)}</div>
+      <div style="font-size:13px;color:var(--text);margin-top:8px"><strong>User:</strong> ${escapeHtml(c.user_message||'—')}</div>
+      <div style="font-size:13px;color:var(--stone);margin-top:6px"><strong>AI:</strong> ${c.ai_reply?escapeHtml(c.ai_reply):(c.had_error?'(no reply — call failed)':'—')}</div>
+    `, {style:'margin-bottom:10px;padding:14px'});
+  }).join('');
+  body.innerHTML=html;
+}
+
 // ════════════════════════════════════════
 // APP ENTRY
 // ════════════════════════════════════════

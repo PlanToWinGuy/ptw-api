@@ -125,6 +125,8 @@ export default async function handler(req, res) {
       subscription_plan: user.subscription_plan || null,
       subscription_renews_at: user.subscription_current_period_end || null,
       valueprint_data: user.valueprint_data || null,
+      google_calendar_connected: !!user.google_calendar_refresh_token,
+      google_calendar_sync_enabled: !!user.google_calendar_sync_enabled,
     },
   });
 }
