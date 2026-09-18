@@ -8070,11 +8070,19 @@ async function loadProfileMetrics() {
   // the tap target so there's no separate hitbox/affordance to build.
   const metricCard = (icon, val, label, daily, color, key) => {
     const vals=daily.map(x=>x.value);
+    // Longer formatted values (e.g. Daily Intention Time's "10h 26m") don't fit this
+    // column at the standard 19px and were wrapping into a ragged, oversized-looking
+    // two-line stack (founder feedback: "font size goes a bit off and too big... should
+    // be centred at least"). Scale the value down and centre the value/label column once
+    // a value gets long enough to need it -- short values (counts, %, streak days) are
+    // untouched and keep their original size/left-aligned look.
+    const long = String(val).length > 5;
+    const valFs = long ? 16 : 19;
     return glassCard(color, `
       <div style="display:flex;align-items:center;gap:8px">
         ${softIcon(icon, color)}
-        <div style="flex:1;min-width:0">
-          <div style="font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:var(--text)">${val}</div>
+        <div style="flex:1;min-width:0${long?';text-align:center':''}">
+          <div style="font-family:'Syne',sans-serif;font-size:${valFs}px;font-weight:800;color:var(--text);line-height:1.15">${val}</div>
           <div style="font-size:10.5px;color:var(--muted);margin-top:1px">${label}</div>
         </div>
         <span style="color:${color};opacity:.55;font-size:15px;line-height:1">›</span>
