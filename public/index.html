@@ -12102,10 +12102,12 @@ async function viewWorkoutDetail(id) {
   document.getElementById('workout-log-header').textContent=d.planName||'Workout';
   let metricsHtml, bodyHtml;
   if(type==='cardio') {
+    const pace = d.avgPaceMinPerKm || (d.distance>0.2 ? d.durationMin/d.distance : 0);
     metricsHtml=`<div class="metric-row" style="margin-top:14px">
       <div class="metric-card"><div class="metric-label">Duration</div><div class="metric-val" style="color:var(--fitness)">${d.durationMin||0} min</div></div>
       <div class="metric-card"><div class="metric-label">Distance</div><div class="metric-val" style="color:var(--fitness)">${d.distance||0} km</div></div>
-    </div>`;
+    </div>
+    ${pace?`<div class="metric-row"><div class="metric-card"><div class="metric-label">Avg Pace</div><div class="metric-val" style="color:var(--fitness)">${cardioFormatPace(pace)}</div></div><div class="metric-card"><div class="metric-label">Tracking</div><div class="metric-val" style="font-size:15px;color:var(--fitness)">${d.gpsTracked?'GPS':'Manual'}</div></div></div>`:''}`;
     bodyHtml=`<div class="section-title" style="margin-top:16px">Intensity</div><div class="rm-goal-card">${d.intensity||'Moderate'}</div>`;
   } else if(type==='hiit') {
     metricsHtml=`<div class="metric-row" style="margin-top:14px">
@@ -12260,22 +12262,165 @@ async function startWorkout(planId) {
   renderActiveWorkout();
 }
 
-// ── Cardio session: a single duration/distance entry, no sets ──
+// ── Cardio session: genuinely live, not a static form -- elapsed time ticks every
+// second on a real progress ring (same convention as the mobility hold-timer ring
+// below), and where geolocation permission is granted, distance/pace update live via
+// watchPosition(). Works the same way in a mobile browser and in the Capacitor
+// Android WebView -- both implement navigator.geolocation identically, it's just
+// permission-gated. Denied/unavailable/unsupported all degrade gracefully to a
+// duration-only session with a manual distance entry on the review screen, rather
+// than breaking the screen.
+function cardioFormatTime(totalSec) {
+  totalSec=Math.max(0,Math.floor(totalSec));
+  const h=Math.floor(totalSec/3600), m=Math.floor((totalSec%3600)/60), s=totalSec%60;
+  return h>0 ? `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}` : `${m}:${String(s).padStart(2,'0')}`;
+}
+function cardioFormatPace(minPerKm) {
+  if(!isFinite(minPerKm)||minPerKm<=0) return '—';
+  const m=Math.floor(minPerKm), s=Math.round((minPerKm-m)*60);
+  return `${m}:${String(s).padStart(2,'0')}/km`;
+}
+// Standard great-circle distance between two GPS fixes -- accurate enough at
+// running/cycling distances, no external library needed.
+function haversineKm(lat1,lon1,lat2,lon2) {
+  const R=6371, toRad=d=>d*Math.PI/180;
+  const dLat=toRad(lat2-lat1), dLon=toRad(lon2-lon1);
+  const a=Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+function cardioGpsStatusLabel(status) {
+  if(status==='active') return '● GPS locked — tracking live';
+  if(status==='locating') return 'Acquiring GPS…';
+  if(status==='denied') return 'Location permission denied — duration only, add distance at the end';
+  if(status==='unavailable') return 'GPS unavailable — duration only, add distance at the end';
+  return 'GPS not supported on this device — duration only';
+}
+
 function renderCardioSession() {
   const w=activeWorkout;
+  if(w.geoDistanceKm===undefined) w.geoDistanceKm=0;
+  if(!w.geoStatus) w.geoStatus = navigator.geolocation ? 'locating' : 'unsupported';
   document.getElementById('workout-log-header').textContent=`${w.planName} · Cardio`;
+  const circumference=2*Math.PI*100;
   document.getElementById('workout-log-body').innerHTML=`
-    <div style="display:flex;justify-content:center;margin-top:14px">${softIcon(exerciseStickFigureSvg(w.planName,'running'), PILLARS.fitness.color, {size:68, fontSize:34})}</div>
-    <div class="rm-goal-card" style="text-align:center;margin-top:12px">
-      <div class="section-sub">TARGET</div>
-      <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--text);margin:6px 0">${w.targetDurationMin} min${w.targetDistance?` · ${w.targetDistance}km`:''}</div>
-      <div style="font-size:12px;color:var(--stone)">${w.intensity} intensity</div>
+    <div style="text-align:center;padding:10px 0 0">
+      <div style="display:flex;justify-content:center">${softIcon(exerciseStickFigureSvg(w.planName,'running'), PILLARS.fitness.color, {size:56, fontSize:28})}</div>
+      <div style="font-size:11px;color:var(--stone);margin-top:8px">${w.intensity} intensity · target ${w.targetDurationMin} min${w.targetDistance?` · ${w.targetDistance}km`:''}</div>
+      <div style="position:relative;width:220px;height:220px;margin:18px auto 0">
+        <svg viewBox="0 0 220 220" width="220" height="220" style="transform:rotate(-90deg)">
+          <circle cx="110" cy="110" r="100" fill="none" stroke="var(--bg4)" stroke-width="14"/>
+          <circle id="cardio-ring-arc" cx="110" cy="110" r="100" fill="none" stroke="var(--fitness)" stroke-width="14" stroke-linecap="round" stroke-dasharray="${circumference}" stroke-dashoffset="${circumference}" style="transition:stroke-dashoffset 1s linear"/>
+        </svg>
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
+          <div id="cardio-elapsed-number" style="font-family:'Syne',sans-serif;font-size:44px;font-weight:800;color:var(--text)">0:00</div>
+          <div class="section-sub" style="margin-top:2px">ELAPSED</div>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:center;gap:28px;margin-top:22px">
+        <div><div id="cardio-distance-val" style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--fitness)">0.00</div><div style="font-size:11px;color:var(--stone)">km</div></div>
+        <div><div id="cardio-pace-val" style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--fitness)">—</div><div style="font-size:11px;color:var(--stone)">pace /km</div></div>
+      </div>
+      <div id="cardio-gps-status" style="font-size:11px;color:var(--stone);margin-top:10px">${cardioGpsStatusLabel(w.geoStatus)}</div>
+      <button class="btn-p filled" style="margin-top:24px;margin-bottom:20px;background:var(--fitness);border-color:var(--fitness)" onclick="stopCardioSession()">Stop Session</button>
+    </div>`;
+  startCardioTracking();
+}
+
+function startCardioTracking() {
+  const w=activeWorkout;
+  clearInterval(w.cardioTimer);
+  w.cardioTimer=setInterval(()=>{
+    const numEl=document.getElementById('cardio-elapsed-number');
+    const arcEl=document.getElementById('cardio-ring-arc');
+    if(!numEl||!arcEl) { clearInterval(w.cardioTimer); return; }
+    const elapsedSec=Math.floor((Date.now()-w.startTime)/1000);
+    numEl.textContent=cardioFormatTime(elapsedSec);
+    const targetSec=Math.max(1,w.targetDurationMin*60);
+    const circumference=2*Math.PI*100;
+    arcEl.setAttribute('stroke-dashoffset', circumference*(1-Math.min(1,elapsedSec/targetSec)));
+    const distEl=document.getElementById('cardio-distance-val');
+    const paceEl=document.getElementById('cardio-pace-val');
+    if(distEl) distEl.textContent=w.geoDistanceKm.toFixed(2);
+    if(paceEl) paceEl.textContent = w.geoDistanceKm>0.05 ? cardioFormatPace((elapsedSec/60)/w.geoDistanceKm) : '—';
+  },1000);
+
+  // Geolocation is opt-in and best-effort -- watchPosition() itself triggers the
+  // browser's/WebView's permission prompt on first call, same API surface in a
+  // mobile browser tab and the Capacitor Android wrapper. Re-entry guarded since
+  // renderCardioSession only ever runs once per session (reopening the session via
+  // the Home ring reuses the still-running #workout-log-body DOM, same pattern as
+  // every other active workout type), but this stays safe if that ever changes.
+  if(!navigator.geolocation) { w.geoStatus='unsupported'; return; }
+  if(w.geoWatchId!=null) return;
+  w.geoWatchId = navigator.geolocation.watchPosition(
+    (pos)=>{
+      const {latitude,longitude,accuracy}=pos.coords;
+      const wasLocating = w.geoStatus!=='active';
+      w.geoStatus='active';
+      // A fix worse than ~30m accuracy is too imprecise to trust for distance --
+      // still counts as "GPS locked" (status stays active) but its delta is skipped
+      // rather than accumulated, so a noisy fix doesn't inflate the total.
+      if(accuracy==null || accuracy<=30) {
+        if(w.lastCoord) {
+          const deltaKm=haversineKm(w.lastCoord.lat, w.lastCoord.lon, latitude, longitude);
+          const deltaSec=Math.max(1,(Date.now()-(w.lastFixAt||Date.now()))/1000);
+          // Reject implausible jumps (GPS glitch/multipath): faster than 25km/h
+          // sustained between fixes is outside any realistic run/jog/cycle pace for
+          // this being real movement rather than an accidental spike.
+          if((deltaKm/(deltaSec/3600))<25) w.geoDistanceKm+=deltaKm;
+        }
+        w.lastCoord={lat:latitude, lon:longitude};
+        w.lastFixAt=Date.now();
+      }
+      if(wasLocating) updateCardioGpsStatus();
+    },
+    (err)=>{
+      w.geoStatus = err.code===1 ? 'denied' : 'unavailable';
+      updateCardioGpsStatus();
+    },
+    {enableHighAccuracy:true, maximumAge:2000, timeout:15000}
+  );
+}
+
+function updateCardioGpsStatus() {
+  const el=document.getElementById('cardio-gps-status');
+  if(el) el.textContent=cardioGpsStatusLabel(activeWorkout.geoStatus);
+}
+
+function stopCardioSession() {
+  const w=activeWorkout;
+  clearInterval(w.cardioTimer);
+  if(w.geoWatchId!=null && navigator.geolocation) { navigator.geolocation.clearWatch(w.geoWatchId); w.geoWatchId=null; }
+  w.actualDurationMin=Math.max(1,Math.round((Date.now()-w.startTime)/60000));
+  w.actualDistanceKm = w.geoDistanceKm>0.02 ? Math.round(w.geoDistanceKm*100)/100 : (w.targetDistance||0);
+  renderCardioSummary();
+}
+
+// Results/summary screen shown after Stop Session, before the log actually posts --
+// formatted like a completed workout's history entry (same .metric-row/.metric-card
+// convention as viewWorkoutDetail below) rather than silently logging a number.
+// Duration/distance stay editable in case GPS under/over-tracked or the session was
+// duration-only, but finishWorkout() reads the exact same #cardio-actual-duration /
+// #cardio-actual-distance input ids it always has, so that function needed no changes.
+function renderCardioSummary() {
+  const w=activeWorkout;
+  document.getElementById('workout-log-header').textContent=`${w.planName} · Review`;
+  const hrs=Math.floor(w.actualDurationMin/60), mins=w.actualDurationMin%60;
+  const pace = w.actualDistanceKm>0.05 ? cardioFormatPace(w.actualDurationMin/w.actualDistanceKm) : '—';
+  document.getElementById('workout-log-body').innerHTML=`
+    <div class="metric-row" style="margin-top:14px">
+      <div class="metric-card"><div class="metric-label">Duration</div><div class="metric-val" style="color:var(--fitness)">${hrs?hrs+'h ':''}${mins}m</div></div>
+      <div class="metric-card"><div class="metric-label">Distance</div><div class="metric-val" style="color:var(--fitness)">${w.actualDistanceKm.toFixed(2)} km</div></div>
     </div>
-    <div class="rm-goal-card" style="margin-top:14px">
-      <div class="section-sub" style="text-align:center">LOG YOUR ACTUAL</div>
+    <div class="metric-row">
+      <div class="metric-card"><div class="metric-label">Avg Pace</div><div class="metric-val" style="color:var(--fitness)">${pace}</div></div>
+      <div class="metric-card"><div class="metric-label">Tracking</div><div class="metric-val" style="font-size:15px;color:var(--fitness)">${w.geoStatus==='active'?'GPS':'Manual'}</div></div>
+    </div>
+    <div class="rm-goal-card" style="margin-top:4px">
+      <div class="section-sub" style="text-align:center">ADJUST IF NEEDED</div>
       <div style="display:flex;gap:10px;justify-content:center;margin-top:10px">
-        <input type="number" id="cardio-actual-duration" placeholder="Duration (min)" value="${w.targetDurationMin}" style="flex:1;padding:10px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none">
-        <input type="number" id="cardio-actual-distance" placeholder="Distance (km)" value="${w.targetDistance||''}" style="flex:1;padding:10px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none">
+        <input type="number" id="cardio-actual-duration" placeholder="Duration (min)" value="${w.actualDurationMin}" style="flex:1;padding:10px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none">
+        <input type="number" id="cardio-actual-distance" step="0.01" placeholder="Distance (km)" value="${w.actualDistanceKm||''}" style="flex:1;padding:10px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none">
       </div>
     </div>
     <textarea id="workout-session-notes" placeholder="Add Session Notes:" rows="2" style="width:100%;margin-top:14px;padding:12px;background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:10px;color:var(--text);font-size:13px;outline:none;resize:none">${w.sessionNotes}</textarea>
@@ -12713,7 +12858,10 @@ async function finishWorkout() {
     const actualDuration=Number(document.getElementById('cardio-actual-duration')?.value)||w.targetDurationMin;
     const actualDistance=Number(document.getElementById('cardio-actual-distance')?.value)||w.targetDistance||0;
     value=actualDistance||actualDuration; unit=actualDistance?'km':'min';
-    data={activityType:'cardio', planName:w.planName, durationMin:actualDuration, distance:actualDistance, intensity:w.intensity, sessionNotes:w.sessionNotes};
+    // gpsTracked/avgPaceMinPerKm carry the live-tracked session context (see
+    // renderCardioSession/stopCardioSession) into the saved log so history/detail
+    // views can show real pace instead of just duration+distance.
+    data={activityType:'cardio', planName:w.planName, durationMin:actualDuration, distance:actualDistance, intensity:w.intensity, sessionNotes:w.sessionNotes, gpsTracked:w.geoStatus==='active', avgPaceMinPerKm: actualDistance>0.2 ? actualDuration/actualDistance : null};
   } else if(w.activityType==='hiit') {
     value=w.rounds; unit='rounds';
     data={activityType:'hiit', planName:w.planName, rounds:w.rounds, workSeconds:w.workSeconds, restSeconds:w.restSeconds, durationMin, sessionNotes:w.sessionNotes};
