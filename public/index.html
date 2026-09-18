@@ -387,20 +387,43 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
 /* Pillar MAP page */
 .pillar-map-body{padding:0 18px 8px}
 
-/* LifeScore hero card -- Profile's single most important element, stays solid-filled
-   (background:var(--blue) set inline where it's rendered) same as every pillar's Map
-   hero; radius/shadow brought in line with that same hero treatment (pillarMapHero /
-   heroCtaCard) so it doesn't look like an older, mismatched card next to the rest of the
-   now-glassed Profile screen. */
-.ls-card{
-  border-radius:22px;padding:18px 18px 14px;margin-bottom:14px;
-  position:relative;overflow:hidden;
-  box-shadow:0 12px 28px -12px rgba(0,0,0,.5);
+/* Profile hero -- Phase + LifeScore + XP fold into ONE continuous gradient surface
+   instead of three stacked/bordered cards (2026-09-18 direction: "gradient thing that
+   fades down to the tabs and then cards"). Solid-ish pillar blue behind the avatar/
+   Phase/LifeScore content, easing down to fully transparent by the time it reaches the
+   pillar-filter chips, so it blends into the page's own --bg underneath -- no card
+   borders *inside* this band. Alpha stays high (~.85->.7) through the actual content so
+   white text keeps AA contrast in both themes (light mode's pale --bg would otherwise
+   wash the blue out if it faded too early), then drops off over the bottom padding
+   where there's no text left to read. Text inside stays a fixed white/near-white
+   regardless of theme, same precedent as every other solid pillar-coloured hero in the
+   app (the surface doesn't flip with the theme, so neither does its text). The metric
+   grid below is untouched -- still separate, theme-aware glass cards; only this band
+   fades. See .profile-hero-row/.profile-hero-col for the two-column layout that
+   replaces the old separate .rm-goal-card (Phase) + solid-blue card (LifeScore). */
+/* The transparent-fade stop is pinned to a fixed pixel distance from the bottom
+   (calc(100% - <padding-bottom>)) rather than a percentage -- with a percentage stop,
+   the fade would creep into whichever line of real text happened to sit lowest (the
+   Phase "Days in Current Phase" line, the LifeScore disclaimer) and wash it out to
+   near-invisible in light mode, since it blends toward the page's very pale --bg there.
+   Pinning it to the padding-bottom's own pixel height guarantees every real content line
+   stays in the strong, constant-alpha zone (same contrast the solid-blue LifeScore card
+   already shipped with) and only the empty padding strip below all text fades to 0. */
+.profile-hero{
+  margin:0 -18px 4px;
+  padding:14px 18px 40px;
+  background:linear-gradient(180deg,
+    rgba(91,164,220,.88) 0,
+    rgba(91,164,220,.74) calc(100% - 40px),
+    rgba(91,164,220,0) 100%);
 }
-.ls-card::before{content:'';position:absolute;top:-20px;right:-20px;width:100px;height:100px;border-radius:50%;opacity:.15;filter:blur(20px)}
-.ls-label{font-size:11px;letter-spacing:.5px;opacity:.8;margin-bottom:4px}
+.profile-hero-row{display:flex;align-items:stretch;margin-top:4px}
+.profile-hero-col{flex:1;min-width:0;display:flex;flex-direction:column;padding:0 14px}
+.profile-hero-col:first-child{padding-left:0}
+.profile-hero-col:last-child{padding-right:0;border-left:1px solid rgba(255,255,255,.18)}
+.ls-label{font-size:11px;letter-spacing:.5px;opacity:.85;margin-bottom:4px;color:rgba(255,255,255,.85)}
 .ls-value{font-family:'Syne',sans-serif;font-size:36px;font-weight:800;color:#fff;line-height:1}
-.ls-sub{font-size:12px;opacity:.7;margin-top:4px}
+.ls-sub{font-size:12px;opacity:.85;margin-top:4px;color:rgba(255,255,255,.85)}
 .ls-change{font-size:12px;font-weight:600;margin-top:6px}
 
 /* Metric cards 2-col */
@@ -1796,49 +1819,54 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
     <button class="icon-btn ghost" onclick="openSettings()" title="Settings">⚙️</button>
   </div>
   <div class="scroll-body" style="padding:0 18px">
-    <div style="margin:4px 0 14px">
-      <div style="display:grid;grid-template-columns:1fr auto 1fr;align-items:center">
-        <div></div>
-        <div id="profile-avatar" onclick="openAvatarOptions()" style="cursor:pointer;justify-self:center;width:76px;height:76px;border-radius:50%;background:var(--bg3);border:2px solid var(--blue);display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-size:27px;font-weight:800;color:var(--blue);overflow:hidden">?</div>
-        <!-- Its own card, not a badge stuck on the avatar -- centered in the gap between
-             the avatar and the screen edge so it reads as a separate destination. -->
-        <button class="vision-board-mini-card" onclick="openVisionBoard()" title="Vision Board">
-          <span style="font-size:18px">🖼️</span>
-          <span>Vision Board</span>
-        </button>
-      </div>
-      <div id="profile-name" style="text-align:center;font-family:'Syne',sans-serif;font-size:17px;font-weight:700;color:var(--text);margin-top:8px">—</div>
-    </div>
-
-    <div style="display:flex;gap:12px;margin-bottom:12px;align-items:stretch">
-      <div class="rm-goal-card" style="cursor:pointer;margin-bottom:0;flex:1;min-width:0;display:flex;flex-direction:column" onclick="openPhaseDetail()">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <div class="section-sub" style="margin:0">PHASE</div>
-          <span style="font-size:13px;color:var(--stone)">›</span>
+    <!-- Hero band: avatar + Phase + LifeScore/XP all sit on one continuous gradient
+         surface (see .profile-hero) rather than as separate cards -- deliberately no
+         per-element background/border here, that's the whole point. -->
+    <div class="profile-hero">
+      <div style="margin:4px 0 14px">
+        <div style="display:grid;grid-template-columns:1fr auto 1fr;align-items:center">
+          <div></div>
+          <div id="profile-avatar" onclick="openAvatarOptions()" style="cursor:pointer;justify-self:center;width:76px;height:76px;border-radius:50%;background:var(--bg3);border:2px solid #fff;display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-size:27px;font-weight:800;color:var(--blue);overflow:hidden">?</div>
+          <!-- Its own card, not a badge stuck on the avatar -- centered in the gap between
+               the avatar and the screen edge so it reads as a separate destination. -->
+          <button class="vision-board-mini-card" onclick="openVisionBoard()" title="Vision Board">
+            <span style="font-size:18px">🖼️</span>
+            <span>Vision Board</span>
+          </button>
         </div>
-        <div id="profile-phase" style="font-family:'Syne',sans-serif;font-weight:800;font-size:15px;color:var(--text);margin-top:2px">—</div>
-        <!-- Mirrors the LifeScore card's own big-value-then-bar-then-breakdown structure
-             alongside it -- this used to be one dense line crammed with two tracked paths
-             and no clear "here's the headline number" the way its neighbor has, which read
-             as sparse/unfinished against a taller, richer card. -->
-        <div id="profile-phase-pct" style="font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:var(--blue);margin-top:8px">—%</div>
-        <div style="height:5px;background:var(--bg4);border-radius:4px;overflow:hidden;margin-top:6px"><div id="profile-phase-fill" style="height:100%;background:var(--blue);width:0%"></div></div>
-        <div id="profile-phase-sub" style="font-size:9.5px;color:var(--stone);line-height:1.6;margin-top:8px"></div>
-        <div style="flex:1"></div>
-        <div id="profile-phase-duration" style="font-size:9.5px;color:var(--muted);margin-top:8px">—</div>
+        <div id="profile-name" style="text-align:center;font-family:'Syne',sans-serif;font-size:17px;font-weight:700;color:#fff;margin-top:8px">—</div>
       </div>
 
-      <div class="ls-card" style="background:var(--blue);cursor:pointer;margin-bottom:0;flex:1;min-width:0;display:flex;flex-direction:column" onclick="openLifeScoreDetail()">
-        <div class="ls-label">LIFE SCORE</div>
-        <div class="ls-value" id="profile-lifescore" style="font-size:30px">—</div>
-        <div class="ls-sub" id="profile-xp-total" style="font-size:10.5px">Total XP: —</div>
-        <div style="height:5px;background:rgba(255,255,255,.3);border-radius:4px;overflow:hidden;margin-top:8px"><div id="profile-ls-fill" style="height:100%;background:#fff;width:0%"></div></div>
-        <!-- The actual point of this card: 77 isn't just a number, it's a 59 baseline plus
-             real, visible per-pillar contributions -- shown here instead of buried behind
-             a tap into a separate detail screen. -->
-        <div id="profile-ls-base" style="font-size:9px;color:rgba(255,255,255,.7);margin-top:8px">Base —</div>
-        <div id="profile-ls-breakdown" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px"></div>
-        <div style="font-size:8.5px;color:rgba(255,255,255,.75);margin-top:6px;line-height:1.35">Motivational score from your logged habits — not a medical prediction.</div>
+      <div class="profile-hero-row">
+        <div class="profile-hero-col" style="cursor:pointer" onclick="openPhaseDetail()">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div class="ls-label" style="margin:0">PHASE</div>
+            <span style="font-size:13px;color:rgba(255,255,255,.7)">›</span>
+          </div>
+          <div id="profile-phase" style="font-family:'Syne',sans-serif;font-weight:800;font-size:15px;color:#fff;margin-top:2px">—</div>
+          <!-- Mirrors the LifeScore column's own big-value-then-bar-then-breakdown
+               structure alongside it -- this used to be one dense line crammed with two
+               tracked paths and no clear "here's the headline number" the way its
+               neighbor has, which read as sparse/unfinished next to it. -->
+          <div id="profile-phase-pct" style="font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:#fff;margin-top:8px">—%</div>
+          <div style="height:5px;background:rgba(255,255,255,.28);border-radius:4px;overflow:hidden;margin-top:6px"><div id="profile-phase-fill" style="height:100%;background:#fff;width:0%"></div></div>
+          <div id="profile-phase-sub" style="font-size:9.5px;color:rgba(255,255,255,.78);line-height:1.6;margin-top:8px"></div>
+          <div style="flex:1"></div>
+          <div id="profile-phase-duration" style="font-size:9.5px;color:rgba(255,255,255,.68);margin-top:8px">—</div>
+        </div>
+
+        <div class="profile-hero-col" style="cursor:pointer" onclick="openLifeScoreDetail()">
+          <div class="ls-label">LIFE SCORE</div>
+          <div class="ls-value" id="profile-lifescore" style="font-size:30px">—</div>
+          <div class="ls-sub" id="profile-xp-total" style="font-size:10.5px">Total XP: —</div>
+          <div style="height:5px;background:rgba(255,255,255,.28);border-radius:4px;overflow:hidden;margin-top:8px"><div id="profile-ls-fill" style="height:100%;background:#fff;width:0%"></div></div>
+          <!-- The actual point of this column: 77 isn't just a number, it's a 59 baseline
+               plus real, visible per-pillar contributions -- shown here instead of buried
+               behind a tap into a separate detail screen. -->
+          <div id="profile-ls-base" style="font-size:9px;color:rgba(255,255,255,.72);margin-top:8px">Base —</div>
+          <div id="profile-ls-breakdown" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px"></div>
+          <div style="font-size:8.5px;color:rgba(255,255,255,.72);margin-top:6px;line-height:1.35">Motivational score from your logged habits — not a medical prediction.</div>
+        </div>
       </div>
     </div>
 
