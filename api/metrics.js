@@ -12,9 +12,14 @@ const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 // meal plan, where logging the meal also deducts those exact items from the Grocery
 // List. Reusing the name here would make a plain AI photo scan silently trigger grocery
 // deductions it has no business doing.
+// Micronutrient fields (fiber/sugar/sodium/potassium/calcium/iron/vitamin C) ride along in
+// this SAME call -- just a few more numbers in the same structured output, not a second AI
+// call or a meaningfully bigger prompt, so there's no added cost to asking for them. Keep
+// this key list in sync with ptw-pwa-v2.html's MICRONUTRIENT_FIELDS, which reads these same
+// field names back out of a logged meal's `data` for the Diet log's micronutrients toggle.
 const SCAN_SYSTEM = `You identify food in a photo and estimate its nutrition. Return ONLY JSON, no markdown fences:
-{"name":"<short meal name>","calories":<number>,"protein_g":<number>,"carbs_g":<number>,"fat_g":<number>,"confidence":"low"|"medium"|"high","note":"<one short caveat if the estimate is rough, else empty string>","scanned_ingredients":["<item 1>","<item 2>"]}
-List each distinct food item you can identify in scanned_ingredients as its own short string (e.g. "grilled chicken breast", "steamed broccoli", "white rice") -- typically 2-6 items. Estimates are approximate — say so honestly via confidence/note rather than pretending precision.`;
+{"name":"<short meal name>","calories":<number>,"protein_g":<number>,"carbs_g":<number>,"fat_g":<number>,"fiber_g":<number>,"sugar_g":<number>,"sodium_mg":<number>,"potassium_mg":<number>,"calcium_mg":<number>,"iron_mg":<number>,"vitamin_c_mg":<number>,"confidence":"low"|"medium"|"high","note":"<one short caveat if the estimate is rough, else empty string>","scanned_ingredients":["<item 1>","<item 2>"]}
+List each distinct food item you can identify in scanned_ingredients as its own short string (e.g. "grilled chicken breast", "steamed broccoli", "white rice") -- typically 2-6 items. Estimate the micronutrient fields (fiber/sugar/sodium/potassium/calcium/iron/vitamin C) the same way as the macros -- your best reasonable approximation from what's visible, 0 if genuinely negligible for that food, never omitted. Estimates are approximate — say so honestly via confidence/note rather than pretending precision.`;
 
 // Draft-only, not saved -- the client reviews/edits this then POSTs it back to /api/metrics
 // (log_type: "meal") to actually save it. Uses Haiku for vision since this doesn't need
@@ -41,7 +46,7 @@ async function scanMeal(req, res) {
       headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 300,
+        max_tokens: 450, // was 300 -- the 7 added micronutrient fields need the headroom
         temperature: 0,
         system: SCAN_SYSTEM,
         messages: [{
@@ -66,9 +71,10 @@ async function scanMeal(req, res) {
 // discipline, just describing rather than looking at the meal. Kept as its own prompt
 // (rather than branching SCAN_SYSTEM) since "identify food in a photo" wording doesn't
 // apply when there's no image at all.
+// Same micronutrient fields/cost reasoning as SCAN_SYSTEM above.
 const TEXT_ESTIMATE_SYSTEM = `You estimate the nutrition of a food or meal from a text description. Return ONLY JSON, no markdown fences:
-{"name":"<short meal name>","calories":<number>,"protein_g":<number>,"carbs_g":<number>,"fat_g":<number>,"confidence":"low"|"medium"|"high","note":"<one short caveat if the estimate is rough, else empty string>","scanned_ingredients":["<item 1>","<item 2>"]}
-List each distinct food item implied by the description in scanned_ingredients as its own short string -- typically 1-6 items. A vague description (e.g. no stated portion size or cooking method) deserves lower confidence and a note saying what you assumed -- estimates are approximate, say so honestly via confidence/note rather than pretending precision.`;
+{"name":"<short meal name>","calories":<number>,"protein_g":<number>,"carbs_g":<number>,"fat_g":<number>,"fiber_g":<number>,"sugar_g":<number>,"sodium_mg":<number>,"potassium_mg":<number>,"calcium_mg":<number>,"iron_mg":<number>,"vitamin_c_mg":<number>,"confidence":"low"|"medium"|"high","note":"<one short caveat if the estimate is rough, else empty string>","scanned_ingredients":["<item 1>","<item 2>"]}
+List each distinct food item implied by the description in scanned_ingredients as its own short string -- typically 1-6 items. Estimate the micronutrient fields (fiber/sugar/sodium/potassium/calcium/iron/vitamin C) the same way as the macros -- best reasonable approximation, 0 if genuinely negligible, never omitted. A vague description (e.g. no stated portion size or cooking method) deserves lower confidence and a note saying what you assumed -- estimates are approximate, say so honestly via confidence/note rather than pretending precision.`;
 
 // Draft-only, not saved -- same contract as scanMeal() below (client reviews/edits this
 // then POSTs it back to /api/metrics to actually save it). This is the text-only sibling:
@@ -89,7 +95,7 @@ async function estimateMealText(req, res) {
       headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 300,
+        max_tokens: 450, // was 300 -- the 7 added micronutrient fields need the headroom
         temperature: 0,
         system: TEXT_ESTIMATE_SYSTEM,
         messages: [{ role: 'user', content: `Estimate the nutrition for: "${description}"` }],
