@@ -225,22 +225,22 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
    shift position every time the banner appeared/disappeared. */
 .home-center{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;min-height:0}
 
-/* CTA Circle -- back to the original solid ring (no halo glow, no backdrop-filter) per
-   explicit feedback that the full-glass version read hazy and the halo's pulse visibly
-   flickered: #cta-ring-halo had ZERO css before the glass pass (an inert, invisible div)
-   -- that pass is what gave it its glow, so it's reverted to inert here rather than
-   "toned down". The pulse-flicker was a real bug, not just taste: the glass pass added a
-   resting box-shadow (0 14px 34px...) to #cta-ring, but ctaPulse ALSO animates box-shadow
-   -- since a CSS animation's box-shadow value fully replaces the element's box-shadow
-   rather than merging with it, every 3.5s cycle the depth shadow was being clobbered by
-   the pulse's own shadow and popping back, reading as a visible glitch. Back to the
-   original's neutral resting shadow (0 0 0 0, only the pulse itself ever paints a
-   shadow) fixes that outright. The one deliberate carry-over from the glass exploration:
-   the ring's own fill gets a LIGHT glass touch (a couple of opacity points of blur) --
-   just the ring body itself, nothing else -- instead of a flat --bg3 tile. */
+/* CTA Circle -- the original solid ring (no halo glow, no backdrop-filter) per explicit
+   feedback that the full-glass version read hazy and the halo's pulse visibly flickered:
+   #cta-ring-halo is genuinely inert (no background, no box-shadow, ever) -- it only
+   exists as a DOM anchor point for insertBefore() when the ring moves into focus mode.
+   The ONE glow this ring shows is the pulse itself, and it's driven by --cta-glow-rgb (a
+   comma-separated "r,g,b" custom property set by setCtaAccent() to match whatever pillar
+   is active) so there's a single glow source in the right color, not a static
+   halo-colored glow sitting behind a differently-colored pulse -- that combo used to
+   read as two unrelated glows layered on top of each other. The ring's own fill gets a
+   LIGHT glass touch (a couple of opacity points of blur) -- just the ring body itself.
+   Background is theme-aware (matches --bg3 per theme) rather than a fixed dark value, so
+   the ring doesn't stay dark-glass when the app is switched to light mode. */
 .cta-ring-wrap{position:relative;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 #cta-ring-halo{position:absolute;width:270px;height:270px;border-radius:50%;pointer-events:none;z-index:0}
 #cta-ring{
+  --cta-glow-rgb:91,164,220;
   width:224px;height:224px;border-radius:50%;
   background:rgba(32,30,27,.92);border:2.5px solid var(--blue);
   backdrop-filter:blur(5px) saturate(130%);
@@ -249,9 +249,10 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
   cursor:pointer;position:relative;z-index:1;transition:transform .15s,border-color .3s ease;
   box-shadow:0 0 0 0 rgba(91,164,220,0);
 }
+:root[data-theme="light"] #cta-ring{background:rgba(230,223,210,.92)}
 #cta-ring.active{animation:ctaPulse 3.5s ease-in-out infinite}
 #cta-ring:active{transform:scale(.97)}
-@keyframes ctaPulse{0%,100%{box-shadow:0 0 0 0 rgba(91,164,220,0)}50%{box-shadow:0 0 0 20px rgba(91,164,220,.07)}}
+@keyframes ctaPulse{0%,100%{box-shadow:0 0 0 0 rgba(var(--cta-glow-rgb),0)}50%{box-shadow:0 0 0 20px rgba(var(--cta-glow-rgb),.09)}}
 .cta-inner{display:flex;flex-direction:column;align-items:center;gap:6px;padding:0 20px}
 /* Sized/weighted up from the original 16px/700 -- this is the single most important
    thing on the Home screen, it should read as that at a glance, not compete with
@@ -4485,19 +4486,19 @@ function effectiveEndTimeStr(t) {
   return String(end.getHours()).padStart(2,'0')+':'+String(end.getMinutes()).padStart(2,'0')+':'+String(end.getSeconds()).padStart(2,'0');
 }
 
-// Sets the CTA ring's accent colour AND the soft glass halo/glow that now sits behind it
-// (see #cta-ring-halo in the Home markup + its CSS) -- the two always need to move
-// together, hence one helper instead of every call site touching style.borderColor
-// directly like before. transparent/var(--blue) both resolve to the halo's own neutral
-// default glow rather than a literal transparent/CSS-var glow, which box-shadow can't
-// otherwise interpolate cleanly.
+// Sets the CTA ring's accent colour AND the pulse glow's colour (--cta-glow-rgb, read by
+// the ctaPulse keyframes) so the ring's border and its only glow always match the same
+// pillar accent -- one helper instead of every call site touching style.borderColor
+// directly like before. transparent/var(--blue) both resolve to the ring's own neutral
+// default blue rather than a literal transparent/CSS-var colour, which can't be parsed
+// into an r,g,b triplet.
 function setCtaAccent(color) {
   const ring=document.getElementById('cta-ring');
-  const halo=document.getElementById('cta-ring-halo');
+  if(!ring) return;
   ring.style.borderColor=color;
-  if(!halo) return;
   const glowColor=(!color || color==='transparent' || color==='var(--blue)') ? '#5BA4DC' : color;
-  halo.style.boxShadow=`0 0 60px 8px ${hexToRgba(glowColor,.3)}`;
+  const m=hexToRgba(glowColor,1).match(/rgba\((\d+),(\d+),(\d+)/);
+  if(m) ring.style.setProperty('--cta-glow-rgb', `${m[1]},${m[2]},${m[3]}`);
 }
 // Recomputes which task is "now" purely from the already-cached S.todaySchedule (no
 // network call) -- called on a timer so the ring behaves like a real-time scheduler that
@@ -9893,8 +9894,25 @@ async function viewMealDetail(id) {
     <div style="display:flex;justify-content:center;gap:20px;font-size:13px;color:var(--stone);margin-bottom:20px">
       <span>Carbs: ${d.carbs_g||0}g</span><span>Protein: ${d.protein_g||0}g</span><span>Fat: ${d.fat_g||0}g</span>
     </div>
+    ${renderMealDetailIngredients(d)}
     ${d.description?`<div class="section-sub" style="text-align:left">DESCRIPTION</div><div style="background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:14px;padding:14px 16px;text-align:left;font-size:13px;color:var(--text);margin-bottom:20px">${d.description}</div>`:''}
     <button class="btn-p" onclick="showScreen('meal-hub')">← Back to Meal Hub</button>`;
+}
+
+// History-detail ingredient list for a logged meal -- a log row's `data` JSONB carries
+// EITHER `scanned_ingredients` (flat strings, from the photo-scan/text-estimate/USDA-search
+// flows -- see confirmLogMeal()) OR `ingredients` (meal-plan-sourced {name,qty} objects --
+// see logMealFromPlan()), never both, and older/simple logs may have neither. Reuses the
+// same read-only row styling as renderMealIngredientsList() (bg3 rows) and
+// viewMealPlanDetail() (rm-goal-card name/qty rows) rather than inventing new markup.
+function renderMealDetailIngredients(d) {
+  const scanned=d.scanned_ingredients||[];
+  const planned=d.ingredients||[];
+  if(!scanned.length && !planned.length) return '';
+  const rows = scanned.length
+    ? scanned.map(ing=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--bg3);border-radius:8px;margin-bottom:6px"><span style="font-size:13px;color:var(--text)">${ing}</span></div>`).join('')
+    : planned.map(ing=>`<div class="rm-goal-card" style="margin-bottom:6px;display:flex;justify-content:space-between"><span>${ing.name}</span><span style="color:var(--stone)">${ing.qty||''}</span></div>`).join('');
+  return `<div class="section-sub" style="text-align:left">INGREDIENTS</div><div style="margin-bottom:20px">${rows}</div>`;
 }
 
 // Meal Plans -- same granularity as Fitness's workoutPlans (one plan = one recipe/meal,
