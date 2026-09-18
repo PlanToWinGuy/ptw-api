@@ -8246,18 +8246,18 @@ async function renderIntentionalityTab() {
   const el=document.getElementById('pmd-tab-content');
   if(!el) return;
   el.innerHTML='<div class="spinner"></div>';
-  const data = await loadIntentionalityData();
+  const [data, androidUsage] = await Promise.all([loadIntentionalityData(), loadAndroidUsageSnapshot()]);
   // Guard against a fast tab-switch away while this was in flight -- never paint stale
   // content into a container the user already navigated off of.
   if(S.pmdIntentTab!=='intentionality') return;
   const target=document.getElementById('pmd-tab-content');
   if(!target) return;
-  target.innerHTML = buildIntentionalityHtml(data);
+  target.innerHTML = buildIntentionalityHtml(data, androidUsage);
 }
 
 const fmtIntentDuration = m => { m=Math.round(m||0); const h=Math.floor(m/60), r=m%60; return h ? `${h}h ${r}m` : `${r}m`; };
 
-function buildIntentionalityHtml(data) {
+function buildIntentionalityHtml(data, androidUsage) {
   const color=PROFILE_METRIC_DETAILS.intentionTime.color;
   const weekCutoff=Date.now()-7*86400000;
 
@@ -8314,7 +8314,7 @@ function buildIntentionalityHtml(data) {
     </div>`).join('') : `<div style="font-size:12px;color:var(--muted);padding:2px 0 4px">No Essential Apps opened from a task or break this week yet.</div>`;
 
   const platform=detectPTWPlatform();
-  const footer=intentionalityFooterHtml(platform, color);
+  const footer=intentionalityFooterHtml(platform, color, androidUsage);
 
   return `
     <div style="font-size:13px;color:var(--text);line-height:1.6;margin:14px 0 18px">Reframing screen time as a positive: this is the time you spent intentionally this week -- inside a task, or reaching for an Essential App while doing one -- not a guilt tally.${platform==='web' ? " Running in a browser, PTW can only measure its own activity here, not your total phone time." : ''}</div>
