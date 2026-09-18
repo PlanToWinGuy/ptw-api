@@ -3200,7 +3200,7 @@ async function doSignup() {
 // one before this actually works. Verification happens server-side (see api/auth.js's
 // 'google' action); this file only ever handles the ID token, never a secret.
 // ════════════════════════════════════════
-const GOOGLE_CLIENT_ID = 'REPLACE_WITH_REAL_GOOGLE_CLIENT_ID.apps.googleusercontent.com';
+const GOOGLE_CLIENT_ID = '425016796291-thfic2jrigvidckrkki9eq6u8phgijtp.apps.googleusercontent.com';
 let googleSignInReady=false;
 
 function initGoogleSignIn() {
@@ -9445,14 +9445,18 @@ function switchPillarTab(tab) {
 
   const p=PILLARS[S.activePillar];
   // Always reload on tab switch (like roadmap/trophies below), not just on initial
-  // screen entry -- #pillar-tab-map is a single reused DOM container, so swiping to a
-  // different pillar while on another tab (preserveTab) left it holding the PREVIOUS
-  // pillar's colors/name until this ran, since only showPillarScreen() used to call it
-  // and only when the very first tab shown was 'map'.
-  if(tab==='map')                                 { loadPillarMap(S.activePillar); setTimeout(maybeStartPillarMapTip, 900); }
-  if(tab==='quests' && !S.quests[S.activePillar])  loadPillarQuests(S.activePillar);
-  if(tab==='roadmap')                               loadPillarRoadmap(S.activePillar);
-  if(tab==='trophies')                              loadPillarTrophies(S.activePillar);
+  // screen entry -- #pillar-tab-map/-quests/etc are single reused DOM containers, so
+  // swiping to a different pillar while on another tab (preserveTab) left it holding the
+  // PREVIOUS pillar's colors/name/content until this ran. Quests used to skip this when
+  // S.quests[S.activePillar] was already cached from an earlier visit -- that cache is
+  // fine to keep (avoids a refetch), but the container itself still needs to be
+  // re-painted from it every time, or swiping between two already-visited pillars while
+  // sitting on the Side Quests tab left the screen "stuck" showing whichever pillar's
+  // list was rendered last instead of the one you actually swiped to.
+  if(tab==='map')      { loadPillarMap(S.activePillar); setTimeout(maybeStartPillarMapTip, 900); }
+  if(tab==='quests')   { S.quests[S.activePillar] ? renderPillarQuests(S.activePillar, S.quests[S.activePillar]) : loadPillarQuests(S.activePillar); }
+  if(tab==='roadmap')  loadPillarRoadmap(S.activePillar);
+  if(tab==='trophies') loadPillarTrophies(S.activePillar);
 }
 
 // ─── PILLAR MAP TAB ───
@@ -15258,7 +15262,16 @@ async function loadPillarQuests(pillarKey) {
 
   const list = quests.length ? quests : (mockQuests[pillarKey]||[]);
   S.quests[pillarKey]=list;
+  renderPillarQuests(pillarKey, list);
+}
 
+// Pure render from already-fetched/cached data -- split out of loadPillarQuests() so
+// switchPillarTab() can repaint #pillar-tab-quests for the CURRENT pillar when swiping
+// onto an already-visited one, instead of leaving this single reused container showing
+// whichever pillar's list was rendered last (see switchPillarTab's comment).
+function renderPillarQuests(pillarKey, list) {
+  const container=document.getElementById('pillar-tab-quests');
+  const p=PILLARS[pillarKey];
   if(!list.length){container.innerHTML=`<div class="empty"><div class="empty-icon">⚡</div><div class="empty-text">No side quests yet.</div></div>`;return;}
 
   const active=list.filter(q=>q.is_active&&!q.is_completed);
