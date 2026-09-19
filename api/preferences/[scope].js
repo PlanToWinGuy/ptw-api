@@ -18,7 +18,10 @@ import { syncWaterReminderRoutines } from '../../lib/routines.js';
 // device, see essential-apps.js's CATALOG comment) -- a user-maintained list merged in
 // alongside the curated CATALOG by api/essential-apps.js, stored here rather than a new
 // table since it's small, per-user, arbitrary-shaped data that fits this table exactly.
-const VALID_SCOPES = new Set(['fitness', 'diet', 'finances', 'relations', 'personal', 'work', 'units', 'notifications', 'daily_briefings', 'essential_apps', 'home_background', 'pillar_priority', 'app_pairings', 'custom_apps']);
+// avatar_frame: { frame: 'phase2_gold' | 'phase4_flow' | ... } -- cosmetic profile-photo
+// frame selection unlocked by the phase-progression redesign (item #5), read by
+// api/user.js and rendered by renderProfile()/openAvatarOptions() in the frontend.
+const VALID_SCOPES = new Set(['fitness', 'diet', 'finances', 'relations', 'personal', 'work', 'units', 'notifications', 'daily_briefings', 'essential_apps', 'home_background', 'pillar_priority', 'app_pairings', 'custom_apps', 'avatar_frame']);
 
 export default async function handler(req, res) {
   if (cors(req, res)) return;

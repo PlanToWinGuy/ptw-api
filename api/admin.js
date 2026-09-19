@@ -22,7 +22,7 @@ export default async function handler(req, res) {
     const rows = await sql`
       SELECT
         u.id, u.name, u.email, u.created_at, u.phase, u.xp, u.life_score,
-        (SELECT array_agg(p.name ORDER BY p.name) FROM user_pillars up JOIN pillars p ON p.id = up.pillar_id WHERE up.user_id = u.id) AS active_pillars,
+        (SELECT array_agg(p.name ORDER BY p.name) FROM user_pillars up JOIN pillars p ON p.id = up.pillar_id WHERE up.user_id = u.id AND up.active = true) AS active_pillars,
         GREATEST(
           COALESCE((SELECT MAX(updated_at) FROM tasks t WHERE t.user_id = u.id), 'epoch'::timestamptz),
           COALESCE((SELECT MAX(logged_at) FROM metric_logs m WHERE m.user_id = u.id), 'epoch'::timestamptz)

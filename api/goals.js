@@ -244,7 +244,7 @@ async function listGoals(req, res, user) {
     ? await sql`SELECT * FROM goals WHERE user_id = ${user.id} AND pillar_id = ${pillar_id} AND is_active = true ORDER BY created_at DESC LIMIT 1`
     : await sql`SELECT * FROM goals WHERE user_id = ${user.id} AND is_active = true ORDER BY created_at DESC`;
 
-  const unlockedRows = await sql`SELECT pillar_id FROM user_pillars WHERE user_id = ${user.id}`;
+  const unlockedRows = await sql`SELECT pillar_id FROM user_pillars WHERE user_id = ${user.id} AND active = true`;
   const unlockedPillarIds = new Set(unlockedRows.map(r => r.pillar_id));
 
   const data = await Promise.all(rows.map(async g => serialize(g, await buildStrategyCards(user, g, unlockedPillarIds))));

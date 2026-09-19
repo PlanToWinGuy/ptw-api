@@ -93,10 +93,13 @@ export default async function handler(req, res) {
     if (!user) return res.status(401).json({ message: 'Unauthenticated' });
     for (const name of Object.keys(QUESTIONS)) {
       const pid = pillarIdFromName(name);
-      await sql`INSERT INTO user_pillars (user_id, pillar_id) VALUES (${user.id}, ${pid}) ON CONFLICT (user_id, pillar_id) DO NOTHING`;
+      await sql`
+        INSERT INTO user_pillars (user_id, pillar_id) VALUES (${user.id}, ${pid})
+        ON CONFLICT (user_id, pillar_id) DO UPDATE SET active = true WHERE user_pillars.active = false
+      `;
     }
     await sql`UPDATE users SET phase_start_date = now() WHERE id = ${user.id}`;
-    const rows = await sql`SELECT pillar_id FROM user_pillars WHERE user_id = ${user.id} ORDER BY activated_at ASC`;
+    const rows = await sql`SELECT pillar_id FROM user_pillars WHERE user_id = ${user.id} AND active = true ORDER BY activated_at ASC`;
     const unlocked_pillars = rows.map(r => (PILLARS[r.pillar_id] || '').toLowerCase());
     return res.status(200).json({ unlocked_pillars });
   }
@@ -122,15 +125,60 @@ export default async function handler(req, res) {
     const pillar_id = pillarIdFromName(pillarName);
     await sql`
       INSERT INTO user_pillars (user_id, pillar_id) VALUES (${user.id}, ${pillar_id})
-      ON CONFLICT (user_id, pillar_id) DO NOTHING
+      ON CONFLICT (user_id, pillar_id) DO UPDATE SET active = true WHERE user_pillars.active = false
     `;
     // Resets the consistency-proving window: the clock for "80%/3wk or 95%/1wk on
     // your currently-active pillars" starts fresh from this activation.
     await sql`UPDATE users SET phase_start_date = now() WHERE id = ${user.id}`;
 
-    const rows = await sql`SELECT pillar_id FROM user_pillars WHERE user_id = ${user.id} ORDER BY activated_at ASC`;
+    const rows = await sql`SELECT pillar_id FROM user_pillars WHERE user_id = ${user.id} AND active = true ORDER BY activated_at ASC`;
     const unlocked_pillars = rows.map(r => (PILLARS[r.pillar_id] || '').toLowerCase());
     return res.status(200).json({ pillar: pillarName, unlocked_pillars });
+  }
+
+  // Redesign item #6: Phase 1 pillar swap -- trade one of your currently-active pillars
+  // for a different one while you're still within your first 3 (freely-chosen) slots.
+  // Deliberately NOT gated by canActivateNextPillar (that gate is about unlocking a NEW
+  // slot, not trading an existing one) and does NOT touch phase_start_date (a swap isn't
+  // real new-pillar progress, so the consistency-proving clock keeps running). The
+  // swapped-out pillar is soft-deactivated (active=false), never deleted -- its
+  // user_pillars row and all its historical tasks/logs stay intact so it can be
+  // reactivated later with full history (see the ON CONFLICT ... DO UPDATE above/below).
+  // Limit-to-one-swap-at-a-time is enforced implicitly: the unlockedCount<=3 check below
+  // is re-evaluated fresh on every call, and a swap never changes unlockedCount, so
+  // there's no separate cooldown/counter to maintain.
+  if (req.method === 'POST' && req.query.action === 'swap') {
+    const user = await getUserFromRequest(req);
+    if (!user) return res.status(401).json({ message: 'Unauthenticated' });
+
+    const deactivateName = Object.keys(QUESTIONS).find(p => p.toLowerCase() === String(req.body?.deactivate || '').toLowerCase());
+    if (!deactivateName) return res.status(422).json({ message: 'deactivate (the pillar to swap out) is required' });
+    if (deactivateName.toLowerCase() === pillarName.toLowerCase()) {
+      return res.status(422).json({ message: 'Cannot swap a pillar for itself' });
+    }
+
+    const pillarState = await getPillarState(user);
+    if (pillarState.unlockedCount > 3) {
+      return res.status(403).json({ message: 'Pillar swapping is only available during Phase 1 (your first 3 pillars) -- protects real Phase 2+ progress from being farmed for free activations.' });
+    }
+    if (!pillarState.unlockedPillars.includes(deactivateName.toLowerCase())) {
+      return res.status(422).json({ message: `${deactivateName} is not currently active.` });
+    }
+    if (pillarState.unlockedPillars.includes(pillarName.toLowerCase())) {
+      return res.status(422).json({ message: `${pillarName} is already active.` });
+    }
+
+    const deactivate_id = pillarIdFromName(deactivateName);
+    const activate_id = pillarIdFromName(pillarName);
+    await sql`UPDATE user_pillars SET active = false WHERE user_id = ${user.id} AND pillar_id = ${deactivate_id}`;
+    await sql`
+      INSERT INTO user_pillars (user_id, pillar_id) VALUES (${user.id}, ${activate_id})
+      ON CONFLICT (user_id, pillar_id) DO UPDATE SET active = true WHERE user_pillars.active = false
+    `;
+
+    const rows = await sql`SELECT pillar_id FROM user_pillars WHERE user_id = ${user.id} AND active = true ORDER BY activated_at ASC`;
+    const unlocked_pillars = rows.map(r => (PILLARS[r.pillar_id] || '').toLowerCase());
+    return res.status(200).json({ swapped_out: deactivateName, swapped_in: pillarName, unlocked_pillars });
   }
 
   if (req.method === 'POST') {
