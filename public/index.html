@@ -5064,6 +5064,7 @@ async function confirmTaskCompletion() {
   // resurrect the ring right back onto a task that was just marked done.
   if(isManual) S.manualTaskOverride=null;
   S.currentTask=null;
+  syncTaskNotificationState(); // clears the persistent notification immediately on completion
   S.pendingCelebrationNav={returnTo:S.taskCompletionReturnTo, completedName, completedPillar, xp};
   S.taskCompletionReturnTo=null;
   document.getElementById('tc-slider-view').style.display='none';
@@ -5260,6 +5261,7 @@ async function skipCurrentTask() {
   toast(result?.message||"Skipped — it'll come back around");
   if(S.manualTaskOverride?.taskId===S.currentTask.taskId) S.manualTaskOverride=null;
   S.currentTask=null;
+  syncTaskNotificationState(); // clears the persistent notification immediately on skip
   await loadHomeData();
 }
 
@@ -5926,6 +5928,79 @@ function handleCtaClick() {
   openCurrentTask();
 }
 
+// ─── PERSISTENT TASK NOTIFICATION (Android only) ───
+// The founder's ask: a real ongoing Android notification -- like a call's status-bar
+// header -- that mirrors the Home ring's live current-task state while the user is in any
+// other app, with a Hide action as the escape hatch. Backed by PtwTaskNotificationPlugin/
+// PtwTaskNotificationService (android/app/src/main/java/app/plantowin/mobile/), a real
+// foreground Service + NotificationCompat.Builder with setOngoing(true) -- not the
+// "draw over other apps" overlay hack, and not the Bubbles API (that's scoped to
+// messaging-style conversation notifications, not a generic task-progress readout).
+// window.Capacitor only ever exists inside the ptw-native shell, so this is a true no-op
+// on the plain web PWA/iOS, same feature-detect precedent as nativeWidgetBridge() above.
+function nativeTaskNotificationPlugin() {
+  return (window.Capacitor?.isNativePlatform?.() && window.Capacitor.Plugins?.PtwTaskNotification) || null;
+}
+// Reads the exact same state updateCtaTimerRing() itself reads (S.manualTaskOverride /
+// S.currentTask) -- deliberately NOT gated on the Home screen being the active screen the
+// way updateCtaTimerRing()'s own DOM updates are, since the whole point of this
+// notification is to keep showing live while the user has navigated away from Home
+// entirely (any other in-app screen, or backgrounded into another app altogether).
+//
+// Note on "Hide": this JS side does NOT track whether the notification's own Hide action
+// was tapped -- it just keeps calling start/updatePersistentTask() every tick exactly like
+// this comment used to promise, no different-taskId-aware suppression logic here at all.
+// That suppression genuinely does live natively, in PtwTaskNotificationService (see its own
+// comment): it remembers the task id Hide was tapped for and silently no-ops the repost.
+// An earlier version tried threading that back into JS via a Capacitor plugin event
+// (notifyListeners()) so this function could self-suppress -- confirmed live on-device that
+// listener was unreliable (raced the WebView's own bridge), so it was removed in favor of
+// this simpler, native-only design.
+function syncTaskNotificationState() {
+  const plugin=nativeTaskNotificationPlugin();
+  if(!plugin) return;
+  const t=S.currentTask;
+  if(!t) {
+    if(S.taskNotificationActive) {
+      S.taskNotificationActive=false;
+      plugin.stopPersistentTask().catch(()=>{});
+    }
+    return;
+  }
+  const m=S.manualTaskOverride;
+  const pk=getPillarKey(t.pillar);
+  const p=PILLARS[pk]||PILLARS.personal;
+  let hasWindow=false, isOvertime=false, remainingSeconds=0, overtimeSeconds=0;
+  if(m) {
+    const totalMs=m.durationMinutes*60000;
+    const elapsed=m.elapsedMs+(m.running?Date.now()-m.lastResumeAt:0);
+    const remaining=totalMs-elapsed;
+    hasWindow=true; isOvertime=remaining<=0;
+    if(isOvertime) overtimeSeconds=Math.round(-remaining/1000); else remainingSeconds=Math.round(remaining/1000);
+  } else if(t.startTime) {
+    const now=new Date();
+    const [sh,sm,ss]=t.startTime.split(':').map(Number);
+    const start=new Date(); start.setHours(sh,sm,ss||0,0);
+    let end;
+    if(t.endTime) { const [eh,em,es]=t.endTime.split(':').map(Number); end=new Date(); end.setHours(eh,em,es||0,0); }
+    else end=new Date(start.getTime()+(t.durationMinutes||20)*60000);
+    const remaining=end-now;
+    hasWindow=true; isOvertime=remaining<=0;
+    if(isOvertime) overtimeSeconds=Math.round((now-end)/1000); else remainingSeconds=Math.round(remaining/1000);
+  }
+  const payload={
+    taskId: m?.taskId ?? t.taskId,
+    name: t.name||'Current Task', pillar: p.label||pk, pillarColor: p.color,
+    hasWindow, isOvertime, remainingSeconds, overtimeSeconds,
+  };
+  if(!S.taskNotificationActive) {
+    S.taskNotificationActive=true;
+    plugin.startPersistentTask(payload).catch(()=>{ S.taskNotificationActive=false; });
+  } else {
+    plugin.updatePersistentTask(payload).catch(()=>{});
+  }
+}
+
 // Real-time scheduler ring: shows the current task's actual scheduled time range (e.g.
 // "6:00 AM - 7:00 AM"), not a countdown -- the closest this app can get to a live
 // personal-scheduler display. The progress arc still depletes green->yellow->red as a
@@ -5933,6 +6008,7 @@ function handleCtaClick() {
 // actually have a start time; an unscheduled task has no real window to display.
 const CTA_RING_CIRCUMFERENCE=634.6;
 function updateCtaTimerRing() {
+  syncTaskNotificationState();
   const svg=document.getElementById('cta-timer-svg');
   const label=document.getElementById('cta-timer-label');
   const timeRangeEl=document.getElementById('cta-time-range');
@@ -6070,6 +6146,7 @@ function resumeManualTask() {
 function clearManualTaskOverride() {
   S.manualTaskOverride=null;
   S.currentTask=null;
+  syncTaskNotificationState(); // clears the persistent notification immediately, not on the next 1s tick
 }
 function renderManualTaskCta() {
   const m=S.manualTaskOverride;
