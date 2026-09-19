@@ -61,7 +61,7 @@ export default async function handler(req, res) {
   // Phase is derived from how many pillars are active, not manually incremented --
   // see lib/pillarState.js's getPhaseInfo for the full 4-phase model and the Phase 4
   // (Flow State/mastery) criterion.
-  const { phaseNumber, phaseName, hallOfFameEligible } = await getPhaseInfo(user, pillarState);
+  const { phaseNumber, phaseName, hallOfFameEligible, masteryPercent } = await getPhaseInfo(user, pillarState);
 
   // LifeScore: real per-pillar XP on top of the onboarding baseline set at profile-creation
   // time. Task-completion XP (tasks.xp_gained) and ad-hoc log XP (metric_logs.xp_gained,
@@ -114,6 +114,10 @@ export default async function handler(req, res) {
         // blended average that could stay well under 95% forever once several pillars are
         // active. current_week_percent is kept for any old client still reading it.
         fast_track_path: { description: 'Achieve 95% completion in 1 week in any single active pillar', target_percent: 95, current_week_percent: fastPct, best_single_pillar_percent: bestPillarFastPct },
+        // Only meaningful once all 6 pillars are active (Phase 3) -- null before that,
+        // same "not applicable yet" shape as the other two paths would have if computed
+        // with unlockedCount===0. See lib/pillarState.js getPhaseInfo for the criterion.
+        mastery_path: masteryPercent == null ? null : { description: 'Sustain 70%+ completion for 365 days across everything, with all 6 pillars active', target_percent: 70, current_year_percent: masteryPercent },
       },
       unlocked_pillars: sortedUnlockedPillars,
       pillar_priority_order: pillarPriorityOrder,
