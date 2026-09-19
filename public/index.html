@@ -424,13 +424,22 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
    surface. Now fades in over the same first ~16px as the top padding, landing at full
    alpha right as the row's real content begins (same "content always stays in the
    constant-alpha zone" rule as the bottom), so both edges of the hero soften instead of
-   just one. */
+   just one.
+   2026-09-18 refinement 2: founder wanted the fade even more gradual, reaching up behind
+   roughly the vertical midpoint of the avatar circle above (not just starting right below
+   it) for a deeper layered feel. Pulled the box up 80px via a negative top margin and
+   added the same 80px back as extra top padding, so the real content (.profile-hero-row)
+   lands in EXACTLY the same screen position as before -- only the background canvas got
+   taller, stretched into one continuous gradient across the whole new height instead of
+   restarting a second fade, which would've read as a visible seam. The avatar/username
+   block above (see its own comment) got position:relative + z-index:1 so it still paints
+   on top of this now-overlapping background instead of being washed over by it. */
 .profile-hero{
-  margin:0 -18px 4px;
-  padding:14px 18px 40px;
+  margin:-80px -18px 4px;
+  padding:94px 18px 40px;
   background:linear-gradient(180deg,
     rgba(91,164,220,0) 0,
-    rgba(91,164,220,.88) 16px,
+    rgba(91,164,220,.88) 96px,
     rgba(91,164,220,.74) calc(100% - 40px),
     rgba(91,164,220,0) 100%);
 }
@@ -1900,8 +1909,12 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
     <!-- Avatar + username sit OUTSIDE the gradient hero on the plain page background
          (theme-aware text/border) -- previously these were inside .profile-hero and the
          solid blue washed all the way up behind the username before any fade; the hero
-         itself now starts just above the Phase/LifeScore row instead. -->
-    <div style="margin:4px 0 14px">
+         itself now starts just above the Phase/LifeScore row instead.
+         2026-09-18: the hero's fade now reaches up behind this block too (see
+         .profile-hero's negative top margin) for a more gradual, layered feel -- this
+         needs position:relative + z-index so IT still paints above that extended
+         background instead of getting washed over by it again. -->
+    <div style="margin:4px 0 14px;position:relative;z-index:1">
       <div style="display:grid;grid-template-columns:1fr auto 1fr;align-items:center">
         <div></div>
         <div id="profile-avatar" onclick="openAvatarOptions()" style="cursor:pointer;justify-self:center;width:76px;height:76px;border-radius:50%;background:var(--bg3);border:2px solid var(--blue);display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-size:27px;font-weight:800;color:var(--blue);overflow:hidden">?</div>
