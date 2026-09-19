@@ -6907,18 +6907,45 @@ function formatShortDate(dateStr) {
   return new Date(dateStr+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'});
 }
 
+// SIMPLE MODE display filter for Daily Overview -- purely which of the already-fetched
+// `tasks` get RENDERED, nothing about what's fetched/computed. Keeps the highest-priority
+// tasks (Urgent/High) plus the next 3 not-yet-done tasks in the day's own order, so "the
+// part you're at" is always visible instead of an arbitrary slice. Returns the full list
+// back out unchanged when Simple Mode is off or this view's been manually revealed.
+function applySimpleModeDailyFilter(tasks) {
+  if(!S.simpleMode || S.dailySimpleReveal) return {shown:tasks, hiddenCount:0};
+  const highPriority=tasks.filter(t=>t.priority==='Urgent'||t.priority==='High');
+  const nextUp=tasks.filter(t=>t.status!=='Completed').slice(0,3);
+  const keep=new Set();
+  [...highPriority,...nextUp].forEach(t=>keep.add(t.taskId));
+  const shown=tasks.filter(t=>keep.has(t.taskId));
+  return {shown, hiddenCount:tasks.length-shown.length};
+}
+
+// Tapping "+N more today" reveals the rest for THIS view only -- re-renders straight from
+// applyDailyFilter() (not loadDailyOverview()), since a full reload would re-fetch and reset
+// S.dailySimpleReveal right back to false before it ever got used.
+function revealAllDailyTasks() {
+  S.dailySimpleReveal=true;
+  applyDailyFilter();
+}
+
 function renderDailyTaskList(tasks, movedAway) {
   const body=document.getElementById('daily-body');
   // Shuffle Day now lives as the screen's own corner FAB (see #screen-daily), not an
   // inline button here -- always in the same reachable spot regardless of list length.
   if(!tasks.length && !(movedAway&&movedAway.length)) { body.innerHTML=`<div class="empty"><div class="empty-icon">🗓</div><div class="empty-text">Nothing planned for this day yet.</div></div>`; return; }
+  const {shown:displayTasks, hiddenCount}=applySimpleModeDailyFilter(tasks);
   const groups={Morning:[],Afternoon:[],Evening:[],Unscheduled:[]};
-  tasks.forEach(t=>{ groups[t.time_block||'Unscheduled'].push(t); });
+  displayTasks.forEach(t=>{ groups[t.time_block||'Unscheduled'].push(t); });
   let html='';
   ['Morning','Afternoon','Evening','Unscheduled'].forEach(g=>{
     if(!groups[g].length) return;
     html+=`<div class="section-sub" style="margin-top:14px">${g.toUpperCase()}</div>`+groups[g].map(dailyTaskCard).join('');
   });
+  if(hiddenCount>0) {
+    html+=`<button type="button" class="chip" style="margin-top:14px;width:100%;justify-content:center;padding:10px" onclick="revealAllDailyTasks()">🧘 + ${hiddenCount} more today — tap to show</button>`;
+  }
   if(movedAway && movedAway.length) {
     html+=`<div class="section-sub" style="margin-top:14px">MOVED FROM THIS DAY</div>`+movedAway.map(movedAwayCard).join('');
   }
@@ -15691,10 +15718,74 @@ function toggleQuestSubtaskCheck(subTaskId) {
 }
 
 // ─── PILLAR ROADMAP TAB ───
+// SIMPLE MODE display filter for the Roadmap timeline -- purely which of the already-
+// computed `milestones` render in full. Shows the first 3 milestones plus whichever one
+// is the current in-progress step (so "the part you're at" stays visible even deep into a
+// long plan); everything else collapses to a bare dot -- hidden, not deleted, with a
+// "View Full Roadmap" tap to reveal (see revealRoadmapTimeline()). Falls back to every
+// milestone in full when Simple Mode is off or this view's already been revealed.
+function buildRoadmapTimelineInner(milestones, milestonesDone, p) {
+  const simple = S.simpleMode && !S.roadmapSimpleReveal;
+  let html = `<div class="tm-row"><div class="tm-col"><div class="tm-dot done" style="background:${p.color}"></div><div class="tm-line" style="background:${p.color}"></div></div><div class="tm-content"><div class="tm-label">START</div><div class="tm-name">Goal set</div></div></div>`;
+
+  const visibleIdx = new Set();
+  if(simple) {
+    for(let i=0;i<Math.min(3,milestones.length);i++) visibleIdx.add(i);
+    visibleIdx.add(Math.min(milestonesDone, milestones.length-1));
+  }
+
+  milestones.forEach((m,i)=>{
+    if(simple && !visibleIdx.has(i)) return;
+    const isLast=i===milestones.length-1;
+    // The path fills up TO AND INCLUDING the "YOU ARE HERE" dot -- that dot gets the
+    // same done coloring (it was rendered as a locked/gray dot before, which read as
+    // "no progress yet" even at the exact point marking how far the user has come).
+    // The line leading OUT of it stays unfilled since that stretch hasn't been walked.
+    const isDone=i<milestonesDone, isHere=i===milestonesDone;
+    const dotColored=isDone||isHere;
+    const lineColored=isDone;
+    const compact = simple && i!==milestonesDone;
+    html += `<div class="tm-row"${compact?' style="opacity:.5"':''}>
+      <div class="tm-col"><div class="tm-dot ${dotColored?'done':'lock'}" style="${dotColored?'background:'+p.color:''}"></div>${!isLast?'<div class="tm-line" style="'+(lineColored?'background:'+p.color:'')+'"></div>':''}</div>
+      <div class="tm-content">
+        ${isHere?`<div class="tm-label" style="color:${p.color}">YOU ARE HERE</div>`:''}
+        <div class="tm-label">${m.label||('M'+(i+1))}</div>
+        ${compact?'':`<div class="tm-name">🏆 ${m.marker||m.name||''}</div>${m.xp?`<div class="tm-xp">+${m.xp} XP</div>`:''}`}
+      </div>
+    </div>`;
+  });
+
+  if(simple) {
+    const hiddenCount = milestones.length - visibleIdx.size;
+    if(hiddenCount>0) {
+      html += `<div class="tm-row"><div class="tm-col"><div class="tm-dot lock"></div></div><div class="tm-content"><button type="button" class="chip" style="margin-top:2px" onclick="revealRoadmapTimeline()">🧘 + ${hiddenCount} more steps — View Full Roadmap</button></div></div>`;
+    }
+  }
+  return html;
+}
+
+// Tapping "View Full Roadmap" reveals the rest of THIS timeline only -- patches the
+// already-rendered .timeline element directly from the cached data loadPillarRoadmap()
+// just stashed on S.roadmapTimelineData, instead of re-calling loadPillarRoadmap() and
+// refetching (which would also be harmless, but a targeted DOM swap is instant and avoids
+// a network round-trip for something that's purely a display toggle).
+function revealRoadmapTimeline() {
+  S.roadmapSimpleReveal = true;
+  const d = S.roadmapTimelineData;
+  if(!d) return;
+  const el = document.querySelector('#pillar-tab-roadmap .timeline');
+  if(el) el.innerHTML = buildRoadmapTimelineInner(d.milestones, d.milestonesDone, d.p);
+}
+
 async function loadPillarRoadmap(pillarKey) {
   const container=document.getElementById('pillar-tab-roadmap');
   container.innerHTML='<div class="spinner"></div>';
   const p=PILLARS[pillarKey];
+  // A genuinely fresh load of this tab (new pillar, re-opened, mode just toggled) always
+  // starts Simple Mode's "show full roadmap" reveal back off -- revealRoadmapTimeline()
+  // above patches the DOM directly and deliberately never calls back into this function,
+  // so it can't undo its own reveal.
+  S.roadmapSimpleReveal = false;
 
   const [data, tasksData] = await Promise.all([
     req('GET','/goals?pillar_id='+p.id),
@@ -15757,30 +15848,12 @@ async function loadPillarRoadmap(pillarKey) {
     <div class="rm-goal-sub">${g.goal||g.title||''}</div>`;
 
   if(milestones.length) {
+    // Cached so revealRoadmapTimeline() can patch the .timeline element straight from
+    // this data on tap, without another /goals + /simple-tasks round-trip.
+    S.roadmapTimelineData = {milestones, milestonesDone, p};
     html += `<div class="rm-progress-bar"><div class="rm-progress-fill" style="width:${pct}%;background:${p.color}"></div></div>
     <div class="rm-progress-row"><span>${pct}% complete</span><span>Projected: ${projectedDate}</span></div>
-    <div class="timeline">
-      <div class="tm-row"><div class="tm-col"><div class="tm-dot done" style="background:${p.color}"></div><div class="tm-line" style="background:${p.color}"></div></div><div class="tm-content"><div class="tm-label">START</div><div class="tm-name">Goal set</div></div></div>`;
-    milestones.forEach((m,i)=>{
-      const isLast=i===milestones.length-1;
-      const isDone=i<milestonesDone, isHere=i===milestonesDone;
-      // The path fills up TO AND INCLUDING the "YOU ARE HERE" dot -- that dot gets the
-      // same done coloring (it was rendered as a locked/gray dot before, which read as
-      // "no progress yet" even at the exact point marking how far the user has come).
-      // The line leading OUT of it stays unfilled since that stretch hasn't been walked.
-      const dotColored=isDone||isHere;
-      const lineColored=isDone;
-      html += `<div class="tm-row">
-        <div class="tm-col"><div class="tm-dot ${dotColored?'done':'lock'}" style="${dotColored?'background:'+p.color:''}"></div>${!isLast?'<div class="tm-line" style="'+(lineColored?'background:'+p.color:'')+'"></div>':''}</div>
-        <div class="tm-content">
-          ${isHere?`<div class="tm-label" style="color:${p.color}">YOU ARE HERE</div>`:''}
-          <div class="tm-label">${m.label||('M'+(i+1))}</div>
-          <div class="tm-name">🏆 ${m.marker||m.name||''}</div>
-          ${m.xp?`<div class="tm-xp">+${m.xp} XP</div>`:''}
-        </div>
-      </div>`;
-    });
-    html += `</div>`;
+    <div class="timeline">${buildRoadmapTimelineInner(milestones, milestonesDone, p)}</div>`;
   }
 
   if((g.phases||[]).length) {

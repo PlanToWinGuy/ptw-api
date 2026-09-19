@@ -2,9 +2,8 @@ import { sql, PILLARS } from '../lib/db.js';
 import { cors } from '../lib/cors.js';
 import { getUserFromRequest, isAdminUser } from '../lib/auth.js';
 import { calculateLifeScore, PILLAR_CAPS } from '../lib/lifescore.js';
-import { getPillarState, buildPillarStates } from '../lib/pillarState.js';
+import { getPillarState, buildPillarStates, getPhaseInfo } from '../lib/pillarState.js';
 
-const PHASE_NAMES = { 1: 'Phase 1: Come Up', 2: 'Phase 2: Traction', 3: 'Phase 3: Confidence', 4: 'Phase 4: Flow State' };
 const ALL_PILLAR_KEYS = ['fitness', 'diet', 'finances', 'relations', 'personal', 'work'];
 
 // Default pillar priority (before any explicit override saved via PUT
@@ -34,9 +33,15 @@ export default async function handler(req, res) {
 
   const avatarRows = await sql`SELECT data FROM preferences WHERE user_id = ${user.id} AND scope = 'avatar'`;
   const profilePicUrl = avatarRows[0]?.data?.url || null;
+  // Cosmetic reward from the phase-progression redesign (item #5) -- a frame border
+  // style unlocked at Phase 2 entry, selectable here once unlocked (see renderProfile/
+  // openAvatarOptions in the frontend). Uses the same generic preferences table as the
+  // photo itself rather than a dedicated column.
+  const avatarFrameRows = await sql`SELECT data FROM preferences WHERE user_id = ${user.id} AND scope = 'avatar_frame'`;
+  const avatarFrame = avatarFrameRows[0]?.data?.frame || null;
 
   const pillarState = await getPillarState(user);
-  const { unlockedPillars, unlockedCount, standardPct, fastPct, canActivateNextPillar, activatedAtByPillar } = pillarState;
+  const { unlockedPillars, unlockedCount, standardPct, fastPct, bestPillarFastPct, canActivateNextPillar, activatedAtByPillar } = pillarState;
 
   // Pillar priority: an explicit user-set order (Settings) wins outright; otherwise a
   // Valueprint-derived default; otherwise the fixed catalog order. Only unlocked pillars
@@ -53,18 +58,10 @@ export default async function handler(req, res) {
     || ALL_PILLAR_KEYS;
   const sortedUnlockedPillars = [...unlockedPillars].sort((a, b) => pillarPriorityOrder.indexOf(a) - pillarPriorityOrder.indexOf(b));
 
-  // Phase is derived from how many pillars are active, not manually incremented.
-  // Phase 4 (Flow State) additionally needs ~70%+ completion across all 6 pillars
-  // sustained for about a year -- checked here but will realistically stay dormant
-  // until the app has real long-term usage data.
-  let phase = unlockedCount >= 6 ? 3 : unlockedCount >= 2 ? 2 : 1;
-  if (phase === 3) {
-    const [{ year_pct }] = await sql`
-      SELECT COALESCE(ROUND(100.0 * COUNT(*) FILTER (WHERE status = 'Completed') / NULLIF(COUNT(*), 0)), 0) AS year_pct
-      FROM tasks WHERE user_id = ${user.id} AND created_at > now() - interval '365 days'
-    `;
-    if (Number(year_pct) >= 70) phase = 4;
-  }
+  // Phase is derived from how many pillars are active, not manually incremented --
+  // see lib/pillarState.js's getPhaseInfo for the full 4-phase model and the Phase 4
+  // (Flow State/mastery) criterion.
+  const { phaseNumber, phaseName, hallOfFameEligible } = await getPhaseInfo(user, pillarState);
 
   // LifeScore: real per-pillar XP on top of the onboarding baseline set at profile-creation
   // time. Task-completion XP (tasks.xp_gained) and ad-hoc log XP (metric_logs.xp_gained,
@@ -102,12 +99,21 @@ export default async function handler(req, res) {
       stress_level: user.stress_level,
       wake_time: user.wake_time,
       wind_down_time: user.wind_down_time,
-      phase: PHASE_NAMES[phase] || PHASE_NAMES[1],
+      phase: phaseName,
+      phase_number: phaseNumber,
+      hall_of_fame_eligible: hallOfFameEligible,
+      avatar_frame: avatarFrame,
       phaseStartDate: user.phase_start_date,
       days_in_phase: daysInPhase,
       phase_progress: {
         standard_path: { description: 'Achieve 80% completion over 3 weeks', target_percent: 80, current_average_percent: standardPct },
-        fast_track_path: { description: 'Achieve 95% completion in 1 week', target_percent: 95, current_week_percent: fastPct },
+        // Redesign item #3: the fast track is now "hit 95% in ANY ONE currently-active
+        // pillar within 1 week", not 95% blended across all active pillars -- so the
+        // displayed number is the closest single pillar's own percent (bestPillarFastPct),
+        // which is what actually has to cross 95% to unlock the next pillar, rather than a
+        // blended average that could stay well under 95% forever once several pillars are
+        // active. current_week_percent is kept for any old client still reading it.
+        fast_track_path: { description: 'Achieve 95% completion in 1 week in any single active pillar', target_percent: 95, current_week_percent: fastPct, best_single_pillar_percent: bestPillarFastPct },
       },
       unlocked_pillars: sortedUnlockedPillars,
       pillar_priority_order: pillarPriorityOrder,
