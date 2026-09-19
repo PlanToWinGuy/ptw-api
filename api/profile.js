@@ -1,8 +1,9 @@
-import { sql } from '../lib/db.js';
+import { sql, pillarIdFromName, PILLARS } from '../lib/db.js';
 import { cors } from '../lib/cors.js';
 import { getUserFromRequest, hashPassword, verifyPassword } from '../lib/auth.js';
 import { calculateBaseline } from '../lib/lifescore.js';
 import { createBookendRoutines } from '../lib/routines.js';
+import { getPillarState } from '../lib/pillarState.js';
 
 // Handles /api/profile-creation and /api/valueprint via vercel.json rewrites
 // (?action=profile-creation|valueprint) -- both are "update my user record" mutations.
@@ -57,7 +58,36 @@ export default async function handler(req, res) {
         recommended_pillar = COALESCE(${recommended}, recommended_pillar)
       WHERE id = ${user.id}
     `;
-    return res.status(200).json({ message: 'Valueprint saved', recommended_pillar: recommended });
+
+    // Redesign item #1: Personal ALWAYS activates as part of Valueprint completion,
+    // unconditionally -- not gated by canActivateNextPillar (Personal is exempt since
+    // it's the pillar Valueprint's own data belongs to) and not dependent on which pillar
+    // the gap-analysis happens to recommend. This is the real server-side gate (mirrors
+    // the pattern in api/pillar/[pillar].js's ?action=activate) -- the frontend's old
+    // "auto-activate vp.recommended_pillar, but only if can_activate_next_pillar" call is
+    // being removed as part of this same change; the recommended pillar (if different
+    // from Personal) is no longer auto-activated at all -- it just becomes one of the
+    // up-to-2 additional free picks a user can make in Phase 1 (see lib/pillarState.js
+    // canActivateNextPillar, which now allows pillars #2 and #3 unconditionally).
+    // ON CONFLICT ... DO UPDATE reactivates Personal with full history if it was
+    // previously soft-deactivated via a Phase 1 swap; a no-op if it's already active.
+    const personal_id = pillarIdFromName('Personal');
+    const beforeState = await getPillarState(user);
+    const personalAlreadyActive = beforeState.unlockedPillars.includes('personal');
+    await sql`
+      INSERT INTO user_pillars (user_id, pillar_id) VALUES (${user.id}, ${personal_id})
+      ON CONFLICT (user_id, pillar_id) DO UPDATE SET active = true WHERE user_pillars.active = false
+    `;
+    // Only starts the phase clock if this is a genuinely new activation -- retaking the
+    // Valueprint with Personal already active shouldn't reset an in-progress Phase 1/2
+    // consistency window.
+    if (!personalAlreadyActive) {
+      await sql`UPDATE users SET phase_start_date = now() WHERE id = ${user.id}`;
+    }
+    const rows = await sql`SELECT pillar_id FROM user_pillars WHERE user_id = ${user.id} AND active = true ORDER BY activated_at ASC`;
+    const unlocked_pillars = rows.map(r => (PILLARS[r.pillar_id] || '').toLowerCase());
+
+    return res.status(200).json({ message: 'Valueprint saved', recommended_pillar: recommended, unlocked_pillars });
   }
 
   if (action === 'change-password') {

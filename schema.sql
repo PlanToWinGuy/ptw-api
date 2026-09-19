@@ -35,7 +35,6 @@ CREATE TABLE IF NOT EXISTS users (
   wind_down_time TIME,
   sleep_quality TEXT,                      -- 'Good' | 'Average' | 'Poor' -- onboarding input for LifeScore baseline
   stress_level TEXT,                       -- 'Low' | 'Medium' | 'High' -- onboarding input for LifeScore baseline
-  hall_of_fame_eligible BOOLEAN NOT NULL DEFAULT false, -- Phase 4 (Flow State/mastery) reached at least once -- see lib/pillarState.js getPhaseInfo
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -45,8 +44,7 @@ ALTER TABLE users
   ADD COLUMN IF NOT EXISTS sleep_quality TEXT,
   ADD COLUMN IF NOT EXISTS stress_level TEXT,
   ADD COLUMN IF NOT EXISTS streak_save_tokens JSONB NOT NULL DEFAULT '{}'::jsonb,
-  ADD COLUMN IF NOT EXISTS streak_tokens_checked_through DATE,
-  ADD COLUMN IF NOT EXISTS hall_of_fame_eligible BOOLEAN NOT NULL DEFAULT false;
+  ADD COLUMN IF NOT EXISTS streak_tokens_checked_through DATE;
 
 -- Per-pillar "Streak Save" token bank (2.6.3): streak_save_tokens is keyed by lowercase
 -- pillar name (e.g. {"fitness":2}), reconciled lazily -- see lib/streakTokens.js.
@@ -196,12 +194,8 @@ CREATE TABLE IF NOT EXISTS user_pillars (
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   pillar_id INTEGER NOT NULL REFERENCES pillars(id),
   activated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  active BOOLEAN NOT NULL DEFAULT true, -- Phase 1 pillar swap (redesign item #6): soft-deactivate, never delete -- keeps history intact for reactivation
   PRIMARY KEY (user_id, pillar_id)
 );
-
-ALTER TABLE user_pillars
-  ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT true;
 
 -- Shared with map.plantowin.app (the Valueprint mapper) -- replaces its in-memory profile
 -- store so a saved reading survives across serverless instances/deploys. user_id links it
