@@ -119,6 +119,20 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
 @keyframes confettiFall{0%{transform:translateY(0) rotate(0deg);opacity:1}85%{opacity:1}100%{transform:translateY(120vh) rotate(540deg);opacity:0}}
 @keyframes streakNumberPop{0%{transform:scale(.3) rotate(-8deg);opacity:0}55%{transform:scale(1.2) rotate(4deg);opacity:1}80%{transform:scale(.94) rotate(-2deg)}100%{transform:scale(1) rotate(0deg)}}
 
+/* ── Phase Milestone Celebration (progression redesign, item #5) -- same full-screen
+   confetti-overlay treatment as the Streak Milestone Celebration just above, reserved
+   for the 5 real phase/pillar-count milestones (see PHASE_MILESTONES). ── */
+#phase-celebration-overlay{position:fixed;inset:0;z-index:400;background:radial-gradient(circle at 50% 28%,rgba(28,24,18,.98),rgba(8,7,6,.99));display:none;align-items:center;justify-content:center;overflow:hidden}
+#phase-celebration-overlay.open{display:flex}
+#phase-celebration-overlay .confetti-piece{position:absolute;top:-6vh;width:8px;height:14px;opacity:0;border-radius:2px;animation-name:confettiFall;animation-timing-function:linear;animation-fill-mode:forwards}
+
+/* Cosmetic phase rewards (item #5): a selectable frame unlocked at Phase 2 entry, and an
+   automatic glow unlocked at Phase 4 entry -- applied directly to #profile-avatar. */
+.avatar-frame-phase2{box-shadow:0 0 0 3px #0A0908,0 0 0 6px #D6AB3A}
+.avatar-frame-phase4-glow{box-shadow:0 0 0 3px #0A0908,0 0 0 6px #D6AB3A,0 0 18px 4px rgba(255,209,102,.65);animation:flowGlowPulse 2.4s ease-in-out infinite}
+@keyframes flowGlowPulse{0%,100%{box-shadow:0 0 0 3px #0A0908,0 0 0 6px #D6AB3A,0 0 14px 2px rgba(255,209,102,.5)}50%{box-shadow:0 0 0 3px #0A0908,0 0 0 6px #D6AB3A,0 0 26px 8px rgba(255,209,102,.85)}}
+#profile-phase-card.phase4-flourish{box-shadow:inset 0 0 0 2px #D6AB3A,0 0 20px rgba(214,171,58,.3);border-radius:10px}
+
 /* ══════════════════════════════════
    AUTH SCREENS
 ══════════════════════════════════ */
@@ -978,7 +992,7 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
       <div style="font-size:32px;margin-bottom:12px">🗺</div>
       <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text);margin-bottom:8px">Take Your Valueprint</div>
       <div style="font-size:13px;color:var(--stone);line-height:1.6">A 5-minute assessment that maps all 6 pillars of your life and gives you a starting LifeScore.</div>
-      <button class="btn-p" style="margin-top:16px" onclick="openValueprint()">Open Valueprint Map →</button>
+      <button class="btn-p" style="margin-top:16px" onclick="openValueprint()">Open Map of You →</button>
     </div>
     <div id="vp-status" style="display:none;width:100%;background:rgba(90,148,96,.1);border:1px solid var(--finances);border-radius:12px;padding:14px;text-align:center;margin-bottom:16px">
       <div style="font-size:13px;color:var(--finances);font-weight:600">✓ Valueprint received!</div>
@@ -1315,6 +1329,22 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
 </div>
 
 <!-- ══════════════════════════════════
+     PHASE MILESTONE CELEBRATION (progression redesign, item #5) -- fires on pillar #3-6
+     activation and Phase 4 entry, see PHASE_MILESTONES/showPhaseMilestoneCelebration.
+══════════════════════════════════ -->
+<div id="phase-celebration-overlay">
+  <div id="phase-confetti-layer" style="position:absolute;inset:0;pointer-events:none;overflow:hidden"></div>
+  <div style="position:relative;text-align:center;padding:30px 24px;max-width:340px">
+    <div id="phase-cel-kicker" style="font-size:13px;letter-spacing:2px;color:#D6AB3A;text-transform:uppercase;font-weight:800;margin-bottom:8px;animation:celebFadeUp .4s ease backwards">Milestone</div>
+    <div id="phase-cel-icon" style="font-size:56px;margin-bottom:6px;animation:celebPop .55s cubic-bezier(.34,1.56,.64,1) .1s backwards">🚀</div>
+    <div id="phase-cel-title" style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:#fff;line-height:1.2;margin-bottom:10px;animation:celebFadeUp .4s ease .2s backwards">—</div>
+    <div id="phase-cel-body" style="font-size:13px;color:rgba(255,255,255,.8);line-height:1.6;margin-bottom:18px;animation:celebFadeUp .4s ease .3s backwards">—</div>
+    <div id="phase-cel-reward" style="background:rgba(255,255,255,.06);border:1px solid rgba(214,171,58,.35);border-radius:16px;padding:14px;margin-bottom:22px;font-size:13px;color:#D6AB3A;font-weight:700;animation:celebFadeUp .4s ease .4s backwards;display:none"></div>
+    <button class="btn-p filled" style="background:#D6AB3A;border-color:#D6AB3A;color:#0A0908" onclick="closePhaseCelebration()">Keep Going</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
      PROFILE PHOTO: SMALL OPTIONS POPUP
 ══════════════════════════════════ -->
 <div class="modal-overlay" id="modal-avatar-options" onclick="closeModal('modal-avatar-options',event)">
@@ -1323,6 +1353,19 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
     <h3>Profile Photo</h3>
     <input type="file" accept="image/*" id="avatar-file-input" style="display:none" onchange="handleAvatarFileChosen(this)">
     <div id="avatar-options-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:6px"></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     PILLAR SWAP (progression redesign, item #6) -- pick which currently-active Phase 1
+     pillar to trade out before starting the new pillar's questionnaire/plan flow.
+══════════════════════════════════ -->
+<div class="modal-overlay" id="modal-pillar-swap" onclick="closeModal('modal-pillar-swap',event)">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-pillar-swap')">×</button>
+    <h3>Swap a Pillar</h3>
+    <div style="font-size:12px;color:var(--stone);margin-bottom:12px">Choose which active pillar to replace with <span id="pillar-swap-target-label">—</span>. Its history stays saved — you can reactivate it later.</div>
+    <div id="pillar-swap-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:6px"></div>
   </div>
 </div>
 
@@ -1610,6 +1653,10 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
     <div style="font-size:13px;color:var(--stone);line-height:1.5;margin-bottom:24px;max-width:300px;margin-left:auto;margin-right:auto">Choose the area of your life you want to focus on and build momentum.</div>
     <div id="pillar-select-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;text-align:left"></div>
     <button class="btn-p filled" id="pillar-select-confirm-btn" style="margin-top:24px" onclick="confirmPillarSelection()">Choose This Pillar</button>
+    <!-- Pillar swap (item #6) -- only shown while unlockedCount<=3 (still in Phase 1);
+         toggled by renderPillarSelectGrid(). Lets a user trade an already-active pillar
+         for a locked one instead of spending a fresh free pick or waiting out the gate. -->
+    <button class="btn-p" id="pillar-select-swap-btn" style="margin-top:8px;display:none" onclick="openPillarSwapPicker()">🔁 Swap an active pillar instead</button>
     <button class="btn-p" style="margin-top:8px;border-color:transparent;color:var(--stone)" onclick="skipPillarActivation()">Skip for now</button>
   </div>
 </div>
@@ -1933,7 +1980,7 @@ body{font-family:'Inter',sans-serif;color:var(--text);overscroll-behavior:none}
          background/border here, that's the whole point. -->
     <div class="profile-hero">
       <div class="profile-hero-row" style="margin-top:0">
-        <div class="profile-hero-col" style="cursor:pointer" onclick="openPhaseDetail()">
+        <div class="profile-hero-col" id="profile-phase-card" style="cursor:pointer" onclick="openPhaseDetail()">
           <div style="display:flex;justify-content:space-between;align-items:center">
             <div class="ls-label" style="margin:0">PHASE</div>
             <span style="font-size:13px;color:rgba(255,255,255,.7)">›</span>
@@ -3380,25 +3427,32 @@ function pillarFromGap(gap) {
 
 async function applyValueprintPayload(vp) {
   if(!vp) return;
-  // 🔌 API: POST /api/valueprint (save valueprint data to user account)
-  await req('POST','/valueprint',{valueprint_data:vp});
-  await loadUserData(); // best-effort — no-ops the recommended-pillar unlock below if the backend hasn't wired this up yet
+  // 🔌 API: POST /api/valueprint (save valueprint data to user account). Server-side this
+  // also unconditionally activates Personal (see api/profile.js action=valueprint) —
+  // Personal is the pillar Valueprint's own data belongs to, so it always activates
+  // regardless of the phase gate and regardless of which pillar the gap-analysis below
+  // recommends. The old client-side "auto-activate vp.recommended_pillar" call is gone —
+  // that pillar (if different from Personal) is no longer auto-activated at all, it's just
+  // one of the up-to-2 additional free Phase 1 picks the user makes themselves next,
+  // through Pillar Select (openPillarSelect() already excludes whatever's in S.unlocked,
+  // so Personal won't be offered there once this response lands).
+  const result = await req('POST','/valueprint',{valueprint_data:vp});
+  if(result?.unlocked_pillars) {
+    S.unlocked = result.unlocked_pillars;
+    localStorage.setItem('ptw_unlocked',JSON.stringify(S.unlocked));
+  }
+  await loadUserData(); // refreshes phase_progress/can_activate_next_pillar/pillar_states too
 
   const statusEl=document.getElementById('vp-status');
   if(statusEl) statusEl.style.display='block';
   const summaryEl=document.getElementById('vp-summary');
-  if(summaryEl) summaryEl.textContent='Recommended focus: '+(vp?.recommended_pillar||'Personal');
-
-  // Auto-activate the recommended pillar for a seamless Valueprint→PWA handoff — but
-  // still respects the phase gate (won't bypass it for a user who already has active
-  // pillars and hasn't earned the next one yet; it'll just surface normally later
-  // through Pillar Select).
   const rp=vp?.recommended_pillar?.toLowerCase();
-  if(rp && PILLARS[rp] && !S.unlocked.includes(rp) && S.userData?.can_activate_next_pillar) {
-    const result = await req('POST','/pillar/'+PILLARS[rp].label+'?action=activate');
-    S.unlocked = result?.unlocked_pillars || S.unlocked;
-    localStorage.setItem('ptw_unlocked',JSON.stringify(S.unlocked));
+  if(summaryEl) {
+    summaryEl.textContent = (rp && PILLARS[rp] && rp!=='personal')
+      ? `Recommended focus: ${vp.recommended_pillar} — pick it as one of your next pillars.`
+      : 'Recommended focus: Personal — already active.';
   }
+
   renderPillarApps();
 }
 
@@ -5212,6 +5266,70 @@ function showStreakMilestoneCelebration({name, length, xp, tokenCount}) {
   if(navigator.vibrate) navigator.vibrate([30,50,30,50,80]);
 }
 
+// ════════════════════════════════════════
+// PHASE MILESTONE CELEBRATION (progression redesign, item #5) -- full-screen takeover on
+// the 5 real phase/pillar-count crossings, same confetti-overlay treatment as the Streak
+// Milestone Celebration just above. pillar3/pillar6 are real PHASE transitions (Phase
+// 1->2, Phase 2->3) and carry a cosmetic reward; pillar4/pillar5 are still worth marking
+// (per the redesign spec's explicit "4th-6th pillar unlocks" list) but don't change the
+// phase number or carry a reward. phase4 is mastery -- see checkPhaseMilestoneCelebration.
+// ════════════════════════════════════════
+const PHASE_MILESTONES = {
+  pillar3: { title:'Phase 2 Unlocked', kicker:'Foundation Complete', icon:'🚀', body:"You've activated your first 3 pillars. Phase 2 (Expansion) is about proving consistency to unlock the rest.", reward:'New profile photo frame unlocked — equip it from your profile photo.' },
+  pillar4: { title:'Pillar 4 Unlocked', kicker:'Expansion', icon:'⚡', body:'Another pillar online. Keep proving consistency to unlock the next one.', reward:null },
+  pillar5: { title:'Pillar 5 Unlocked', kicker:'Expansion', icon:'⚡', body:"One more pillar to go — all 6 within reach.", reward:null },
+  pillar6: { title:'Phase 3 Unlocked', kicker:'All 6 Pillars Active', icon:'🏆', body:"Every pillar is active. Phase 3 (Optimization) is about protecting and optimizing your time, not adding more.", reward:'Optimization badge unlocked — visible next to your Phase name.' },
+  phase4:  { title:'Phase 4: Flow State', kicker:'Mastery', icon:'✨', body:"A full year of real consistency across every pillar. This is Flow State.", reward:"A permanent glow on your avatar — and you're now Hall of Fame eligible." },
+};
+function spawnPhaseConfetti(count) {
+  const layer=document.getElementById('phase-confetti-layer');
+  if(!layer) return;
+  layer.innerHTML='';
+  for(let i=0;i<count;i++) {
+    const el=document.createElement('div');
+    el.className='confetti-piece';
+    const left=Math.random()*100;
+    const delay=(Math.random()*0.6).toFixed(2);
+    const duration=(2.2+Math.random()*1.6).toFixed(2);
+    const color=CONFETTI_COLORS[i%CONFETTI_COLORS.length];
+    el.style.cssText=`left:${left}%;background:${color};animation-duration:${duration}s;animation-delay:${delay}s`;
+    layer.appendChild(el);
+  }
+}
+function closePhaseCelebration() {
+  document.getElementById('phase-celebration-overlay').classList.remove('open');
+  // Only return to Home when this celebration was queued from the pillar-activation flow
+  // (finishPillarActivation) -- the Phase 4/mastery detection in renderProfile() shows it
+  // in place instead, and shouldn't yank the user off Profile when they dismiss it.
+  if(S.phaseMilestoneReturnHome) { S.phaseMilestoneReturnHome=false; enterApp(); }
+}
+function showPhaseMilestoneCelebration(key) {
+  const m=PHASE_MILESTONES[key];
+  if(!m) return;
+  document.getElementById('phase-cel-icon').textContent=m.icon;
+  document.getElementById('phase-cel-kicker').textContent=m.kicker;
+  document.getElementById('phase-cel-title').textContent=m.title;
+  document.getElementById('phase-cel-body').textContent=m.body;
+  const rewardEl=document.getElementById('phase-cel-reward');
+  if(m.reward) { rewardEl.style.display=''; rewardEl.textContent='🎁 '+m.reward; }
+  else { rewardEl.style.display='none'; }
+  spawnPhaseConfetti(52);
+  document.getElementById('phase-celebration-overlay').classList.add('open');
+  if(navigator.vibrate) navigator.vibrate([30,50,30,50,80]);
+}
+// Pillar-count milestones (pillar3-6) fire immediately after a successful activation --
+// see acceptPillarPlan(). Phase 4 (mastery) can't be tied to one discrete user action (it
+// can cross over silently between sessions as consistency data accumulates), so it's
+// detected here instead: any time renderProfile() runs, if the server now says
+// hall_of_fame_eligible and we haven't celebrated it client-side yet, show it once.
+const CELEBRATED_PHASE4_KEY='ptw_celebrated_phase4';
+function checkPhaseMilestoneCelebration(u) {
+  if(u?.hall_of_fame_eligible && !localStorage.getItem(CELEBRATED_PHASE4_KEY)) {
+    localStorage.setItem(CELEBRATED_PHASE4_KEY,'1');
+    showPhaseMilestoneCelebration('phase4');
+  }
+}
+
 // A task like "Go grocery shopping" or "Buy a birthday gift" often costs money, but it
 // lives in whatever pillar it's really about (Fitness, Relations, ...) -- not Finances.
 // Deterministic keyword match (same cost-discipline precedent as inferToolHint/
@@ -5429,23 +5547,29 @@ function openPillarSelect() {
 function renderPillarSelectGrid() {
   const grid = document.getElementById('pillar-select-grid');
   const confirmBtn = document.getElementById('pillar-select-confirm-btn');
+  const swapBtn = document.getElementById('pillar-select-swap-btn');
   const locked = Object.keys(PILLARS).filter(k=>!S.unlocked.includes(k));
+  // Item #6: swapping is only available while still within Phase 1's first 3 slots --
+  // mirrors the server-side unlockedCount<=3 check in api/pillar/[pillar].js?action=swap.
+  swapBtn.style.display = (S.unlocked.length>=1 && S.unlocked.length<=3) ? '' : 'none';
 
-  // First pillar is always free (2.4.1). Beyond that, the next pillar only opens up
-  // once the user's proven 80%/3wk or 95%/1wk consistency on their active pillar(s) --
+  // Redesign items #1-2: pillars #1-3 (Phase 1: Foundation) are freely chosen -- Personal
+  // already auto-activated at Valueprint completion, so this screen is really "pick your
+  // remaining 1-2 free slots" for most users. The consistency gate (80%/3wk or 95%/1wk on
+  // ANY single active pillar) only kicks in once unlockedCount>=3, unlocking pillar #4-6 --
   // or the Settings promo code bypasses this same display gate for testing.
   const gated = S.unlocked.length>0 && !S.userData?.can_activate_next_pillar && !S.promoUnlockAll;
   if(gated) {
     confirmBtn.style.display='none';
     const prog=S.userData?.phase_progress||{};
     const std=prog.standard_path?.current_average_percent||0;
-    const fast=prog.fast_track_path?.current_week_percent||0;
+    const fast=prog.fast_track_path?.best_single_pillar_percent ?? prog.fast_track_path?.current_week_percent ?? 0;
     grid.style.display='block';
     grid.innerHTML = `<div class="empty">
       <div class="empty-icon">🔒</div>
       <div class="empty-text">Keep building consistency on your active pillar${S.unlocked.length>1?'s':''} before the next one unlocks.</div>
       <div style="margin-top:14px;font-size:12px;color:var(--stone)">Standard path: ${std}% (need 80% over 3 weeks)</div>
-      <div style="font-size:12px;color:var(--stone)">Fast track: ${fast}% (need 95% over 1 week)</div>
+      <div style="font-size:12px;color:var(--stone)">Fast track: ${fast}% (need 95% in your best pillar, 1 week)</div>
     </div>`;
     return;
   }
@@ -5468,6 +5592,33 @@ function renderPillarSelectGrid() {
 function selectActivationPillar(key) { S.selectedActivationPillar=key; renderPillarSelectGrid(); }
 function confirmPillarSelection() {
   if(!S.selectedActivationPillar) { toast('Pick a pillar first'); return; }
+  S.activationRefining = false;
+  S.swapDeactivatePillar = null; // ordinary activation, not a swap -- see openPillarSwapPicker
+  loadPillarQuestionnaire(S.selectedActivationPillar);
+}
+
+// ── Pillar swap (item #6) -- trade one already-active Phase 1 pillar for whichever
+// locked pillar is currently selected on Pillar Select. Reuses the exact same
+// questionnaire/plan-generation flow as a normal activation (loadPillarQuestionnaire ->
+// ... -> acceptPillarPlan); the only difference is which API call acceptPillarPlan makes
+// at the very end (?action=swap instead of ?action=activate), so the new pillar still
+// gets a real generated plan like any other activation. ──
+function openPillarSwapPicker() {
+  if(!S.selectedActivationPillar) { toast('Pick a pillar to activate first'); return; }
+  const target = PILLARS[S.selectedActivationPillar];
+  document.getElementById('pillar-swap-target-label').textContent = target.label;
+  document.getElementById('pillar-swap-list').innerHTML = S.unlocked.map(key=>{
+    const p = PILLARS[key];
+    return `<div class="sq-card" onclick="chooseSwapTarget('${key}')">
+      ${softIcon(p.icon, p.color)}
+      <div class="sq-info"><div class="sq-name">${p.label}</div><div class="sq-meta">Currently active — swap this out</div></div>
+    </div>`;
+  }).join('');
+  document.getElementById('modal-pillar-swap').classList.add('open');
+}
+function chooseSwapTarget(deactivateKey) {
+  closeModal('modal-pillar-swap');
+  S.swapDeactivatePillar = deactivateKey;
   S.activationRefining = false;
   loadPillarQuestionnaire(S.selectedActivationPillar);
 }
@@ -5882,7 +6033,11 @@ async function acceptPillarPlan() {
   if(firstStep?.type==='task' && firstStep.taskId) localStorage.setItem('ptw_first_step_task_id', String(firstStep.taskId));
   if(wasNew) {
     const p = PILLARS[key];
-    const result = await req('POST','/pillar/'+p.label+'?action=activate', S.promoUnlockAll ? {promo_code:S.promoCode} : undefined);
+    const swapOutKey = S.swapDeactivatePillar;
+    S.swapDeactivatePillar = null;
+    const result = swapOutKey
+      ? await req('POST','/pillar/'+p.label+'?action=swap', {deactivate:swapOutKey})
+      : await req('POST','/pillar/'+p.label+'?action=activate', S.promoUnlockAll ? {promo_code:S.promoCode} : undefined);
     // A gate rejection (403) still comes back as a parsed JSON body from req(), not a
     // thrown error -- it just won't have unlocked_pillars. Treating that as "no unlocked
     // list yet, so add it locally" used to silently fake success (the pillar never
@@ -5892,7 +6047,15 @@ async function acceptPillarPlan() {
     S.unlocked = result.unlocked_pillars;
     localStorage.setItem('ptw_unlocked',JSON.stringify(S.unlocked));
     await loadUserData(); // refresh phase_progress/can_activate_next_pillar for the new window
-    showPillarCongrats(key);
+    // Redesign item #5: pillar #3-6 activations are real progression milestones -- queue
+    // the celebration to show right after the ordinary per-pillar congrats screen (see
+    // finishPillarActivation), rather than replacing it. Pillars #1-2 (Phase 1's first two
+    // free picks) don't get one -- only #3 onward are real "crossed into gated territory
+    // or all the way to Phase 3" moments worth a full-screen takeover. A swap never
+    // changes S.unlocked.length, so it never queues one -- trading pillars isn't phase
+    // progress.
+    S.pendingPhaseMilestone = {3:'pillar3',4:'pillar4',5:'pillar5',6:'pillar6'}[S.unlocked.length] || null;
+    showPillarCongrats(key, swapOutKey ? PILLARS[swapOutKey]?.label : null);
   } else {
     toast('Plan updated ⚡');
     showPillarScreen(key);
@@ -5900,13 +6063,20 @@ async function acceptPillarPlan() {
   }
 }
 
-function showPillarCongrats(pillarKey) {
+function showPillarCongrats(pillarKey, swappedOutLabel) {
   const p = PILLARS[pillarKey];
   showScreen('pillar-congrats');
   document.getElementById('congrats-icon').innerHTML = p.icon;
-  document.getElementById('congrats-text').textContent = p.label+' is now active. Your first tasks are ready on your dashboard.';
+  document.getElementById('congrats-text').textContent = swappedOutLabel
+    ? `${p.label} has replaced ${swappedOutLabel} in your active pillars — its history is saved if you want to come back to it. Your first tasks are ready on your dashboard.`
+    : p.label+' is now active. Your first tasks are ready on your dashboard.';
 }
-function finishPillarActivation() { enterApp(); }
+function finishPillarActivation() {
+  const milestone = S.pendingPhaseMilestone;
+  S.pendingPhaseMilestone = null;
+  if(milestone) { S.phaseMilestoneReturnHome=true; showPhaseMilestoneCelebration(milestone); }
+  else enterApp();
+}
 
 // ════════════════════════════════════════
 // FOCUS MODE
@@ -8029,12 +8199,27 @@ function renderProfile() {
   avatarEl.innerHTML = u.profilePicUrl
     ? `<img src="${u.profilePicUrl}" style="width:100%;height:100%;object-fit:cover">`
     : name.charAt(0).toUpperCase();
+  // Cosmetic phase rewards (redesign item #5): Phase 2 unlocks a SELECTABLE frame (user
+  // picks it in openAvatarOptions(), stored via preferences scope avatar_frame); Phase 4
+  // (hall_of_fame_eligible) gets an AUTOMATIC glow that takes priority over any chosen
+  // frame -- it's the bigger, later achievement, not something to pick between.
+  avatarEl.classList.remove('avatar-frame-phase2','avatar-frame-phase4-glow');
+  if(u.hall_of_fame_eligible) avatarEl.classList.add('avatar-frame-phase4-glow');
+  else if(u.avatar_frame==='phase2_gold' && (u.phase_number||1)>=2) avatarEl.classList.add('avatar-frame-phase2');
+  document.getElementById('profile-phase-card')?.classList.toggle('phase4-flourish', !!u.hall_of_fame_eligible);
 
   // Phase block
-  document.getElementById('profile-phase').textContent = u.phase || 'Phase 1: Come Up';
+  // Phase 3 reward (item #5): a simple visible badge next to the phase name, rather than
+  // a whole new icon system -- the spec's own "simplest reasonable implementation".
+  const phaseNum=u.phase_number||1;
+  const phaseBadge = phaseNum>=3 ? ` <span title="${phaseNum>=4?'Flow State — mastery achieved':'Optimization — all 6 pillars active'}">${phaseNum>=4?'✨':'🏅'}</span>` : '';
+  document.getElementById('profile-phase').innerHTML = (u.phase || 'Phase 1: Foundation') + phaseBadge;
   const prog=u.phase_progress||{};
   const std=prog.standard_path?.current_average_percent||0;
-  const fast=prog.fast_track_path?.current_week_percent||0;
+  // Redesign item #3: the fast-track number shown here is now the best SINGLE active
+  // pillar's percent (what actually has to cross 95%), not the old blended average --
+  // falls back to current_week_percent for safety if an older cached userData is present.
+  const fast=prog.fast_track_path?.best_single_pillar_percent ?? prog.fast_track_path?.current_week_percent ?? 0;
   const phasePct=Math.min(100, Math.round(Math.max(std/80, fast/95)*100));
   document.getElementById('profile-phase-fill').style.width=phasePct+'%';
   document.getElementById('profile-phase-pct').textContent=phasePct+'%';
@@ -8044,8 +8229,9 @@ function renderProfile() {
   const stdLead=std/80>=fast/95;
   document.getElementById('profile-phase-sub').innerHTML =
     `<div style="${stdLead?'color:var(--text);font-weight:600':''}">Standard: ${std}% <span style="opacity:.7">(need 80% over 3 weeks)</span></div>`+
-    `<div style="${!stdLead?'color:var(--text);font-weight:600':''}">Fast Track: ${fast}% <span style="opacity:.7">(need 95% in 1 week)</span></div>`;
+    `<div style="${!stdLead?'color:var(--text);font-weight:600':''}">Fast Track: ${fast}% <span style="opacity:.7">(need 95% in your best pillar, 1 week)</span></div>`;
   updateProfileDurationLine();
+  checkPhaseMilestoneCelebration(u);
 
   // LifeScore & XP block
   document.getElementById('profile-lifescore').innerHTML = (u.lifeScore||'—') + '<span style="font-size:18px;font-weight:600">yrs</span>';
@@ -8080,6 +8266,23 @@ function renderProfile() {
 // small-options-modal pattern as the Fitness quick-add modal just above it in markup. ──
 function openAvatarOptions() {
   const hasPhoto=!!S.userData?.profilePicUrl;
+  const phaseNum=S.userData?.phase_number||1;
+  const hof=!!S.userData?.hall_of_fame_eligible;
+  const curFrame=S.userData?.avatar_frame||'none';
+  // Phase 2 cosmetic reward (redesign item #5): a selectable frame, unlocked once
+  // phase_number>=2. Not offered once Phase 4's automatic glow is active (hall_of_fame_eligible)
+  // -- that glow always wins over any chosen frame (see renderProfile), so picking one here
+  // would be a dead end.
+  const frameSection = (phaseNum>=2 && !hof) ? `
+    <div style="font-size:11px;color:var(--stone);letter-spacing:.3px;margin:14px 0 4px">PHOTO FRAME</div>
+    <div class="sq-card" onclick="chooseAvatarFrame('none')" style="border:1.5px solid ${(curFrame==='none'||!curFrame)?'var(--blue)':'transparent'}">
+      ${softIcon('⚪', '#C4B8A8')}
+      <div class="sq-info"><div class="sq-name">None</div></div>
+    </div>
+    <div class="sq-card" onclick="chooseAvatarFrame('phase2_gold')" style="border:1.5px solid ${curFrame==='phase2_gold'?'var(--blue)':'transparent'}">
+      ${softIcon('🟡', '#D6AB3A')}
+      <div class="sq-info"><div class="sq-name">Foundation Gold Ring</div><div class="sq-meta">Unlocked at Phase 2</div></div>
+    </div>` : '';
   document.getElementById('avatar-options-list').innerHTML = `
     <div class="sq-card" onclick="closeModal('modal-avatar-options');document.getElementById('avatar-file-input').click()">
       ${softIcon(ICONS.camera, '#5BA4DC')}
@@ -8088,8 +8291,15 @@ function openAvatarOptions() {
     ${hasPhoto?`<div class="sq-card" onclick="removeAvatarPhoto()">
       ${softIcon(ICONS.trash, '#C46882')}
       <div class="sq-info"><div class="sq-name">Remove Photo</div></div>
-    </div>`:''}`;
+    </div>`:''}
+    ${frameSection}`;
   document.getElementById('modal-avatar-options').classList.add('open');
+}
+async function chooseAvatarFrame(frame) {
+  await req('PUT','/preferences/avatar_frame',{frame: frame==='none'?null:frame});
+  await loadUserData();
+  renderProfile();
+  openAvatarOptions(); // re-render the modal in place so the new selection highlights immediately
 }
 async function handleAvatarFileChosen(input) {
   const file=input.files[0];
@@ -9010,29 +9220,34 @@ async function sendChatMessage(prefilled) {
   if(data?.action_taken==='task_created') { loadHomeData(); if(S.todoRoutinesTab==='todo' && document.getElementById('screen-todo-routines').classList.contains('active')) switchTodoRoutinesTab('todo'); }
 }
 
+// Redesign item #4/#5: real phase names + framing that shifts with each phase --
+// Phase 3's copy deliberately talks about protecting/optimizing time rather than adding
+// more breadth (the founder's explicit framing note), and Phase 4 is now a real,
+// correctly-detected state (see lib/pillarState.js getPhaseInfo) rather than aspirational
+// copy with no criterion behind it.
 const PHASE_DESCRIPTIONS = {
-  1: {icon:'🌱', title:'Phase 1: The Come Up', body:"This is where every user starts. It's normal to feel uncertain or overwhelmed — the desire to grow is what matters. PTW simplifies the journey by having you activate your single most important pillar first, with a manageable AI-generated plan to build trust and consistency."},
-  2: {icon:'🚀', title:'Phase 2: Traction', body:"You've proven you can handle a baseline workload. This phase is about gradually expanding your capacity by adding new pillars one at a time, building a truly balanced and resilient lifestyle without burnout."},
-  3: {icon:'💎', title:'Phase 3: Confidence', body:"You've activated all six pillars and built strong, cross-pillar habits. The focus shifts from habit formation to optimization and efficiency."},
-  4: {icon:'🔥', title:'Phase 4: The Flow State', body:'Your balanced lifestyle is now second nature. The app recognizes this mastery and turns your journey into a model for the community.'},
+  1: {icon:'🌱', title:'Phase 1: Foundation', body:"This is where every user starts. Activate up to 3 pillars, completely freely — no consistency requirement yet. PTW gives each one a manageable AI-generated plan to build trust and momentum before anything is gated."},
+  2: {icon:'🚀', title:'Phase 2: Expansion', body:"You've built your Foundation. From here, each additional pillar (#4, #5, #6) unlocks one at a time once you've proven consistency — 95% completion in your best active pillar over 1 week, or 80% averaged across all of them over 3 weeks."},
+  3: {icon:'💎', title:'Phase 3: Optimization', body:"All six pillars are active. The focus shifts from building breadth to protecting and optimizing the time you already have — refining what's working rather than adding more."},
+  4: {icon:'✨', title:'Phase 4: Flow State', body:'A full year of real, sustained consistency across every pillar. Your balanced lifestyle is second nature — this is mastery, and you\'re now Hall of Fame eligible.'},
 };
 
 function openPhaseDetail() {
   showScreen('phase-detail');
   const u=S.userData||{};
-  const phaseNum = (u.phase||'').includes('1')?1:(u.phase||'').includes('2')?2:(u.phase||'').includes('3')?3:4;
+  const phaseNum = u.phase_number || 1;
   const info=PHASE_DESCRIPTIONS[phaseNum];
   const prog=u.phase_progress||{};
   const std=prog.standard_path||{};
   const fast=prog.fast_track_path||{};
+  const mastery=prog.mastery_path||{};
   const nextPhaseNum=Math.min(4,phaseNum+1);
-  document.getElementById('phase-detail-body').innerHTML = `
-    <div style="text-align:center;margin:16px 0">
-      <div style="font-size:36px">${info.icon}</div>
-      <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:var(--text);margin-top:8px">You are in ${info.title}</div>
-    </div>
-    <div style="font-size:13px;color:var(--text);line-height:1.6;margin-bottom:20px">${info.body}</div>
-    ${phaseNum<3?`
+  // Phase 1 (unlockedCount<3) has no consistency requirement at all -- pillars #1-3 are
+  // free picks, so there's nothing to show an advancement bar for. Phase 2 shows real
+  // progress toward the next pillar; Phase 3 shows real progress toward Flow State
+  // (mastery_path, only present once all 6 pillars are active); Phase 4 is the ceiling.
+  const advancementHtml = phaseNum===1 ? `<div class="empty-text" style="padding:0">Activate your next pillar any time — Phase 1's first 3 pillars are always free.</div>`
+    : phaseNum===2 ? `
     <div class="section-sub">ADVANCEMENT TO PHASE ${nextPhaseNum}</div>
     <div class="rm-goal-card" style="margin-bottom:10px">
       <div style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text);margin-bottom:6px">Objective: Build Pillar Consistency</div>
@@ -9043,9 +9258,25 @@ function openPhaseDetail() {
     <div class="rm-goal-card">
       <div style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text);margin-bottom:6px">Fast Track Alternative</div>
       <div style="font-size:12px;color:var(--stone);margin-bottom:6px">${fast.description||''}</div>
-      <div style="height:6px;background:var(--bg4);border-radius:4px;overflow:hidden;margin-bottom:4px"><div style="height:100%;width:${fast.current_week_percent||0}%;background:var(--blue)"></div></div>
-      <div style="font-size:11px;color:var(--muted)">${fast.current_week_percent||0}% / ${fast.target_percent||95}%</div>
-    </div>` : `<div class="empty-text" style="padding:0">You've reached the highest phase currently tracked.</div>`}
+      <div style="height:6px;background:var(--bg4);border-radius:4px;overflow:hidden;margin-bottom:4px"><div style="height:100%;width:${fast.best_single_pillar_percent??fast.current_week_percent??0}%;background:var(--blue)"></div></div>
+      <div style="font-size:11px;color:var(--muted)">${fast.best_single_pillar_percent??fast.current_week_percent??0}% / ${fast.target_percent||95}%</div>
+    </div>`
+    : phaseNum===3 ? `
+    <div class="section-sub">ADVANCEMENT TO PHASE 4: FLOW STATE</div>
+    <div class="rm-goal-card">
+      <div style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text);margin-bottom:6px">Objective: Sustained Mastery</div>
+      <div style="font-size:12px;color:var(--stone);margin-bottom:6px">${mastery.description||'Sustain 70%+ completion for 365 days across everything.'}</div>
+      <div style="height:6px;background:var(--bg4);border-radius:4px;overflow:hidden;margin-bottom:4px"><div style="height:100%;width:${mastery.current_year_percent||0}%;background:var(--blue)"></div></div>
+      <div style="font-size:11px;color:var(--muted)">${mastery.current_year_percent||0}% / ${mastery.target_percent||70}% (trailing 365 days)</div>
+    </div>`
+    : `<div class="empty-text" style="padding:0">You've reached Flow State — the highest phase currently tracked.</div>`;
+  document.getElementById('phase-detail-body').innerHTML = `
+    <div style="text-align:center;margin:16px 0">
+      <div style="font-size:36px">${info.icon}</div>
+      <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:var(--text);margin-top:8px">You are in ${info.title}</div>
+    </div>
+    <div style="font-size:13px;color:var(--text);line-height:1.6;margin-bottom:20px">${info.body}</div>
+    ${advancementHtml}
   `;
 }
 
