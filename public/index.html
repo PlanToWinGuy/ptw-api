@@ -2796,6 +2796,15 @@ const S = {
   taskPillar: 'fitness',
   goalPillar: 'finances',
   unlocked: JSON.parse(localStorage.getItem('ptw_unlocked')||'["personal"]'),
+  // SIMPLE MODE (display density) -- see setSimpleMode() below. A per-device localStorage
+  // preference, same pattern as ptw_theme/ptw_text_scale, NOT a feature flag: it only
+  // changes what Daily Overview / Roadmap RENDER, never what's fetched or how tasks work.
+  simpleMode: localStorage.getItem('ptw_simple_mode')==='1',
+  // Per-view "I tapped reveal" flags -- let the current Daily Overview / Roadmap view show
+  // everything without permanently turning Simple Mode off. Reset on toggle and on each
+  // fresh load of that screen so a later visit starts collapsed again.
+  dailySimpleReveal: false,
+  roadmapSimpleReveal: false,
 };
 
 // ════════════════════════════════════════
@@ -2844,6 +2853,26 @@ function setTextScale(scale) {
   if(document.getElementById('screen-settings')?.classList.contains('active')) renderSettingsBody();
 }
 applyTextScale(localStorage.getItem('ptw_text_scale')||'1');
+
+// ════════════════════════════════════════
+// SIMPLE MODE -- a per-device DISPLAY DENSITY preference, same localStorage-only pattern
+// as THEME/TEXT SIZE above (no server round-trip, no backend column). Nothing about what
+// data is fetched or how tasks/goals work changes -- this only trims what Daily Overview
+// and the Roadmap timeline RENDER (see applyDailyFilter()/renderDailyTaskList() and
+// loadPillarRoadmap()'s timeline block), each with its own "reveal for this view" escape
+// hatch so it's never a dead end.
+// ════════════════════════════════════════
+function setSimpleMode(on) {
+  S.simpleMode = !!on;
+  localStorage.setItem('ptw_simple_mode', S.simpleMode ? '1' : '0');
+  // Flipping the mode (either direction) resets both screens' per-view reveals, so turning
+  // it back on later starts collapsed again instead of silently staying expanded.
+  S.dailySimpleReveal = false;
+  S.roadmapSimpleReveal = false;
+  if(document.getElementById('screen-settings')?.classList.contains('active')) renderSettingsBody();
+  if(document.getElementById('screen-daily')?.classList.contains('active')) applyDailyFilter();
+  if(document.getElementById('screen-pillar')?.classList.contains('active') && S.activePillarTab==='roadmap' && S.activePillar) loadPillarRoadmap(S.activePillar);
+}
 
 // ════════════════════════════════════════
 // API
@@ -3552,6 +3581,9 @@ function renderSettingsBody() {
           <button type="button" class="chip${currentTextScale==='1.15'?' sel':''}" onclick="setTextScale('1.15')">Large</button>
           <button type="button" class="chip${currentTextScale==='1.3'?' sel':''}" onclick="setTextScale('1.3')">Extra Large</button>
         </div></div>`
+    + `<div class="settings-row"><div class="sr-label">🧘 Simple Mode<div style="font-size:11px;color:var(--stone);font-weight:400;margin-top:2px">Daily Overview and Roadmap show only what matters right now — everything else is still there, just tucked away</div></div>
+        <label class="toggle-switch" style="flex-shrink:0"><input type="checkbox" id="settings-simple-mode" ${S.simpleMode?'checked':''} onchange="setSimpleMode(this.checked)"><span class="toggle-slider"></span></label>
+      </div>`
     + settingsRow('🔔','Notification Settings',"openNotificationSettings()")
     + settingsRow('📏','Measurement Units',"openMeasurementUnits()")
     + settingsRow('☀️','Daily Briefings',"openDailyBriefingsSettings()")
@@ -6793,6 +6825,11 @@ async function loadDailyOverview() {
   const d=new Date(S.dailyDate+'T00:00:00');
   const todayStr=new Date().toDateString();
   label.textContent = d.toDateString()===todayStr ? 'Today' : d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+  // A fresh load of this screen (new date, reopened, filter changed upstream) always
+  // starts Simple Mode's "show everything for this one view" reveal back off -- see
+  // revealAllDailyTasks(), which re-renders WITHOUT going through here so tapping it
+  // doesn't immediately undo itself.
+  S.dailySimpleReveal=false;
 
   const proj=await req('POST','/user-projects',{date:S.dailyDate});
   S.dailyAllTasks=(proj?.data||[]).filter(t=>t.status!=='Skipped');
@@ -8312,16 +8349,20 @@ function renderProfileMetricDetail(key, cfg, chrono, targetId) {
   // to overlap its bottom edge (negative margin + higher z-index) instead of sitting flush
   // underneath it, the way Samsung Health's own drill-downs overlap a summary strip onto
   // its header card. History rows further down stay flat -- not everything needs this.
-  const hero=`<div class="glass-card pmd-hero-card" style="border:1px solid ${hexToRgba(color,.22)};text-align:center;padding:20px 16px 40px">
-    <div class="section-sub" style="margin:0 0 4px">MOST RECENT DAY</div>
+  // Tonal wash (2026-09-18, see tonalHeroWash()/metricStatChipTonal() above): the same
+  // "flat, all one shade" fix applied to Diet's Calories/Water and Fitness's Weight/Steps
+  // drill-downs, layered on top of (not replacing) the z-depth shadow treatment above --
+  // the two are separate concerns (colour range vs. elevation) and compose fine together.
+  const hero=`<div class="glass-card pmd-hero-card" style="background:${tonalHeroWash(color)};border:1px solid ${hexToRgba(shadeColor(color,.12),.34)};text-align:center;padding:20px 16px 40px">
+    <div class="section-sub" style="margin:0 0 4px;color:${tintColor(color,.55)}">MOST RECENT DAY</div>
     <div style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:var(--text)">${cfg.format(current)} ${deltaChipHtml(delta,cfg.unit,cfg.higherIsBetter)}</div>
     <div style="margin-top:14px">${sparklineSvg(vals.slice(-30), color, {w:300,h:70})}</div>
   </div>`;
 
   const chips=`<div class="pmd-chips-row" style="display:flex;gap:8px;margin:-22px 6px 12px">
-    ${metricStatChip('This Week', cfg.format(weekStat), color)}
-    ${metricStatChip('Average', cfg.format(allAvg), color)}
-    ${metricStatChip(cfg.bestLabel||'Best Day', cfg.format(best), color)}
+    ${metricStatChipTonal('This Week', cfg.format(weekStat), color, 'light')}
+    ${metricStatChipTonal('Average', cfg.format(allAvg), color, 'base')}
+    ${metricStatChipTonal(cfg.bestLabel||'Best Day', cfg.format(best), color, 'deep')}
   </div>`;
 
   const weeks=groupLogsByWeek([...chrono].reverse());
@@ -10032,6 +10073,39 @@ async function renderNutritionTab(view) {
   </div>`;
   body.innerHTML = toggle + (view==='water' ? renderWaterMetricDetail(waterDaily, p.color, await getDietWaterGoalLiters()) : renderCaloriesMetricDetail(caloriesDaily, p.color));
 }
+// ── Tonal depth helpers for pillar metric-detail drill-downs (2026-09-18) ──────────────
+// Founder feedback: "pillar colour seems to flat becuse its all the same shade and tone...
+// metric spec pages for each pillar seem a bit bleak because its just all same colour...
+// i love the colour theme, just need a bit more [depth]." These drill-downs (Diet's
+// Calories/Water, Fitness's Weight/Steps, Profile's 6 metric popups) were the literal case:
+// hero card border, sparkline, ring and every stat chip border all reused one flat `color`
+// hex with only alpha as a lever. Reuses the exact within-hue light/deep principle
+// softIcon()/shadeColor()/tintColor() already established for the "icons look pastel/cheap"
+// complaint earlier this session -- NOT new colours, just real tonal range inside the same
+// hue -- rather than inventing a separate visual language for this ask.
+// Diagonal within-hue gradient wash for a hero stat card: a small tintColor() lift at the
+// top-left down to a real shadeColor() deep at the bottom-right, both kept at low alpha so
+// text stays legible, layered (via comma-separated CSS backgrounds) over glassCard's own
+// translucent-white base since an inline `background` fully replaces the class's declared
+// background rather than adding to it.
+function tonalHeroWash(color, opts) {
+  opts=opts||{};
+  const light=hexToRgba(tintColor(color, opts.tint!=null?opts.tint:.14), opts.lightAlpha!=null?opts.lightAlpha:.16);
+  const deep=hexToRgba(shadeColor(color, opts.shade!=null?opts.shade:.45), opts.deepAlpha!=null?opts.deepAlpha:.24);
+  return `linear-gradient(160deg, ${light}, ${deep}), rgba(255,255,255,.045)`;
+}
+// Tonal variant of metricStatChip() for a hero stat-row trio (This Week / Average / Best,
+// etc.): instead of 3 identical chips sharing one flat border colour, each chip sits at a
+// different point on the same light-to-deep range (tone: 'light' | 'base' | 'deep') so the
+// row itself has visible tonal rhythm, and each chip's number picks up a touch of its own
+// tone instead of flat white text on every chip.
+function metricStatChipTonal(label, val, color, tone) {
+  const c = tone==='light' ? tintColor(color,.22) : tone==='deep' ? shadeColor(color,.30) : color;
+  return `<div class="glass-card" style="flex:1;text-align:center;padding:10px 6px;border:1px solid ${hexToRgba(c,.32)};background:linear-gradient(160deg, ${hexToRgba(c,.12)}, rgba(255,255,255,.03))">
+    <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:800;color:${tintColor(c,.4)}">${val}</div>
+    <div style="font-size:9.5px;color:var(--stone);text-transform:uppercase;letter-spacing:.3px;margin-top:2px">${label}</div>
+  </div>`;
+}
 function renderCaloriesMetricDetail(chrono, color) {
   if(!chrono.length) return `<div class="empty"><div class="empty-icon">${ICONS.plate}</div><div class="empty-text">No meals logged yet.</div></div>`;
   const vals=chrono.map(d=>d.value);
@@ -10042,15 +10116,15 @@ function renderCaloriesMetricDetail(chrono, color) {
   const weekAvg=weekVals.length ? Math.round(weekVals.reduce((a,b)=>a+b,0)/weekVals.length) : null;
   const allAvg=Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);
   const best=Math.round(vals.reduce((a,b)=>a+b,0)/vals.length); // "best" framing doesn't map cleanly to calories (no single goal direction) -- shown as typical day instead
-  const hero=`<div class="glass-card" style="border:1px solid ${hexToRgba(color,.22)};text-align:center;padding:20px 16px">
-    <div class="section-sub" style="margin:0 0 4px">TODAY'S CALORIES</div>
+  const hero=`<div class="glass-card" style="background:${tonalHeroWash(color)};border:1px solid ${hexToRgba(shadeColor(color,.12),.34)};text-align:center;padding:20px 16px">
+    <div class="section-sub" style="margin:0 0 4px;color:${tintColor(color,.55)}">TODAY'S CALORIES</div>
     <div style="font-family:'Syne',sans-serif;font-size:30px;font-weight:800;color:var(--text)">${Math.round(current)} kcal ${deltaChipHtml(delta,'',false)}</div>
     <div style="margin-top:14px">${sparklineSvg(vals.slice(-30), color, {w:300,h:70})}</div>
   </div>`;
   const chips=`<div style="display:flex;gap:8px;margin:12px 0">
-    ${metricStatChip('This Week', weekAvg!=null?weekAvg+' kcal':'—', color)}
-    ${metricStatChip('Average', allAvg+' kcal', color)}
-    ${metricStatChip('Typical Day', best+' kcal', color)}
+    ${metricStatChipTonal('This Week', weekAvg!=null?weekAvg+' kcal':'—', color, 'light')}
+    ${metricStatChipTonal('Average', allAvg+' kcal', color, 'base')}
+    ${metricStatChipTonal('Typical Day', best+' kcal', color, 'deep')}
   </div>`;
   const weeks=groupLogsByWeek([...chrono].reverse());
   const history=weeks.map(w=>`
@@ -10071,7 +10145,7 @@ function renderWaterMetricDetail(chrono, color, target) {
   const delta=computeWeekDelta(chrono);
   const allAvg=chrono.reduce((s,d)=>s+d.value,0)/chrono.length;
   const best=Math.max(...chrono.map(d=>d.value));
-  const hero=`<div class="glass-card" style="border:1px solid ${hexToRgba(color,.22)};text-align:center;padding:20px 16px">
+  const hero=`<div class="glass-card" style="background:${tonalHeroWash(color)};border:1px solid ${hexToRgba(shadeColor(color,.12),.34)};text-align:center;padding:20px 16px">
     <div style="position:relative;width:150px;height:150px;margin:0 auto">
       ${svgRing(pct, color, {size:150, stroke:13, track:hexToRgba(color,.15)})}
       <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
@@ -10083,9 +10157,9 @@ function renderWaterMetricDetail(chrono, color, target) {
     <button class="btn-p filled" style="margin-top:14px;background:${color};border-color:${color}" onclick="openWaterLog()">+ Log Water</button>
   </div>`;
   const chips=`<div style="display:flex;gap:8px;margin:12px 0">
-    ${metricStatChip('Today', todayWater.toFixed(1)+'L', color)}
-    ${metricStatChip('Average', allAvg.toFixed(1)+'L', color)}
-    ${metricStatChip('Best Day', best.toFixed(1)+'L', color)}
+    ${metricStatChipTonal('Today', todayWater.toFixed(1)+'L', color, 'light')}
+    ${metricStatChipTonal('Average', allAvg.toFixed(1)+'L', color, 'base')}
+    ${metricStatChipTonal('Best Day', best.toFixed(1)+'L', color, 'deep')}
   </div>`;
   const weeks=groupLogsByWeek([...chrono].reverse());
   const history=weeks.map(w=>`
@@ -12040,15 +12114,15 @@ function renderWeightMetricDetail(chrono, color) {
   const weekAvg=weekVals.length ? weekVals.reduce((a,b)=>a+b,0)/weekVals.length : null;
   const allAvg=vals.reduce((a,b)=>a+b,0)/vals.length;
   const best=Math.min(...vals);
-  const hero=`<div class="glass-card" style="border:1px solid ${hexToRgba(color,.22)};text-align:center;padding:20px 16px">
-    <div class="section-sub" style="margin:0 0 4px">CURRENT WEIGHT</div>
+  const hero=`<div class="glass-card" style="background:${tonalHeroWash(color)};border:1px solid ${hexToRgba(shadeColor(color,.12),.34)};text-align:center;padding:20px 16px">
+    <div class="section-sub" style="margin:0 0 4px;color:${tintColor(color,.55)}">CURRENT WEIGHT</div>
     <div style="font-family:'Syne',sans-serif;font-size:30px;font-weight:800;color:var(--text)">${current} ${unit} ${deltaChipHtml(delta,unit,false)}</div>
     <div style="margin-top:14px">${sparklineSvg(vals.slice(-30), color, {w:300,h:70})}</div>
   </div>`;
   const chips=`<div style="display:flex;gap:8px;margin:12px 0">
-    ${metricStatChip('This Week', weekAvg!=null?weekAvg.toFixed(1)+' '+unit:'—', color)}
-    ${metricStatChip('Average', allAvg.toFixed(1)+' '+unit, color)}
-    ${metricStatChip('Best', best.toFixed(1)+' '+unit, color)}
+    ${metricStatChipTonal('This Week', weekAvg!=null?weekAvg.toFixed(1)+' '+unit:'—', color, 'light')}
+    ${metricStatChipTonal('Average', allAvg.toFixed(1)+' '+unit, color, 'base')}
+    ${metricStatChipTonal('Best', best.toFixed(1)+' '+unit, color, 'deep')}
   </div>`;
   const weeks=groupLogsByWeek([...chrono].reverse());
   const history=weeks.map(w=>`
@@ -12071,7 +12145,7 @@ function renderStepsMetricDetail(chrono, color) {
   const delta=computeWeekDelta(chrono);
   const allAvg=Math.round(chrono.reduce((s,d)=>s+d.value,0)/chrono.length);
   const best=Math.max(...chrono.map(d=>d.value));
-  const hero=`<div class="glass-card" style="border:1px solid ${hexToRgba(color,.22)};text-align:center;padding:20px 16px">
+  const hero=`<div class="glass-card" style="background:${tonalHeroWash(color)};border:1px solid ${hexToRgba(shadeColor(color,.12),.34)};text-align:center;padding:20px 16px">
     <div style="position:relative;width:150px;height:150px;margin:0 auto">
       ${svgRing(pct, color, {size:150, stroke:13, track:hexToRgba(color,.15)})}
       <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
@@ -12082,9 +12156,9 @@ function renderStepsMetricDetail(chrono, color) {
     <div style="margin-top:10px;font-size:12px;color:var(--stone)">${todaySteps.toLocaleString()} steps today ${deltaChipHtml(delta,'',true)}</div>
   </div>`;
   const chips=`<div style="display:flex;gap:8px;margin:12px 0">
-    ${metricStatChip('This Week', weekTotal.toLocaleString(), color)}
-    ${metricStatChip('Daily Avg', allAvg.toLocaleString(), color)}
-    ${metricStatChip('Best Day', best.toLocaleString(), color)}
+    ${metricStatChipTonal('This Week', weekTotal.toLocaleString(), color, 'light')}
+    ${metricStatChipTonal('Daily Avg', allAvg.toLocaleString(), color, 'base')}
+    ${metricStatChipTonal('Best Day', best.toLocaleString(), color, 'deep')}
   </div>`;
   const weeks=groupLogsByWeek([...chrono].reverse());
   const history=weeks.map(w=>`
