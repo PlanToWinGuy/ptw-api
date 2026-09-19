@@ -11883,8 +11883,8 @@ function renderTplTypeBody() {
   } else if(S.tplActivityType==='cardio') {
     el.innerHTML=`
       <div style="display:flex;gap:8px">
-        <input type="number" placeholder="Duration (min)" value="${S.tplCardio.durationMin}" oninput="S.tplCardio.durationMin=Number(this.value)" style="flex:1;padding:10px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none">
-        <input type="number" placeholder="Distance (km)" value="${S.tplCardio.distance}" oninput="S.tplCardio.distance=Number(this.value)" style="flex:1;padding:10px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none">
+        <div style="flex:1"><div style="font-size:9px;color:var(--stone);text-align:center;margin-bottom:2px">DURATION (MIN)</div><input type="number" value="${S.tplCardio.durationMin}" oninput="S.tplCardio.durationMin=Number(this.value)" style="width:100%;padding:10px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none"></div>
+        <div style="flex:1"><div style="font-size:9px;color:var(--stone);text-align:center;margin-bottom:2px">DISTANCE (KM)</div><input type="number" value="${S.tplCardio.distance}" oninput="S.tplCardio.distance=Number(this.value)" style="width:100%;padding:10px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none"></div>
       </div>
       <select id="tpl-cardio-intensity" onchange="S.tplCardio.intensity=this.value" style="width:100%;margin-top:8px;padding:10px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text)">
         ${['Easy','Moderate','Hard'].map(o=>`<option ${S.tplCardio.intensity===o?'selected':''}>${o}</option>`).join('')}
@@ -12374,20 +12374,36 @@ function startCardioTracking() {
       const {latitude,longitude,accuracy}=pos.coords;
       const wasLocating = w.geoStatus!=='active';
       w.geoStatus='active';
-      // A fix worse than ~30m accuracy is too imprecise to trust for distance --
-      // still counts as "GPS locked" (status stays active) but its delta is skipped
-      // rather than accumulated, so a noisy fix doesn't inflate the total.
-      if(accuracy==null || accuracy<=30) {
+      // Real-world phone GPS accuracy routinely swings 10-50m+ during an active
+      // session -- first minute of a fix, tree cover, being near buildings -- so the
+      // previous ~30m hard cutoff was silently discarding a large share of genuine
+      // fixes. That's what produced a ~50% distance undercount on a real test walk
+      // (smartwatch: 1.7km: PTW GPS: 0.77km for the same walk). 50m is now the
+      // outright-reject ceiling -- a fix worse than that really is too unreliable to
+      // trust at all -- and still counts as "GPS locked" for status purposes even
+      // when its delta is skipped.
+      if(accuracy==null || accuracy<=50) {
         if(w.lastCoord) {
           const deltaKm=haversineKm(w.lastCoord.lat, w.lastCoord.lon, latitude, longitude);
           const deltaSec=Math.max(1,(Date.now()-(w.lastFixAt||Date.now()))/1000);
-          // Reject implausible jumps (GPS glitch/multipath): faster than 25km/h
-          // sustained between fixes is outside any realistic run/jog/cycle pace for
-          // this being real movement rather than an accidental spike.
-          if((deltaKm/(deltaSec/3600))<25) w.geoDistanceKm+=deltaKm;
+          // Sub-3m deltas are GPS jitter at this accuracy level, not real movement --
+          // loosening the accuracy cutoff above means this floor now does the jitter-
+          // suppression work the old strict 30m threshold used to do as a side effect.
+          // Skip WITHOUT advancing the anchor point, so genuine slow movement (a few
+          // metres per fix while walking) keeps accumulating against the same anchor
+          // instead of every sub-3m increment being dropped fix by fix.
+          if(deltaKm>=0.003) {
+            // Reject implausible jumps (GPS glitch/multipath): faster than 25km/h
+            // sustained between fixes is outside any realistic walk/run/cycle pace,
+            // so treat it as a spike rather than real movement.
+            if((deltaKm/(deltaSec/3600))<25) w.geoDistanceKm+=deltaKm;
+            w.lastCoord={lat:latitude, lon:longitude};
+            w.lastFixAt=Date.now();
+          }
+        } else {
+          w.lastCoord={lat:latitude, lon:longitude};
+          w.lastFixAt=Date.now();
         }
-        w.lastCoord={lat:latitude, lon:longitude};
-        w.lastFixAt=Date.now();
       }
       if(wasLocating) updateCardioGpsStatus();
     },
@@ -12435,9 +12451,9 @@ function renderCardioSummary() {
     </div>
     <div class="rm-goal-card" style="margin-top:4px">
       <div class="section-sub" style="text-align:center">ADJUST IF NEEDED</div>
-      <div style="display:flex;gap:10px;justify-content:center;margin-top:10px">
-        <input type="number" id="cardio-actual-duration" placeholder="Duration (min)" value="${w.actualDurationMin}" style="flex:1;padding:10px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none">
-        <input type="number" id="cardio-actual-distance" step="0.01" placeholder="Distance (km)" value="${w.actualDistanceKm||''}" style="flex:1;padding:10px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none">
+      <div style="display:flex;gap:10px;margin-top:10px">
+        <div style="flex:1"><div style="font-size:9px;color:var(--stone);text-align:center;margin-bottom:2px">DURATION (MIN)</div><input type="number" id="cardio-actual-duration" value="${w.actualDurationMin}" style="width:100%;padding:10px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none"></div>
+        <div style="flex:1"><div style="font-size:9px;color:var(--stone);text-align:center;margin-bottom:2px">DISTANCE (KM)</div><input type="number" id="cardio-actual-distance" step="0.01" value="${w.actualDistanceKm||''}" style="width:100%;padding:10px;background:var(--bg4);border:1px solid rgba(196,184,168,.15);border-radius:8px;color:var(--text);text-align:center;outline:none"></div>
       </div>
     </div>
     <textarea id="workout-session-notes" placeholder="Add Session Notes:" rows="2" style="width:100%;margin-top:14px;padding:12px;background:var(--bg3);border:1px solid rgba(196,184,168,.1);border-radius:10px;color:var(--text);font-size:13px;outline:none;resize:none">${w.sessionNotes}</textarea>
